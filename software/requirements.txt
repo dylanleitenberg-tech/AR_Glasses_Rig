@@ -1,0 +1,6 @@
+# Python 3.9+
+numpy>=1.24
+opencv-python>=4.8      # world + eye cameras, dot detection, overlay window
+pygame>=2.5            # joystick / gamepad input (keyboard fallback if absent)
+# The learning core (calibrator.py, dataset.py, synth.py) needs only numpy + stdlib,
+# so `python3 main.py --selftest` runs without opencv/pygame or any hardware.

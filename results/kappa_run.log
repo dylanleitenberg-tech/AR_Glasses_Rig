@@ -1,0 +1,34 @@
+   (training the warm-start prior the user starts from ...)
+== convergence: overlay error vs number of the user's own corrections ==
+   (systematic error vs the oracle; per-attempt fixation noise ~2.6 px adds on
+    top at runtime and averages as 1/sqrt(N))
+
+       K | vs geometric truth | vs perceived alignment
+   --------------------------------------------------
+       2 |       55.8 px      |         51.1 px
+       4 |       37.0 px      |         36.2 px
+       8 |       14.7 px      |         11.4 px
+      16 |        9.8 px      |          8.1 px
+      32 |        9.0 px      |          7.0 px
+      64 |        9.0 px      |          6.5 px
+   --------------------------------------------------
+
+   vs geometric truth floors at ~9.0 px (the perceptual bias = kappa confound).
+   vs PERCEIVED alignment reaches ~6.5 px (approaching 3 px) — what the user sees on target.
+   So 'within 3 px' is gated by the user's own corrections + fixation noise,
+   NOT by the database; the bias the geometric number penalizes isn't perceived.
+
+== a way around kappa: multi-vergence separation (KAPPA.md method 7) ==
+   registration error across target distances 300-1800 mm (px @1080p):
+   calibration strategy                 median      max
+   ----------------------------------------------------
+   single distance (assume constant)      13.0     40.6
+   at virtual plane (constant)             5.6     59.0
+   multi-distance (regress a,b)            2.4     14.6
+   ----------------------------------------------------
+
+   single-distance calibration carries a big error to OTHER distances (the
+   vergence-accommodation bias it mistook for a constant kappa); regressing across
+   distances separates kappa (the constant) from the vergence bias (the slope) and
+   stays accurate everywhere. The confound is broken by VARYING viewing distance —
+   no extra sensor. (A PCCR/imaging measurement removes the residual constant too.)

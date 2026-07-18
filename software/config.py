@@ -1,0 +1,98 @@
+"""Central configuration for the AR eye-corner calibration rig.
+
+All values are defaults; main.py exposes the important ones as CLI flags.
+Coordinates inside the learning pipeline are normalized to [0, 1] so the model
+is independent of any specific camera/display resolution.
+"""
+import os
+from dataclasses import dataclass, field
+from typing import List
+
+# Anchor data paths to the repo root (parent of software/) so they're the same
+# no matter what directory you launch from.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ROOT = os.path.dirname(_HERE)
+_DATA = os.path.join(_ROOT, "data")
+
+
+@dataclass
+class Config:
+    # ---- cameras (device indices; overridden by CLI) ----
+    # CANONICAL HARDWARE = 6-camera BINOCULAR build (XREAL One Pro has a display PER EYE):
+    #   2 outward "world" cams (shared) + 4 eye-facing cams (2 eye-corner + 2 NIR pupil,
+    #   one of each per eye). See WIRING.md / ORDER_LIST.md / cad/xreal_one_mount.scad.
+    # The four indices below are the WORLD + EYE-CORNER base that the live calibration loop
+    # reads (8 features); the 2 NIR pupil cams are added with use_pupil (live_features /
+    # --use-pupil). The 8-cam stereo "FULL" upgrade (use_stereo) is a SEPARATE future tier.
+    # The calibration registers the display/right eye as the representative; the left is the
+    # mirror (binocular), so a single registration model still describes the device.
+    world_cam_left: int = 0
+    world_cam_right: int = 1
+    eye_cam_left: int = 2
+    eye_cam_right: int = 3
+    cam_width: int = 640
+    cam_height: int = 480
+
+    # ---- display / overlay ----
+    display_w: int = 1920          # render target (your AR monitor in Path A)
+    display_h: int = 1080
+    overlay_window: str = "AR-overlay"
+    dot_radius_px: int = 8
+    fullscreen: bool = False       # set True to push onto the AR monitor
+
+    # ---- joystick / nudge ----
+    nudge_gain: float = 0.006      # normalized display units per key/stick step (faster traversal)
+    deadzone: float = 0.15
+    approve_button: int = 0        # gamepad "A"
+    quit_button: int = 1           # gamepad "B"
+
+    # ---- eye-corner tracking ----
+    # template-match search; templates captured via --calibrate-corners
+    template_dir: str = os.path.join(_DATA, "templates")
+    search_margin: float = 0.35    # fraction of frame to search around last hit
+
+    # ---- learning ----
+    db_path: str = os.path.join(_DATA, "samples.db")
+    poly_degree: int = 2
+    min_samples_for_model: int = 6 # below this, fall back to weighted-mean pixel
+    retrain_every: int = 1         # retrain after every N new samples
+    # regularization is auto-selected by GCV across this log-spaced range:
+    lambda_lo: float = 1e-4
+    lambda_hi: float = 31.6
+    lambda_steps: int = 18
+    robust_iters: int = 2          # Huber IRLS passes that suppress bad samples
+    huber_k: float = 1.5           # outlier threshold, in robust sigmas
+
+    # ---- capture quality / smoothing ----
+    eye_conf_min: float = 0.45     # reject an approve if eye-corner match < this
+    feat_smooth: float = 0.4       # EMA on live eye features (0..1, higher=snappier)
+    pred_smooth: float = 0.5       # EMA on the displayed prediction (reduces jitter)
+
+    # NIR pupil-centre feature (8 -> 10): the 2 NIR pupil cams of the 6-camera binocular CORE.
+    # Off by default so the 8-feature WORLD+EYE-CORNER base pipeline (selftest/pixel_sweep/
+    # match/the live --calibrate-corners loop) stays unchanged; turn on (--use-pupil) to add
+    # the NIR pupil signal that pins the 6-DOF pose the eye-corner cams under-determine and
+    # drives the preset floor toward sub-pixel. This is the canonical 6-cam CORE result.
+    use_pupil: bool = False
+    # 8-cam "FULL" FUTURE UPGRADE (separate tier, not the 6-cam model): the 2nd eye-corner
+    # (stereo) cams, +4 features, for <1 px. Off by default.
+    use_stereo: bool = False
+
+    # feature order fed to the model (documented in one place). All four cameras:
+    feature_names: List[str] = field(default_factory=lambda: [
+        "worldL_dot_x", "worldL_dot_y",   # dot in the LEFT world cam (norm)
+        "worldR_dot_x", "worldR_dot_y",   # dot in the RIGHT world cam (norm) -> stereo
+        "eyeL_corner_x", "eyeL_corner_y", # left eye corner in left inward cam (norm)
+        "eyeR_corner_x", "eyeR_corner_y", # right eye corner in right inward cam (norm)
+    ])
+
+    def __post_init__(self):
+        # order MUST match autosim observe/ground_truth: base 8, then stereo (+4), then pupil (+2)
+        if self.use_stereo and "eyeL2_x" not in self.feature_names:
+            self.feature_names = self.feature_names + ["eyeL2_x", "eyeL2_y", "eyeR2_x", "eyeR2_y"]
+        if self.use_pupil and "pupilR_x" not in self.feature_names:
+            self.feature_names = self.feature_names + ["pupilR_x", "pupilR_y"]
+
+    @property
+    def n_features(self) -> int:
+        return len(self.feature_names)

@@ -1,0 +1,16 @@
+# virtualenv + caches
+software/.venv/
+__pycache__/
+*.pyc
+.DS_Store
+nohup.out
+
+# generated data artifacts (large, reproducible from the simulators)
+data/
+
+# local calibration photos
+software/calib_shots/
+
+# geometry-revision backups
+*.old_geom*
+*.old_fwd*
