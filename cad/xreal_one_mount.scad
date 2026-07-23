@@ -128,7 +128,11 @@ OV_BOARD    = 32;  OV_PITCH    = 28;   // InnoMaker OV9281 USB, MEASURED 2026-07
 //  ⚠️ VERIFY IN F5 (show_cams=true): the ivory connector block must sit over your real port; if it
 //  is mirrored to the wrong side, flip the sign of CONN_POS[0] (one edit).
 CONN_POS  = [5.95, 12.75];             // board-local centre of the JST port
-CONN_SLOT = [8.5, 3.5];                // port 8.3 x 3.2 + 0.2 clearance each way
+CONN_SIZE = [8.3, 3.2];                // the ACTUAL port (drawn in preview to verify the fit)
+CONN_SLOT = [9.5, 4.5];                // the plate CUT, oversized ("better safe than sorry":
+                                       //  ~0.6 mm clearance per side around the connector)
+CONN_SLOT_CTR = [5.5, 12.75];          // slot nudged 0.45 mm -x of the port so its far edge keeps
+                                       //  a ~1.25 mm wall to the standoff at (14,14)
 // M12 board-lens optical model (matches software/cad_fit.py): the projection centre is BACK mm
 // in FRONT of the sensor; the lens holder (radius RLENS) runs from the sensor to FRONT past it.
 BACK = 10;  FRONT = 7;  RLENS = 9;
@@ -257,7 +261,7 @@ module camera_module(board, ov_conn = false) {   // the part you BUY (visual sta
         cylinder(d = 2*RLENS, h = BACK + FRONT - 0.8);                                  // M12 lens + holder
     if (ov_conn)                                                                        // JST port on the back
         color("ivory") translate([CONN_POS[0], CONN_POS[1], -BACK - 3.3])
-            cube([CONN_SLOT[0], CONN_SLOT[1], 5], center = true);
+            cube([CONN_SIZE[0], CONN_SIZE[1], 5], center = true);
 }
 // MINIMAL camera holder (Iter 1): no board-sized rim/tray. Just a thin backing PLATE sized to the
 // standoff pattern (the PCB cantilevers slightly past it, which is fine), 4 M2 standoffs the PCB
@@ -305,15 +309,15 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false) {
                 translate([sx*(pitch/2 - 1), sy*(bp/2 - 3.2), zt])            //  (standoff blocks moving it; 3
                     cube([3.2, 2, 6], center = true);                         //   ties still back up the 4 screws)
         if (ov_conn)                                                         // JST port pass-through slot
-            translate([CONN_POS[0], CONN_POS[1], zt])                        //  (connector + cable exit the back)
+            translate([CONN_SLOT_CTR[0], CONN_SLOT_CTR[1], zt])              //  (connector + cable exit the back)
                 cube([CONN_SLOT[0], CONN_SLOT[1], 8], center = true);
         else
             translate([0, -bp/2, zt]) cube([7, 6, 4], center = true);        // edge cable notch (world/untested boards)
     }
-    // strain-relief post: a small pillar the cable zip-ties to. On the OV holders it sits beside
-    // the connector slot; otherwise inboard of the edge notch (never over a through-cut, or it
-    // prints as a loose pin).
-    post = ov_conn ? [CONN_POS[0] + CONN_SLOT[0]/2 + 2.5, CONN_POS[1]] : [0, -(bp/2 - 4.7)];
+    // strain-relief post: a small pillar the cable zip-ties to. On the OV holders it sits INBOARD
+    // of the connector slot (open plate, clear of the standoffs); otherwise inboard of the edge
+    // notch (never over a through-cut, or it prints as a loose pin).
+    post = ov_conn ? [CONN_SLOT_CTR[0] - CONN_SLOT[0]/2 - 2.5, CONN_SLOT_CTR[1]] : [0, -(bp/2 - 4.7)];
     translate([post[0], post[1], zt - 1]) cylinder(d = 2.4, h = 6);          // cable strain-relief post
 }
 module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false) {
