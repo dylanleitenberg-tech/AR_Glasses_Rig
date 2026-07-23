@@ -8,8 +8,8 @@
 //  modules (not abstract stand-ins). BINOCULAR: the XREAL One Pro has a display PER EYE, so both
 //  eyes are registered. Build/test the 6-cam CORE first (build_stereo=false):
 //      world  x2 : ELP AR0234 USB, 38x38 mm board + M12 lens   (brow, looks forward; SHARED)
-//      eye    x2 : Arducam OV9281 USB, 36x36 mm board + M12     (temple; one per eye)
-//      pupil  x2 : Arducam OV9281 NoIR USB, 36x36 mm + IR ring  (under-eye; ONE PER EYE)
+//      eye    x2 : InnoMaker OV9281 USB, 32x32 mm board + M12   (temple; one per eye)
+//      pupil  x2 : InnoMaker OV9281 NoIR USB, 32x32 mm + IR ring (under-eye; ONE PER EYE)
 //  Accuracy (honest, sim-validated with realistic user corrections, 2026-07-03): ~4.3 px
 //  PERCEIVED deployed (vernier UI + per-user offset); pipeline bound 0.89 px with ideal
 //  corrections; the <1 px pathway (stereo + multi-vergence kappa separation) awaits hardware
@@ -70,9 +70,10 @@ ipd       = 67;
 //    brow depth 19.4 (max 19.75) + smooth stepped-top profile (IMG_1233) in BOTH the
 //    clamp underside and the glasses stand-in.
 //  FROM VENDOR DRAWING (accepted for print): ELP AR0234 world boards 38x38, 28 pitch.
-//  ⏳ PENDING CALIPERS (the ONE open measurement): InnoMaker U20CAM-9281M board size /
-//    mount pitch / thickness / back-component height -> sets OV_BOARD/OV_PITCH and the
-//    eye-holder depth before the rigid print. Everything else is real.
+//  MEASURED 2026-07-19 (InnoMaker OV9281 in hand, IMG_1446-1450): board 32x32 (OV_BOARD),
+//    28 mm mount pitch confirmed to line up (OV_PITCH), JST port on the back at CONN_POS with
+//    a pass-through slot cut in the plate. ELP world board still from vendor drawing until
+//    that unit is in hand.
 // -------------------------------------------------------------------------------
 
 // ===========================================================================
@@ -114,7 +115,20 @@ COR_SIM   = [disp_ipd/2, 0, -28.5];  // right eye nominal CoR (pupil-cam aim; = 
 
 // ---------- real camera MODULES (vendor dims; verify with calipers) ----
 WORLD_BOARD = 38;  WORLD_PITCH = 28;   // ELP AR0234 USB: 38x38 board, ~28 mm mount pattern
-OV_BOARD    = 36;  OV_PITCH    = 28;   // Arducam OV9281 USB: 36x36 board, 28 mm mount pattern
+OV_BOARD    = 32;  OV_PITCH    = 28;   // InnoMaker OV9281 USB, MEASURED 2026-07-19 (IMG_1446-1450):
+                                       //  32x32 board; the 28 mm standoff pattern lines up with the
+                                       //  real mount holes (confirmed on the received unit).
+// ---- JST connector on the OV9281 BACK face (the face toward the plate) ----------------------
+//  The board's USB cable plugs into a JST port that STANDS ~5 mm proud of the PCB back, taller
+//  than the plate-to-PCB gap, so it hits the plate. Fix: a SLOT through the plate under the port
+//  lets the connector + cable pass straight out the back (chosen over taller standoffs, which
+//  would lengthen the posts and lose rigidity). Board-local frame: origin at board centre, +x =
+//  the side that appears LEFT when the lens points AWAY from you (the face Dylan measured), +y up.
+//  MEASURED: port far/inner corner 14.2 mm from the left edge, 30.35 mm from the bottom, board 32.
+//  ⚠️ VERIFY IN F5 (show_cams=true): the ivory connector block must sit over your real port; if it
+//  is mirrored to the wrong side, flip the sign of CONN_POS[0] (one edit).
+CONN_POS  = [5.95, 12.75];             // board-local centre of the JST port
+CONN_SLOT = [8.5, 3.5];                // port 8.3 x 3.2 + 0.2 clearance each way
 // M12 board-lens optical model (matches software/cad_fit.py): the projection centre is BACK mm
 // in FRONT of the sensor; the lens holder (radius RLENS) runs from the sensor to FRONT past it.
 BACK = 10;  FRONT = 7;  RLENS = 9;
@@ -170,9 +184,13 @@ brow_depth_max = 19.75;   // largest measured front-to-back depth
 brow_front_y   = 6;       // brow front-face plane (CAD y, unchanged reference)
 brow_front_h   = 8.9;     // tall front step (the front jaw grips this face)
 brow_back_h    = 3.6;     // short back ledge (the rear jaw grips this face)
-clamp_pad_t = 1.5;        // silicone pad lining each jaw (non-marking, takes up taper)
-slip_front  = 1.0;        // "slightly more clearance so it slips on easily" — screw takes it up
-slip_rear   = 0.3;
+// FIT TIGHTENED (2026-07-19): the resting fit should already be near-aligned so the screw
+// only closes the last fraction. Pad allowance cut 1.5 -> 0.5 (line the jaws with THIN
+// PTFE/felt tape, not thick silicone: squish was slop), clearances sized for ~2.5 mm total
+// bare-plastic play (easy slip-on, inside the 1-3 mm safety band), ~1.5 mm with tape on.
+clamp_pad_t = 0.5;        // thin low-friction tape lining each jaw (non-marking)
+slip_front  = 1.2;        // slip-on clearance, taken up by the screw
+slip_rear   = 0.3;        // rear face stays close: the back of the slot is the alignment datum
 
 // ---------- NIR illumination (940 nm rings around BOTH eyes — binocular) ----
 ir_n = 6;  ir_ring_r = 13;  ir_led_d = 3.2;  ir_led_h = 3.0;   // 940 nm LEDs (EYE_TRACKING.md §3)
@@ -233,10 +251,13 @@ module aim_z_at(from, to) {                 // aim children's +z from `from` tow
 //  M12 lens runs sensor->FRONT. The printed holder is a backing plate + 4 standoffs at `pitch`
 //  with M2 bores (heat-set inserts) the PCB screws onto, a relief/cable cut, and a cable notch.
 // =====================================================================
-module camera_module(board) {               // the part you BUY (visual stand-in only)
+module camera_module(board, ov_conn = false) {   // the part you BUY (visual stand-in only)
     color([0.10, 0.45, 0.20]) translate([0, 0, -BACK]) rbox(board, board, 1.6, 1.5);   // PCB
     color([0.16, 0.16, 0.16]) translate([0, 0, -BACK + 0.8])
         cylinder(d = 2*RLENS, h = BACK + FRONT - 0.8);                                  // M12 lens + holder
+    if (ov_conn)                                                                        // JST port on the back
+        color("ivory") translate([CONN_POS[0], CONN_POS[1], -BACK - 3.3])
+            cube([CONN_SLOT[0], CONN_SLOT[1], 5], center = true);
 }
 // MINIMAL camera holder (Iter 1): no board-sized rim/tray. Just a thin backing PLATE sized to the
 // standoff pattern (the PCB cantilevers slightly past it, which is fine), 4 M2 standoffs the PCB
@@ -260,7 +281,7 @@ module camera_module(board) {               // the part you BUY (visual stand-in
 // verified cone/face/glasses clearance is untouched. The BOSS on the plate's back face is the
 // boom's attachment pad — the boom's end sphere seats inside it and never crosses the plate's
 // front face (the old attachment bulged 2.8 mm into the PCB back-component zone).
-module camera_holder(board, pitch, boss_off = [0, 0]) {
+module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false) {
     pcb_back = -BACK - 0.8;                      // where the PCB's back face must land
     zt = pcb_back - standoff_h - 1.3;            // backing-plate CENTRE (2.6 thick, top at pcb_back - standoff_h)
     bp = pitch + m2_boss + 4;                    // plate just covers the standoff pattern (~37 mm)
@@ -278,18 +299,26 @@ module camera_holder(board, pitch, boss_off = [0, 0]) {
         }
         for (sx=[-1,1]) for (sy=[-1,1])                                       // M2 bores (self-tapping;
             translate([sx*pitch/2, sy*pitch/2, zt - 2]) cylinder(d = m2_d, h = standoff_h + 5);  // start below the plate
-        for (sx=[-1,1]) for (sy=[-1,1])                                       // zip-tie through-slots (2 ties
-            translate([sx*(pitch/2 - 1), sy*(bp/2 - 3.2), zt])                //  loop over the PCB, closing
-                cube([3.2, 2, 6], center = true);                             //  under the plate)
-        translate([0, -bp/2, zt]) cube([7, 6, 4], center = true);            // cable notch
+        csx = (CONN_POS[0] >= 0) ? 1 : -1;                                    // connector's x-side
+        for (sx=[-1,1]) for (sy=[-1,1])                                       // zip-tie through-slots
+            if (!(ov_conn && sy > 0 && sx == csx))                            // skip the one the JST slot crowds
+                translate([sx*(pitch/2 - 1), sy*(bp/2 - 3.2), zt])            //  (standoff blocks moving it; 3
+                    cube([3.2, 2, 6], center = true);                         //   ties still back up the 4 screws)
+        if (ov_conn)                                                         // JST port pass-through slot
+            translate([CONN_POS[0], CONN_POS[1], zt])                        //  (connector + cable exit the back)
+                cube([CONN_SLOT[0], CONN_SLOT[1], 8], center = true);
+        else
+            translate([0, -bp/2, zt]) cube([7, 6, 4], center = true);        // edge cable notch (world/untested boards)
     }
-    // strain-relief post INBOARD of the cable notch (the notch is a through-cut in the true
-    // 2.6 plate — at the old spot the post stood on the hole and printed as a loose pin)
-    translate([0, -(bp/2 - 4.7), zt - 1]) cylinder(d = 2.4, h = 6);          // cable strain-relief post
+    // strain-relief post: a small pillar the cable zip-ties to. On the OV holders it sits beside
+    // the connector slot; otherwise inboard of the edge notch (never over a through-cut, or it
+    // prints as a loose pin).
+    post = ov_conn ? [CONN_POS[0] + CONN_SLOT[0]/2 + 2.5, CONN_POS[1]] : [0, -(bp/2 - 4.7)];
+    translate([post[0], post[1], zt - 1]) cylinder(d = 2.4, h = 6);          // cable strain-relief post
 }
-module board_cam(board, pitch, boss_off = [0, 0]) {
-    if (show_cams) color([0.30, 0.30, 0.32]) camera_module(board);
-    color("orange") camera_holder(board, pitch, boss_off);
+module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false) {
+    if (show_cams) color([0.30, 0.30, 0.32]) camera_module(board, ov_conn);
+    color("orange") camera_holder(board, pitch, boss_off, ov_conn);
 }
 // PCB KEEP-OUT solid (checks only, never printed): the physical board + its back-side
 // component zone — plate front face (-BACK-0.8-standoff_h) to PCB front face (-BACK+0.8).
@@ -329,7 +358,7 @@ module pcb_zone(board, u_keep = [-99, 99]) {
 // lets the boom meet the plate at the edge nearest its drop corridor instead of dead centre,
 // so the jog never crosses the physical board's keep-out zone.
 module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off = [0, 0],
-              zone_u_keep = [-99, 99], foot_wing_len = 0) {
+              zone_u_keep = [-99, 99], foot_wing_len = 0, ov_conn = false) {
     ax = unit([target[0]-C[0], target[1]-C[1], target[2]-C[2]]);
     ra = -asin(ax[1]);  rb = atan2(ax[0], ax[2]);    // aim_z_at's rotation angles
     e1 = [cos(rb), 0, -sin(rb)];                     // holder-local +x in world
@@ -357,7 +386,7 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
         }
     }
     if (render == "all" || render == "holder")
-        translate(C) aim_z_at(C, target) board_cam(board, pitch, att_off);
+        translate(C) aim_z_at(C, target) board_cam(board, pitch, att_off, ov_conn);
     if (render == "pcbzone")
         translate(C) aim_z_at(C, target) pcb_zone(board, zone_u_keep);
 }
@@ -403,7 +432,7 @@ module eye_cam(side, render = "all") {
     cam_at([side*58, ANCHOR_Y, ANCHOR_Z], C,
            sim2cad([side*CANTH_SIM[0], CANTH_SIM[1], CANTH_SIM[2]]), OV_BOARD, OV_PITCH,
            render = render, att_off = [0, -10],    // 58: foot clears the world plate (52) and the
-           foot_wing_len = 24);                    // hinge (64.8); wing roots it 24 mm inboard
+           foot_wing_len = 24, ov_conn = true);    // hinge (64.8); wing roots it 24 mm inboard
                                                    // (down to x~28.5, 1.5 clear of the world foot)
 }
 module eye_cam2(side) {
@@ -434,7 +463,7 @@ module pupil_cam(side, render = "all") {    // NIR eye-tracking cam — ONE PER 
     // nasal edges — the strict FULL-board keep-out passes again, no edge-strip exemption).
     // Risers at x=±7 fuse INTO the IMU tower pedestal: pedestal + risers + column = one mast.
     cam_at([side*7, ANCHOR_Y, ANCHOR_Z], C, sim2cad([side*COR_SIM[0], COR_SIM[1], COR_SIM[2]]),
-           OV_BOARD, OV_PITCH, drop_x = 0, render = render, att_off = [-13*side, 0]);
+           OV_BOARD, OV_PITCH, drop_x = 0, render = render, att_off = [-13*side, 0], ov_conn = true);
 }
 // One IR LED inside a SAFETY BAFFLE: the shroud + LED extend AWAY from the eye (+y), the LED tip
 // is RECESSED behind the eye-facing cap, and the cap has only a small beam aperture. So no emitter
@@ -480,7 +509,8 @@ module rail() {
 // Jaw depths: FRONT stops at -11.5 (full grip of the 8.9 face, still under the vertical-FOV
 // line ~-12.8, cone-checked); REAR at -11.0 (the 3.6 back ledge's face spans -7.9..-11.5 —
 // a deeper rear jaw would hang past the ledge toward the forehead for nothing).
-front_jaw_z = 11.5;  rear_jaw_z = 11.0;
+front_jaw_z = 11.5;  rear_jaw_z = 11.5;   // rear deepened 11.0 -> 11.5 (2026-07-19): covers the
+                                          // back ledge's FULL face (-7.9..-11.5) for aligned grip
 // Catmull-Rom spline sampler (vector form; endpoints doubled so the curve hits them)
 function _cr(p0, p1, p2, p3, t) = 0.5 * ((2*p1) + (-p0 + p2)*t
     + (2*p0 - 5*p1 + 4*p2 - p3)*t*t + (-p0 + 3*p1 - 3*p2 + p3)*t*t*t);

@@ -14,3 +14,4 @@ software/calib_shots/
 # geometry-revision backups
 *.old_geom*
 *.old_fwd*
+.Rhistory

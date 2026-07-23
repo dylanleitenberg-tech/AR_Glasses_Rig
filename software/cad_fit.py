@@ -10,7 +10,7 @@ the reported clearance is best-case: if it's still negative, the module genuinel
 
 Real module sizes (measured from vendor pages, see ORDER_LIST.md):
   ELP AR0234 USB (world)      : 38 x 38 mm board + M12
-  Arducam OV9281 USB (eye)    : 36 x 36 mm board + M12
+  InnoMaker OV9281 USB (eye)  : 32 x 32 mm board + M12 (measured 2026-07-19)
   Arducam Mini OV9281 (MIPI)  : 24 x 25 mm board (smaller; needs Jetson, not USB)
 """
 import sys
@@ -197,8 +197,8 @@ def find_fit(name, board, cone_min=1.5, eye_min=3.0, span=16, step=2):
 
 def search():
     print("== nearest FITTING position per camera (real USB modules, margin cone>=1.5 eye>=3.0) ==")
-    boards = {"worldL": 38, "worldR": 38, "eyeL": 36, "eyeR": 36,
-              "eye2L": 36, "eye2R": 36, "pupil": 36}
+    boards = {"worldL": 38, "worldR": 38, "eyeL": 32, "eyeR": 32,
+              "eye2L": 32, "eye2R": 32, "pupil": 32}
     for name in ("worldR", "eyeR", "eye2R", "pupil"):
         b = boards[name]; C0 = CAMS[name][0]
         res = find_fit(name, b)
@@ -212,10 +212,10 @@ def search():
 
 
 def main():
-    usb = {"worldL": 38, "worldR": 38, "eyeL": 36, "eyeR": 36,
-           "eye2L": 36, "eye2R": 36, "pupil": 36}
+    usb = {"worldL": 38, "worldR": 38, "eyeL": 32, "eyeR": 32,
+           "eye2L": 32, "eye2R": 32, "pupil": 32}
     mini = dict(usb); mini.update({k: 24 for k in ("eyeL", "eyeR", "eye2L", "eye2R", "pupil")})
-    report(usb, "ORDER-LIST USB modules (ELP 38mm world, Arducam OV9281 36mm eye/pupil)")
+    report(usb, "ORDER-LIST USB modules (ELP 38mm world, InnoMaker OV9281 32mm eye/pupil)")
     camera_clearance(usb)                       # <- inter-camera collision check (boards vs boards)
     report(mini, "world ELP 38mm USB + eye/pupil Mini-OV9281 24mm (MIPI, needs Jetson)")
     search()

@@ -89,7 +89,7 @@ URLs). Verify price/stock/variant at checkout. **CORE** = 6‑camera binocular b
 | ✔ | tier | part | qty | link |
 |---|---|---|---|---|
 | ☐ | core | Adhesive silicone nose pads (for the bridge pad recesses) | 1 | https://www.amazon.ca/s?k=adhesive+silicone+nose+pads+eyeglasses |
-| ☐ | core | **Soft silicone / PORON foam pad stock**: pad **every** printed surface that touches the face (nose pads, any brow/cheek contact) | 1 | https://www.amazon.ca/s?k=adhesive+silicone+foam+pad+sheet |
+| ☐ | core | **Thin PTFE/felt tape (~0.5 mm)** for the clamp jaws (fit is sized for 0.5 mm linings) + **soft pad stock**: pad every printed surface that touches the face (nose pads, any brow/cheek contact) | 1 | https://www.amazon.ca/s?k=adhesive+silicone+foam+pad+sheet |
 
 Electronic components (resistors, MOSFETs, JST, IMU) are also on **digikey.ca / mouser.ca** if you
 prefer a single‑order electronics supplier with guaranteed parts.
