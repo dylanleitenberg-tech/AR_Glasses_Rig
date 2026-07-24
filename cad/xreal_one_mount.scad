@@ -333,11 +333,11 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = 
     if (led_pad)
         difference() {
             hull() {
-                translate([bp/2 - 3, 0, zt]) cube([2, 15, 2.6], center = true);   // rooted in the plate edge
-                translate([bp/2 + 7, 0, zt]) cube([2, 11, 2.6], center = true);   // tab tip
+                translate([bp/2 - 3, 0, zt]) cube([2, 20, 3], center = true);     // rooted in the plate edge
+                translate([bp/2 + 16, 0, zt]) cube([2, 18, 3], center = true);    // shelf tip (18 mm proud)
             }
-            for (dy = [-4.5, 4.5])
-                translate([bp/2 + 5, dy, zt - 2]) cylinder(d = m2_d, h = 8);      // 2 M2 self-tap holes
+            for (dy = [-6, 6])
+                translate([bp/2 + 11, dy, zt - 2]) cylinder(d = m2_d, h = 10);    // 2 M2 self-tap holes
         }
 }
 module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0, led_pad = false) {
