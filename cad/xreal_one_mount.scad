@@ -131,8 +131,8 @@ OV_BOARD    = 32;  OV_PITCH    = 28;   // InnoMaker OV9281 USB, MEASURED 2026-07
 //  is mirrored to the wrong side, flip the sign of CONN_POS[0] (one edit).
 CONN_POS  = [5.95, 12.75];             // board-local centre of the JST port
 CONN_SIZE = [8.3, 3.2];                // the ACTUAL port (drawn in preview to verify the fit)
-CONN_SLOT = [9.5, 5.5];                // the plate CUT, oversized; thin side 4.5 -> 5.5 (2026-07-23)
-                                       //  for more cable/connector room
+CONN_SLOT = [9.5, 6.5];                // the plate CUT, oversized; thin side 4.5 -> 5.5 -> 6.5
+                                       //  (2026-07-23) for more cable/connector room
 CONN_SLOT_CTR = [5.5, 12.75];          // slot nudged 0.45 mm -x of the port so its far edge keeps
                                        //  a ~1.25 mm wall to the standoff at (14,14)
 // M12 board-lens optical model (matches software/cad_fit.py): the projection centre is BACK mm
@@ -140,8 +140,8 @@ CONN_SLOT_CTR = [5.5, 12.75];          // slot nudged 0.45 mm -x of the port so 
 BACK = 10;  FRONT = 7;  RLENS = 9;
 
 // ---------- holder / print params ----
-plate_t = 2.6;  standoff_h = 4;  m2_d = 2.3;  m2_boss = 5.5;  boom_w = 9;   // bulked 8->9 (booms carry cams)
-// m2_d WIDENED 1.8 -> 2.3 (2026-07-23): at 1.8 the printed holes came out nearly CLOSED (a small
+plate_t = 2.6;  standoff_h = 4;  m2_d = 2.5;  m2_boss = 5.5;  boom_w = 9;   // bulked 8->9 (booms carry cams)
+// m2_d WIDENED 1.8 -> 2.3 -> 2.5 (2026-07-23): at 1.8 the printed holes came out nearly CLOSED (a small
 // vertical hole shrinks/bridges shut in FDM). 2.3 prints open ~2.0 so an M2 self-tapping screw
 // threads straight in and bites the walls; boss widened 5 -> 5.5 to keep a ~1.5 mm wall.
 cf_rod_d = 1.5;        // glued-in carbon rod through each boom leg (0 = none) — stiffness
@@ -288,7 +288,7 @@ module camera_module(board, ov_conn = false) {   // the part you BUY (visual sta
 // verified cone/face/glasses clearance is untouched. The BOSS on the plate's back face is the
 // boom's attachment pad — the boom's end sphere seats inside it and never crosses the plate's
 // front face (the old attachment bulged 2.8 mm into the PCB back-component zone).
-module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false) {
+module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0) {
     pcb_back = -BACK - 0.8;                      // where the PCB's back face must land
     zt = pcb_back - standoff_h - 1.3;            // backing-plate CENTRE (2.6 thick, top at pcb_back - standoff_h)
     bp = pitch + m2_boss + 4;                    // plate just covers the standoff pattern (~37 mm)
@@ -300,9 +300,11 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = 
             translate([0, 0, zt]) rbox(bp, bp, 2.6, 1.2);                     // thin backing plate
             for (sx=[-1,1]) for (sy=[-1,1])                                    // 4 standoffs: plate -> PCB back
                 translate([sx*pitch/2, sy*pitch/2, zt]) cylinder(d = m2_boss, h = standoff_h + 1.3);
-            translate([boss_off[0], boss_off[1], zt - 1.3 - 2.5])             // boom-attachment boss
-                cylinder(d = 11, h = 2.7);                                     //  (back face; may sit
-                                                                               //  off-centre toward the boom)
+            translate([boss_off[0], boss_off[1], zt - 1.3 - 2.5 - boss_depth]) // boom-attachment boss;
+                cylinder(d = 11, h = 2.7 + boss_depth);                        //  boss_depth extends it
+                                                                               //  BACKWARD so the boom can
+                                                                               //  attach fully behind the
+                                                                               //  plate (never pokes front)
         }
         for (sx=[-1,1]) for (sy=[-1,1])                                       // M2 bores (self-tapping;
             translate([sx*pitch/2, sy*pitch/2, zt - 2]) cylinder(d = m2_d, h = standoff_h + 5);  // start below the plate
@@ -323,9 +325,9 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = 
     // (strain-relief posts REMOVED 2026-07-23 per Dylan: the small holeless pegs printed as fragile
     //  loose-looking pins with no function; zip-tie the cable to a rail tab instead.)
 }
-module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false) {
+module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0) {
     if (show_cams) color([0.30, 0.30, 0.32]) camera_module(board, ov_conn);
-    color("orange") camera_holder(board, pitch, boss_off, ov_conn, wcable);
+    color("orange") camera_holder(board, pitch, boss_off, ov_conn, wcable, boss_depth);
 }
 // PCB KEEP-OUT solid (checks only, never printed): the physical board + its back-side
 // component zone — plate front face (-BACK-0.8-standoff_h) to PCB front face (-BACK+0.8).
@@ -367,13 +369,14 @@ module pcb_zone(board, u_keep = [-99, 99]) {
 // `elev` overrides the horizontal transit height (default BOOM_ELEV) so a boom's arms can be
 // lowered without moving the camera. `elbow_fill` rounds the boom's corners (the turn-downs).
 module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off = [0, 0],
-              zone_u_keep = [-99, 99], foot_wing_len = 0, ov_conn = false, junction_fill = false,
+              zone_u_keep = [-99, 99], foot_wing_len = 0, ov_conn = false, boss_depth = 0,
               elev = undef, elbow_fill = false, wcable = false) {
     ax = unit([target[0]-C[0], target[1]-C[1], target[2]-C[2]]);
     ra = -asin(ax[1]);  rb = atan2(ax[0], ax[2]);    // aim_z_at's rotation angles
     e1 = [cos(rb), 0, -sin(rb)];                     // holder-local +x in world
     e2 = [sin(rb)*sin(ra), cos(ra), cos(rb)*sin(ra)];// holder-local +y in world
-    back = -(BACK + 0.8 + standoff_h + 2.6) - 2.5;   // 2.5 mm behind the plate back = in the boss
+    back = -(BACK + 0.8 + standoff_h + 2.6) - 2.5 - boss_depth;  // behind the plate back, in the boss;
+                                                                //  boss_depth pushes the boom fully behind
     att = [C[0] + back*ax[0] + att_off[0]*e1[0] + att_off[1]*e2[0],
            C[1] + back*ax[1] + att_off[0]*e1[1] + att_off[1]*e2[1],
            C[2] + back*ax[2] + att_off[0]*e1[2] + att_off[1]*e2[2]];      // boom attachment point
@@ -392,19 +395,19 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
         capsule(p1, p2, boom_w);                                          // DOWN leg
         capsule(p2, att, boom_w);                                         // in-jog into the boss
         if (elbow_fill) {                                                 // ROUND the turn-down corners
-            translate(top) sphere(boom_w/2 + 1);                          //  (rail-side + drop elbow)
-            translate(p1)  sphere(boom_w/2 + 1);
+            translate(top) sphere(boom_w/2 + 1);                          //  (rail-side elbow,
+            translate(p1)  sphere(boom_w/2 + 1);                          //   turn-down elbow, and
+            translate(p2)  sphere(boom_w/2 + 1);                          //   base of the down-leg)
         }
-        if (junction_fill)                                               // FILL the boom-to-boss gap, but
-            translate(att - 1.0*ax) sphere(boom_w/2 + 0.5);              //  BIASED BEHIND the plate so the
-                                                                        //  ball never pokes the front face
+        // The boom-to-boss gap is closed by the EXTENDED BOSS (boss_depth in camera_holder)
+        // reaching back to att, so there is NO forward-reaching fill ball to poke the plate front.
         if (cf_rod_d > 0) {                                               // CF rods: the two long legs
             capsule(top, p1, cf_rod_d);
             capsule(p1, p2, cf_rod_d);
         }
     }
     if (render == "all" || render == "holder")
-        translate(C) aim_z_at(C, target) board_cam(board, pitch, att_off, ov_conn, wcable);
+        translate(C) aim_z_at(C, target) board_cam(board, pitch, att_off, ov_conn, wcable, boss_depth);
     if (render == "pcbzone")
         translate(C) aim_z_at(C, target) pcb_zone(board, zone_u_keep);
 }
@@ -435,11 +438,13 @@ module foot_wing(x, len) {
 }
 module world_cam(side, render = "all") {
     C = sim2cad([side*WORLD_SIM[0], WORLD_SIM[1], WORLD_SIM[2]]);
-    // anchor at x=23 (2026-07-04): the old outboard riser (43.5) stood INSIDE the brow clamp's
-    // span (28..48) and fused through its body — interfering with how the clamp meets the
-    // glasses. 23 is inboard of the clamp with clearance, and clear of the pupil mast.
-    cam_at([side*21.5, ANCHOR_Y, ANCHOR_Z], C, [C[0], C[1]+100, C[2]], WORLD_BOARD, WORLD_PITCH,
-           render = render, junction_fill = true, wcable = true); // looks +y; centered back cable slot
+    // STRAIGHT-UP riser (2026-07-23, per Dylan): anchor directly under the plate centre (x = C_x)
+    // so the boom rises straight up to the middle instead of up-then-sideways. This puts the foot
+    // inside the brow-clamp span (28..48) so it FUSES with the clamp top (extra rigidity; the
+    // clamp's jaw slot is below, unaffected). boss_depth=3.5 pushes the boom attachment fully
+    // behind the plate; wcable = centered back cable slot.
+    cam_at([side*33.5, ANCHOR_Y, ANCHOR_Z], C, [C[0], C[1]+100, C[2]], WORLD_BOARD, WORLD_PITCH,
+           render = render, wcable = true, boss_depth = 3.5); // looks +y
 }
 module eye_cam(side, render = "all") {
     C = sim2cad([side*EYE_SIM[0], EYE_SIM[1], EYE_SIM[2]]);
@@ -450,8 +455,9 @@ module eye_cam(side, render = "all") {
     cam_at([side*58, ANCHOR_Y, ANCHOR_Z], C,
            sim2cad([side*CANTH_SIM[0], CANTH_SIM[1], CANTH_SIM[2]]), OV_BOARD, OV_PITCH,
            render = render, att_off = [0, -10],    // 58: foot clears the world plate (52) and the
-           foot_wing_len = 24, ov_conn = true,     // hinge (64.8); wing roots it 24 mm inboard
-           elev = BOOM_ELEV - 2);                  // side boom LOWERED 2 mm (2026-07-23, camera unmoved)
+           foot_wing_len = 12, ov_conn = true,     // wing SHORTENED 24->12 (2026-07-23) so it clears
+           elev = BOOM_ELEV - 2, elbow_fill = true); // the now-straight-up world foot; side boom
+                                                   // LOWERED 2 mm + down-joints filled
                                                    // (down to x~28.5, 1.5 clear of the world foot)
 }
 module eye_cam2(side) {
@@ -520,9 +526,10 @@ module rail() {
         for (x = wire_slot_xs)                  // zip-tie through-slots (for the fat USB bundle)
             translate([x, wire_ch_y, rail_h/2 - 0.5]) cube([4, 2, rail_h + 2], center = true);
     }
-    for (x = wire_tab_xs)                       // retaining tabs bridging the groove
-        translate([x, wire_ch_y, rail_h - 0.5 + wire_tab_t/2])
-            cube([wire_tab_w, wire_ch_w + 3, wire_tab_t], center = true);
+    for (x = wire_tab_xs)                       // retaining tabs bridging the groove — DIP INTO the
+        translate([x, wire_ch_y, rail_h - 0.5])  // rail (2026-07-23): centred on the rail top so the
+            cube([wire_tab_w, wire_ch_w + 3, wire_tab_t + 1.4], center = true);  // tab OVERLAPS the rail
+                                                //  at its y-ends (was a coincident face that floated off)
 }
 // Removable PADDED brow clamp: a C that drops onto the brow rail; jaw opening = brow + silicone
 // pads + clearance; a thumbscrew through the front jaw tightens it. No adhesive, no marks.

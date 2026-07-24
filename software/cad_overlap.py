@@ -55,8 +55,9 @@ PAIRS = [
     # intended structural unions (report volume, no verdict)
     ("rail", "clampR", "ANCHOR"), ("rail", "imu", "ANCHOR"),
     ("rail", "worldR", "ANCHOR"), ("rail", "eyeR", "ANCHOR"), ("rail", "pupilR", "ANCHOR"),
-    # the world riser moved OUT of the clamp span (x=23, 2026-07-04) — clamp must be untouched
-    ("worldR", "clampR", "DISTINCT"),
+    # STRAIGHT-UP world riser (2026-07-23): its foot sits under the plate centre, inside the
+    # clamp span, so it FUSES with the clamp top by design (rigidity; jaw slot below is clear)
+    ("worldR", "clampR", "ANCHOR"),
 ]
 
 TOL_MM3 = 1.0   # below this, treat as numerical noise / face-grazing
