@@ -246,6 +246,21 @@ module curved_visor(R, arc, th, h, r) {
         rotate_extrude(angle = arc, $fn = 160) translate([R, 0]) rrect(th, h, r);
 }
 module capsule(p0, p1, d) { hull() { translate(p0) sphere(d/2); translate(p1) sphere(d/2); } }
+// Fill the concave crook at vertex V between the legs heading to P and to Q: a hull of two short
+// boom-width stubs along each leg. This webs the bend solid and, because a hull never exceeds its
+// inputs' envelope, it can't poke past the tube surface (so the world riser stays behind the plate).
+module elbow_gusset(V, P, Q) {
+    if (norm([P[0]-V[0],P[1]-V[1],P[2]-V[2]]) > 0.5 &&
+        norm([Q[0]-V[0],Q[1]-V[1],Q[2]-V[2]]) > 0.5)
+        hull() {
+            capsule(V, [V[0]+(P[0]-V[0])/norm([P[0]-V[0],P[1]-V[1],P[2]-V[2]])*boom_w,
+                        V[1]+(P[1]-V[1])/norm([P[0]-V[0],P[1]-V[1],P[2]-V[2]])*boom_w,
+                        V[2]+(P[2]-V[2])/norm([P[0]-V[0],P[1]-V[1],P[2]-V[2]])*boom_w], boom_w);
+            capsule(V, [V[0]+(Q[0]-V[0])/norm([Q[0]-V[0],Q[1]-V[1],Q[2]-V[2]])*boom_w,
+                        V[1]+(Q[1]-V[1])/norm([Q[0]-V[0],Q[1]-V[1],Q[2]-V[2]])*boom_w,
+                        V[2]+(Q[2]-V[2])/norm([Q[0]-V[0],Q[1]-V[1],Q[2]-V[2]])*boom_w], boom_w);
+        }
+}
 module aim_z_at(from, to) {                 // aim children's +z from `from` toward `to`
     v = [to[0]-from[0], to[1]-from[1], to[2]-from[2]]; L = norm(v);
     rotate([-asin(v[1]/L), atan2(v[0], v[2]), 0]) children();
@@ -381,7 +396,10 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
            C[1] + back*ax[1] + att_off[0]*e1[1] + att_off[1]*e2[1],
            C[2] + back*ax[2] + att_off[0]*e1[2] + att_off[1]*e2[2]];      // boom attachment point
     elv = (elev == undef) ? BOOM_ELEV : elev;
-    zt = max(elv, att[2] + 2);                                            // transit height (lowerable via elev)
+    // transit height: for a holder ABOVE the rail (world), rise straight to the boss (no overshoot,
+    // so the top elbow's legs point DOWN/BACK and its gusset can't reach the plate front); for a
+    // holder below (eye/pupil), transit horizontally at elv above it.
+    zt = (att[2] >= BOOM_ELEV) ? att[2] : max(elv, att[2] + 2);
     dy = (att[2] < -2.6) ? max(att[1], Y_CLEAR) : att[1];                 // forward standoff for low drops
     dx = (drop_x == undef) ? att[0] : drop_x;                            // lateral drop position
     top = [anchor[0], anchor[1], zt];
@@ -394,11 +412,11 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
         capsule(top, p1, boom_w);                                         // OUT leg
         capsule(p1, p2, boom_w);                                          // DOWN leg
         capsule(p2, att, boom_w);                                         // in-jog into the boss
-        if (elbow_fill) {                                                 // ROUND the turn-down corners
-            if (elbow_top) translate(top) sphere(boom_w/2 + 1);           //  (rail-side elbow — SKIP for
-            translate(p1)  sphere(boom_w/2 + 1);                          //   world: its riser is right
-            translate(p2)  sphere(boom_w/2 + 1);                          //   behind the plate) + turn-down
-        }                                                                //   elbow + base of the down-leg
+        if (elbow_fill) {                                                 // FILL the crooks with hull
+            elbow_gusset(top, anchor, p1);                                //  gussets (a solid web across
+            elbow_gusset(p1, top, p2);                                    //  each bend). Hulls stay within
+            elbow_gusset(p2, p1, att);                                    //  the tube envelope, so even the
+        }                                                                //  world riser can't poke the plate
         // The boom-to-boss gap is closed by the EXTENDED BOSS (boss_depth in camera_holder)
         // reaching back to att, so there is NO forward-reaching fill ball to poke the plate front.
         if (cf_rod_d > 0) {                                               // CF rods: the two long legs
