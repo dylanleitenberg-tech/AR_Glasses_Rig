@@ -511,7 +511,8 @@ module pupil_cam(side, render = "all") {    // NIR eye-tracking cam — ONE PER 
     // Risers at x=±7 fuse INTO the IMU tower pedestal: pedestal + risers + column = one mast.
     cam_at([side*7, ANCHOR_Y, ANCHOR_Z], C, sim2cad([side*COR_SIM[0], COR_SIM[1], COR_SIM[2]]),
            OV_BOARD, OV_PITCH, drop_x = 0, render = render, att_off = [-13*side, 0], ov_conn = true,
-           elev = BOOM_ELEV - 1, elbow_fill = true);  // bottom boom LOWERED 1 mm + corners filled (2026-07-23)
+           elev = BOOM_ELEV - 1, elbow_fill = true, led_pad = true);  // bottom boom LOWERED 1 mm + corners
+                                                                      // filled; + LED-bracket mount shelf
 }
 // One IR LED inside a SAFETY BAFFLE: the shroud + LED extend AWAY from the eye (+y), the LED tip
 // is RECESSED behind the eye-facing cap, and the cap has only a small beam aperture. So no emitter
