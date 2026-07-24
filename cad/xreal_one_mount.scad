@@ -445,6 +445,14 @@ module world_cam(side, render = "all") {
     // behind the plate; wcable = centered back cable slot.
     cam_at([side*33.5, ANCHOR_Y, ANCHOR_Z], C, [C[0], C[1]+100, C[2]], WORLD_BOARD, WORLD_PITCH,
            render = render, wcable = true, boss_depth = 3.5); // looks +y; no elbow fill (2026-07-23)
+    // BROW-BAR extends FORWARD + up to the front boom's holder (2026-07-23, per Dylan): the world
+    // plate's lower edge hangs to ~z5.2 y4.6-7.2, overhanging the rail's front-top. This local
+    // buttress (only at the world x) grows the rail forward to meet and support it.
+    if (render == "all" || render == "holder")
+        color("dimgray") translate([side*33.5, 0, 0]) hull() {
+            translate([0, 2.5, rail_h/2 - 0.5]) cube([boom_w + 6, 7, rail_h], center = true);  // rail root
+            translate([0, 6.0, 5]) cube([boom_w + 6, 3, 7], center = true);                    // fwd+up to plate
+        }
 }
 module eye_cam(side, render = "all") {
     C = sim2cad([side*EYE_SIM[0], EYE_SIM[1], EYE_SIM[2]]);
