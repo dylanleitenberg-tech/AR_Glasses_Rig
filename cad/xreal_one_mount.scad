@@ -289,7 +289,7 @@ module camera_module(board, ov_conn = false) {   // the part you BUY (visual sta
 // boom's attachment pad — the boom's end sphere seats inside it and never crosses the plate's
 // front face (the old attachment bulged 2.8 mm into the PCB back-component zone).
 module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0,
-                     led_pad = false) {
+                     led_pad = 0) {
     pcb_back = -BACK - 0.8;                      // where the PCB's back face must land
     zt = pcb_back - standoff_h - 1.3;            // backing-plate CENTRE (2.6 thick, top at pcb_back - standoff_h)
     bp = pitch + m2_boss + 4;                    // plate just covers the standoff pattern (~37 mm)
@@ -329,18 +329,19 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = 
     // The separate `led_bracket` part screws here and points baffled 940 nm LEDs at the eye from
     // BELOW / off-axis (out of the see-through field). The tab is a flat interface only — the LED
     // aim/positions (the one thing needing real hardware) live on the iterable bracket, not this
-    // final print. Extends in local +x (the temple side, away from the nose-bridge mast).
-    if (led_pad)
+    // final print. `led_pad` is +1 / -1 to send the tab to the TEMPLE side of each holder (the
+    // left holder is mirrored, so its temple side is local -x — pass led_pad = side to follow it).
+    if (led_pad != 0)
         difference() {
             hull() {
-                translate([bp/2 - 3, 0, zt]) cube([2, 20, 3], center = true);     // rooted in the plate edge
-                translate([bp/2 + 16, 0, zt]) cube([2, 18, 3], center = true);    // shelf tip (18 mm proud)
+                translate([led_pad*(bp/2 - 3), 0, zt]) cube([2, 20, 3], center = true);   // plate edge
+                translate([led_pad*(bp/2 + 16), 0, zt]) cube([2, 18, 3], center = true);  // shelf tip (18 mm)
             }
             for (dy = [-6, 6])
-                translate([bp/2 + 11, dy, zt - 2]) cylinder(d = m2_d, h = 10);    // 2 M2 self-tap holes
+                translate([led_pad*(bp/2 + 11), dy, zt - 2]) cylinder(d = m2_d, h = 10);  // 2 M2 self-tap holes
         }
 }
-module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0, led_pad = false) {
+module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0, led_pad = 0) {
     if (show_cams) color([0.30, 0.30, 0.32]) camera_module(board, ov_conn);
     color("orange") camera_holder(board, pitch, boss_off, ov_conn, wcable, boss_depth, led_pad);
 }
@@ -385,7 +386,7 @@ module pcb_zone(board, u_keep = [-99, 99]) {
 // lowered without moving the camera. `elbow_fill` rounds the boom's corners (the turn-downs).
 module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off = [0, 0],
               zone_u_keep = [-99, 99], foot_wing_len = 0, ov_conn = false, boss_depth = 0,
-              elev = undef, elbow_fill = false, wcable = false, elbow_top = true, led_pad = false) {
+              elev = undef, elbow_fill = false, wcable = false, elbow_top = true, led_pad = 0) {
     ax = unit([target[0]-C[0], target[1]-C[1], target[2]-C[2]]);
     ra = -asin(ax[1]);  rb = atan2(ax[0], ax[2]);    // aim_z_at's rotation angles
     e1 = [cos(rb), 0, -sin(rb)];                     // holder-local +x in world
@@ -511,7 +512,7 @@ module pupil_cam(side, render = "all") {    // NIR eye-tracking cam — ONE PER 
     // Risers at x=±7 fuse INTO the IMU tower pedestal: pedestal + risers + column = one mast.
     cam_at([side*7, ANCHOR_Y, ANCHOR_Z], C, sim2cad([side*COR_SIM[0], COR_SIM[1], COR_SIM[2]]),
            OV_BOARD, OV_PITCH, drop_x = 0, render = render, att_off = [-13*side, 0], ov_conn = true,
-           elev = BOOM_ELEV - 1, elbow_fill = true, led_pad = true);  // bottom boom LOWERED 1 mm + corners
+           elev = BOOM_ELEV - 1, elbow_fill = true, led_pad = side);  // bottom boom LOWERED 1 mm + corners
                                                                       // filled; + LED-bracket mount shelf
 }
 // One IR LED inside a SAFETY BAFFLE: the shroud + LED extend AWAY from the eye (+y), the LED tip
