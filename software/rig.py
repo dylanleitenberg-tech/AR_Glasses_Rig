@@ -43,7 +43,11 @@ T0 = np.array([0.0, 0.0, -EYE_BEHIND])
 # World cameras: RAISED well ABOVE the see-through cone, looking forward (+z) over the TOP of the
 # lens. (Were at [+-32, 8, 7] = inside the cone; the main occluder.)
 WC_X = NOMINAL_IPD / 2     # lateral: over each nominal pupil (keeps the 64 mm stereo baseline)
-WC_UP = 44.0               # raised 30->44 (2026-07-02): at 30 the 38 mm board's LOWER STANDOFFS +
+WC_UP = 49.0               # raised 44->49 (2026-07-23): the world board's LOWER mounting screws
+#                            could not be threaded (rail/boom structure behind them); +5 lifts
+#                            them clear. Small world-cam move; re-run the accuracy sim before the
+#                            FINAL build to refresh the deployed number (fast gate parity holds).
+# was 30->44 (2026-07-02): at 30 the 38 mm board's LOWER STANDOFFS +
 #                            PCB edge sat inside the GLASSES BROW band (brow top = optic +22.7 up;
 #                            board bottom = WC_UP - 19 was 11 mm below it) — found by the printed-
 #                            solid check (cad_overlap.py); no earlier check compared parts against

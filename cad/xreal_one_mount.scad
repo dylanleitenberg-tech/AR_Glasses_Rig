@@ -88,7 +88,9 @@ OPTIC_DROP = 25.3;       // MEASURED: brow rail top -> lens/optic center (was 17
 function sim2cad(s) = [s[0], s[2], s[1] - OPTIC_DROP];
 function unit(v) = v / norm(v);
 
-WORLD_SIM = [ipd/2,    44, 22];      // brow, looks forward. RAISED 30->44 (2026-07-02): at 30 the
+WORLD_SIM = [ipd/2,    49, 22];      // brow, looks forward. RAISED 44->49 (2026-07-23) so the lower
+                                     // mounting screws clear the rail/boom behind them. Earlier
+                                     // 30->44 (2026-07-02): at 30 the
                                      // 38 mm board's lower standoffs + PCB edge sat INSIDE the
                                      // glasses brow band (z<-2.6) — caught by cad_overlap.py; at 44
                                      // the whole module clears ABOVE the brow top (+2.3 mm) and the
@@ -138,10 +140,10 @@ CONN_SLOT_CTR = [5.5, 12.75];          // slot nudged 0.45 mm -x of the port so 
 BACK = 10;  FRONT = 7;  RLENS = 9;
 
 // ---------- holder / print params ----
-plate_t = 2.6;  standoff_h = 4;  m2_d = 1.8;  m2_boss = 5;  boom_w = 9;   // bulked 8->9 (booms carry cams)
-// m2_d=1.8 = SELF-TAPPING M2 screws into the printed boss (the old 2.0 was too loose to bite and
-// the comment said "heat-set inserts" — those need a ~3.2 bore + a fatter boss; self-tap is the
-// right call for the d=5 boss and a prototype. Swap to inserts only if you upsize the bosses.)
+plate_t = 2.6;  standoff_h = 4;  m2_d = 2.3;  m2_boss = 5.5;  boom_w = 9;   // bulked 8->9 (booms carry cams)
+// m2_d WIDENED 1.8 -> 2.3 (2026-07-23): at 1.8 the printed holes came out nearly CLOSED (a small
+// vertical hole shrinks/bridges shut in FDM). 2.3 prints open ~2.0 so an M2 self-tapping screw
+// threads straight in and bites the walls; boss widened 5 -> 5.5 to keep a ~1.5 mm wall.
 cf_rod_d = 1.5;        // glued-in carbon rod through each boom leg (0 = none) — stiffness
 // L-ROUTED booms (2026-07-02): the old straight diagonals cut through the brow
 // clamps, the glasses brow, and each other. Each boom now rises from the rail top, runs OUT
@@ -193,8 +195,9 @@ brow_back_h    = 3.6;     // short back ledge (the rear jaw grips this face)
 // PTFE/felt tape, not thick silicone: squish was slop), clearances sized for ~2.5 mm total
 // bare-plastic play (easy slip-on, inside the 1-3 mm safety band), ~1.5 mm with tape on.
 clamp_pad_t = 0.5;        // thin low-friction tape lining each jaw (non-marking)
-slip_front  = 1.2;        // slip-on clearance, taken up by the screw
-slip_rear   = 0.3;        // rear face stays close: the back of the slot is the alignment datum
+slip_front  = -0.2;       // TIGHTENED 1.5 mm total (2026-07-23, was 1.2): the draft clamp was
+slip_rear   =  0.0;        //  loose. Front now slightly interferes (screw + pad take it up), rear
+                          //  face rides right on the brow back. Total slot 1.5 mm smaller.
 
 // ---------- NIR illumination (940 nm rings around BOTH eyes — binocular) ----
 ir_n = 6;  ir_ring_r = 13;  ir_led_d = 3.2;  ir_led_h = 3.0;   // 940 nm LEDs (EYE_TRACKING.md §3)
@@ -314,11 +317,8 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false) {
         else
             translate([0, -bp/2, zt]) cube([7, 6, 4], center = true);        // edge cable notch (world/untested boards)
     }
-    // strain-relief post: a small pillar the cable zip-ties to. On the OV holders it sits INBOARD
-    // of the connector slot (open plate, clear of the standoffs); otherwise inboard of the edge
-    // notch (never over a through-cut, or it prints as a loose pin).
-    post = ov_conn ? [CONN_SLOT_CTR[0] - CONN_SLOT[0]/2 - 2.5, CONN_SLOT_CTR[1]] : [0, -(bp/2 - 4.7)];
-    translate([post[0], post[1], zt - 1]) cylinder(d = 2.4, h = 6);          // cable strain-relief post
+    // (strain-relief posts REMOVED 2026-07-23 per Dylan: the small holeless pegs printed as fragile
+    //  loose-looking pins with no function; zip-tie the cable to a rail tab instead.)
 }
 module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false) {
     if (show_cams) color([0.30, 0.30, 0.32]) camera_module(board, ov_conn);
@@ -362,7 +362,7 @@ module pcb_zone(board, u_keep = [-99, 99]) {
 // lets the boom meet the plate at the edge nearest its drop corridor instead of dead centre,
 // so the jog never crosses the physical board's keep-out zone.
 module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off = [0, 0],
-              zone_u_keep = [-99, 99], foot_wing_len = 0, ov_conn = false) {
+              zone_u_keep = [-99, 99], foot_wing_len = 0, ov_conn = false, junction_fill = false) {
     ax = unit([target[0]-C[0], target[1]-C[1], target[2]-C[2]]);
     ra = -asin(ax[1]);  rb = atan2(ax[0], ax[2]);    // aim_z_at's rotation angles
     e1 = [cos(rb), 0, -sin(rb)];                     // holder-local +x in world
@@ -384,6 +384,11 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
         capsule(top, p1, boom_w);                                         // OUT leg
         capsule(p1, p2, boom_w);                                          // DOWN leg
         capsule(p2, att, boom_w);                                         // in-jog into the boss
+        if (junction_fill) {                                              // FILL the boom-to-holder gap
+            hull() { translate(p2) sphere(boom_w/2);                      //  (2026-07-23): a solid wedge
+                     translate(att) sphere(boom_w/2 + 2); }               //  from the down-leg into the
+            translate(att) sphere(boom_w/2 + 2.5);                        //  boss so there is no open gap
+        }
         if (cf_rod_d > 0) {                                               // CF rods: the two long legs
             capsule(top, p1, cf_rod_d);
             capsule(p1, p2, cf_rod_d);
@@ -425,7 +430,7 @@ module world_cam(side, render = "all") {
     // span (28..48) and fused through its body — interfering with how the clamp meets the
     // glasses. 23 is inboard of the clamp with clearance, and clear of the pupil mast.
     cam_at([side*21.5, ANCHOR_Y, ANCHOR_Z], C, [C[0], C[1]+100, C[2]], WORLD_BOARD, WORLD_PITCH,
-           render = render); // looks +y  (21.5: the foot's edge stays 0.5 clear of the clamp at 28)
+           render = render, junction_fill = true); // looks +y (foot edge 0.5 clear of the clamp at 28)
 }
 module eye_cam(side, render = "all") {
     C = sim2cad([side*EYE_SIM[0], EYE_SIM[1], EYE_SIM[2]]);
@@ -513,7 +518,9 @@ module rail() {
 // Jaw depths: FRONT stops at -11.5 (full grip of the 8.9 face, still under the vertical-FOV
 // line ~-12.8, cone-checked); REAR at -11.0 (the 3.6 back ledge's face spans -7.9..-11.5 —
 // a deeper rear jaw would hang past the ledge toward the forehead for nothing).
-front_jaw_z = 11.5;  rear_jaw_z = 11.5;   // rear deepened 11.0 -> 11.5 (2026-07-19): covers the
+front_jaw_z = 11.5;  rear_jaw_z = 16.5;   // rear DOWN 5 mm (2026-07-23, 11.5 -> 16.5): the back
+                                          // clamp piece reaches further down behind the brow for a
+                                          // more secure hook. Was 11.0 -> 11.5 (2026-07-19): covers the
                                           // back ledge's FULL face (-7.9..-11.5) for aligned grip
 // Catmull-Rom spline sampler (vector form; endpoints doubled so the curve hits them)
 function _cr(p0, p1, p2, p3, t) = 0.5 * ((2*p1) + (-p0 + p2)*t
