@@ -444,7 +444,7 @@ module world_cam(side, render = "all") {
     // clamp's jaw slot is below, unaffected). boss_depth=3.5 pushes the boom attachment fully
     // behind the plate; wcable = centered back cable slot.
     cam_at([side*33.5, ANCHOR_Y, ANCHOR_Z], C, [C[0], C[1]+100, C[2]], WORLD_BOARD, WORLD_PITCH,
-           render = render, wcable = true, boss_depth = 3.5); // looks +y
+           render = render, wcable = true, boss_depth = 3.5, elbow_fill = true); // looks +y; joints filled
 }
 module eye_cam(side, render = "all") {
     C = sim2cad([side*EYE_SIM[0], EYE_SIM[1], EYE_SIM[2]]);
