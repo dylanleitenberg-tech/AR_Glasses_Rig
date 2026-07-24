@@ -288,7 +288,8 @@ module camera_module(board, ov_conn = false) {   // the part you BUY (visual sta
 // verified cone/face/glasses clearance is untouched. The BOSS on the plate's back face is the
 // boom's attachment pad — the boom's end sphere seats inside it and never crosses the plate's
 // front face (the old attachment bulged 2.8 mm into the PCB back-component zone).
-module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0) {
+module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0,
+                     led_pad = false) {
     pcb_back = -BACK - 0.8;                      // where the PCB's back face must land
     zt = pcb_back - standoff_h - 1.3;            // backing-plate CENTRE (2.6 thick, top at pcb_back - standoff_h)
     bp = pitch + m2_boss + 4;                    // plate just covers the standoff pattern (~37 mm)
@@ -324,10 +325,24 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = 
     }
     // (strain-relief posts REMOVED 2026-07-23 per Dylan: the small holeless pegs printed as fragile
     //  loose-looking pins with no function; zip-tie the cable to a rail tab instead.)
+    // LED-BRACKET MOUNT (2026-07-23): a lateral tab beyond the plate with 2 M2 self-tap holes.
+    // The separate `led_bracket` part screws here and points baffled 940 nm LEDs at the eye from
+    // BELOW / off-axis (out of the see-through field). The tab is a flat interface only — the LED
+    // aim/positions (the one thing needing real hardware) live on the iterable bracket, not this
+    // final print. Extends in local +x (the temple side, away from the nose-bridge mast).
+    if (led_pad)
+        difference() {
+            hull() {
+                translate([bp/2 - 3, 0, zt]) cube([2, 15, 2.6], center = true);   // rooted in the plate edge
+                translate([bp/2 + 7, 0, zt]) cube([2, 11, 2.6], center = true);   // tab tip
+            }
+            for (dy = [-4.5, 4.5])
+                translate([bp/2 + 5, dy, zt - 2]) cylinder(d = m2_d, h = 8);      // 2 M2 self-tap holes
+        }
 }
-module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0) {
+module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0, led_pad = false) {
     if (show_cams) color([0.30, 0.30, 0.32]) camera_module(board, ov_conn);
-    color("orange") camera_holder(board, pitch, boss_off, ov_conn, wcable, boss_depth);
+    color("orange") camera_holder(board, pitch, boss_off, ov_conn, wcable, boss_depth, led_pad);
 }
 // PCB KEEP-OUT solid (checks only, never printed): the physical board + its back-side
 // component zone — plate front face (-BACK-0.8-standoff_h) to PCB front face (-BACK+0.8).
@@ -370,7 +385,7 @@ module pcb_zone(board, u_keep = [-99, 99]) {
 // lowered without moving the camera. `elbow_fill` rounds the boom's corners (the turn-downs).
 module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off = [0, 0],
               zone_u_keep = [-99, 99], foot_wing_len = 0, ov_conn = false, boss_depth = 0,
-              elev = undef, elbow_fill = false, wcable = false, elbow_top = true) {
+              elev = undef, elbow_fill = false, wcable = false, elbow_top = true, led_pad = false) {
     ax = unit([target[0]-C[0], target[1]-C[1], target[2]-C[2]]);
     ra = -asin(ax[1]);  rb = atan2(ax[0], ax[2]);    // aim_z_at's rotation angles
     e1 = [cos(rb), 0, -sin(rb)];                     // holder-local +x in world
@@ -407,7 +422,7 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
         }
     }
     if (render == "all" || render == "holder")
-        translate(C) aim_z_at(C, target) board_cam(board, pitch, att_off, ov_conn, wcable, boss_depth);
+        translate(C) aim_z_at(C, target) board_cam(board, pitch, att_off, ov_conn, wcable, boss_depth, led_pad);
     if (render == "pcbzone")
         translate(C) aim_z_at(C, target) pcb_zone(board, zone_u_keep);
 }
