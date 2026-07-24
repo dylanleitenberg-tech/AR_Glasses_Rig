@@ -370,7 +370,7 @@ module pcb_zone(board, u_keep = [-99, 99]) {
 // lowered without moving the camera. `elbow_fill` rounds the boom's corners (the turn-downs).
 module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off = [0, 0],
               zone_u_keep = [-99, 99], foot_wing_len = 0, ov_conn = false, boss_depth = 0,
-              elev = undef, elbow_fill = false, wcable = false) {
+              elev = undef, elbow_fill = false, wcable = false, elbow_top = true) {
     ax = unit([target[0]-C[0], target[1]-C[1], target[2]-C[2]]);
     ra = -asin(ax[1]);  rb = atan2(ax[0], ax[2]);    // aim_z_at's rotation angles
     e1 = [cos(rb), 0, -sin(rb)];                     // holder-local +x in world
@@ -395,10 +395,10 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
         capsule(p1, p2, boom_w);                                          // DOWN leg
         capsule(p2, att, boom_w);                                         // in-jog into the boss
         if (elbow_fill) {                                                 // ROUND the turn-down corners
-            translate(top) sphere(boom_w/2 + 1);                          //  (rail-side elbow,
-            translate(p1)  sphere(boom_w/2 + 1);                          //   turn-down elbow, and
-            translate(p2)  sphere(boom_w/2 + 1);                          //   base of the down-leg)
-        }
+            if (elbow_top) translate(top) sphere(boom_w/2 + 1);           //  (rail-side elbow — SKIP for
+            translate(p1)  sphere(boom_w/2 + 1);                          //   world: its riser is right
+            translate(p2)  sphere(boom_w/2 + 1);                          //   behind the plate) + turn-down
+        }                                                                //   elbow + base of the down-leg
         // The boom-to-boss gap is closed by the EXTENDED BOSS (boss_depth in camera_holder)
         // reaching back to att, so there is NO forward-reaching fill ball to poke the plate front.
         if (cf_rod_d > 0) {                                               // CF rods: the two long legs
@@ -444,7 +444,7 @@ module world_cam(side, render = "all") {
     // clamp's jaw slot is below, unaffected). boss_depth=3.5 pushes the boom attachment fully
     // behind the plate; wcable = centered back cable slot.
     cam_at([side*33.5, ANCHOR_Y, ANCHOR_Z], C, [C[0], C[1]+100, C[2]], WORLD_BOARD, WORLD_PITCH,
-           render = render, wcable = true, boss_depth = 3.5, elbow_fill = true); // looks +y; joints filled
+           render = render, wcable = true, boss_depth = 3.5, elbow_fill = true, elbow_top = false); // joints filled
 }
 module eye_cam(side, render = "all") {
     C = sim2cad([side*EYE_SIM[0], EYE_SIM[1], EYE_SIM[2]]);
