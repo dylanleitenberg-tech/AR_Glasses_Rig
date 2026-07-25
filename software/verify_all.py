@@ -87,6 +87,11 @@ def main(fast=False):
         ("rig bring-up metrics", "python3 rig_test.py --selftest", "RIG_TEST OK"),
         ("synchronized snapshot", "python3 snapshot.py --selftest", "SNAPSHOT OK"),
         ("integrated live rig loop", "python3 live_rig.py --selftest", "LIVE RIG OK"),
+        # world-locked overlay on moving people (the "monkeys" pipeline)
+        ("world-locked anchor projection", "python3 anchor.py --selftest", "ANCHOR OK"),
+        ("people detect+track 3D", "python3 people_track.py --selftest", "PEOPLE TRACK OK"),
+        ("avatar render/compose", "python3 avatar.py --selftest", "AVATAR OK"),
+        ("augment: people->locked monkeys", "python3 augment_rig.py --selftest", "AUGMENT RIG OK"),
     ]:
         rc, out = run(cmd)
         check(name, needle in out, "" if needle in out else out.strip().splitlines()[-1][:120] if out.strip() else "no output")
