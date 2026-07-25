@@ -50,6 +50,7 @@ class TrackedPerson:
         self.vel = np.zeros(3)                       # world velocity (mm/frame)
         self.height = float(height_mm)
         self.facing = np.array([0.0, 0.0, -1.0])     # unit horizontal facing (toward -z default)
+        self._head_ema = None                        # face-derived head (world), EMA — if detected
         self.hits = 1
         self.misses = 0
         self.age = 0
@@ -65,9 +66,10 @@ class TrackedPerson:
         self.facing = f
         right = np.cross(UP, f); right = right / (np.linalg.norm(right) + 1e-9)
         width = 0.42 * h
+        head = self._head_ema.copy() if self._head_ema is not None else self.pos + UP * (h * 0.5)
         self.points = {
             "centroid": self.pos.copy(),
-            "head":  self.pos + UP * (h * 0.5),
+            "head":  head,                           # face-aligned when a face was detected
             "feet":  self.pos - UP * (h * 0.5),
             "l_shoulder": self.pos + UP * (h * 0.28) - right * (width * 0.5),
             "r_shoulder": self.pos + UP * (h * 0.28) + right * (width * 0.5),
@@ -79,12 +81,17 @@ class TrackedPerson:
         self.age += 1
         self._recompute_points(None)
 
-    def correct(self, meas_pos, meas_h, alpha=0.6, beta=0.25, cam_center=None):
-        """Alpha-beta update toward a measurement; refresh height, facing, anchor points."""
+    def correct(self, meas_pos, meas_h, alpha=0.6, beta=0.25, cam_center=None, head_world=None):
+        """Alpha-beta update toward a measurement; refresh height, facing, anchor points. If a
+        face was detected this frame, EMA its 3D position as the head anchor (aligns the monkey
+        face to the real face)."""
         resid = meas_pos - self.pos
         self.pos = self.pos + alpha * resid
         self.vel = self.vel + beta * resid
         self.height = 0.7 * self.height + 0.3 * meas_h
+        if head_world is not None:
+            self._head_ema = (np.asarray(head_world, float) if self._head_ema is None
+                              else 0.5 * self._head_ema + 0.5 * np.asarray(head_world, float))
         # facing: walking direction if moving, else face the wearer
         vh = self.vel.copy(); vh[1] = 0.0
         if np.linalg.norm(vh) > 3.0:
@@ -149,7 +156,10 @@ class PeopleTracker:
         R_cw, C = pose
         cam_center = np.asarray(C, float)
         pairs = self._stereo_match(detL, detR)
-        meas = [self._measure(dl, dr, pose) for dl, dr in pairs]
+        meas = []
+        for dl, dr in pairs:
+            w, h = self._measure(dl, dr, pose)
+            meas.append((w, h, dl))                    # keep the left detection (for its face box)
 
         # predict all tracks forward, then associate measurements (greedy nearest on ground plane)
         for t in self.tracks:
@@ -162,19 +172,34 @@ class PeopleTracker:
                 if d < best_d:
                     best_d = d; best = i
             if best is not None:
-                t.correct(meas[best][0], meas[best][1], cam_center=cam_center)
+                w, h, dl = meas[best]
+                head_w = self._head_from_face(dl, w, pose) if dl.face is not None else None
+                t.correct(w, h, cam_center=cam_center, head_world=head_w)
                 unmatched.discard(best)
             else:
                 t.misses += 1
 
         # spawn tracks for unmatched measurements; age out stale tracks
         for i in unmatched:
-            self.tracks.append(TrackedPerson(self._next_id, meas[i][0], meas[i][1]))
-            self.tracks[-1].facing = self._toward(cam_center, meas[i][0])
-            self.tracks[-1]._recompute_points(cam_center)
+            w, h, dl = meas[i]
+            tp = TrackedPerson(self._next_id, w, h)
+            tp.facing = self._toward(cam_center, w)
+            if dl.face is not None:
+                tp._head_ema = self._head_from_face(dl, w, pose)
+            tp._recompute_points(cam_center)
+            self.tracks.append(tp)
             self._next_id += 1
         self.tracks = [t for t in self.tracks if t.misses <= self.max_miss]
         return self.confirmed()
+
+    def _head_from_face(self, dl, world_centroid, pose):
+        """3D world point of the detected FACE centre, at the person's depth — a more accurate
+        head anchor than the body-box top (which floats above raised arms etc.)."""
+        R_cw, C = pose
+        Z = (R_cw @ (np.asarray(world_centroid, float) - np.asarray(C, float)))[2]
+        fu, fv, _, _ = dl.face
+        x_cam = np.array([(fu - self.cx) * Z / self.f, (fv - self.cy) * Z / self.f, Z])
+        return np.asarray(C, float) + R_cw.T @ x_cam
 
     def update_frames(self, frameL, frameR, pose):
         """Hardware path: detect in both world frames, then update()."""
@@ -276,6 +301,10 @@ def selftest(verbose=True):
             truth.append(p["pos"].copy())
             dl = _project_box(p["pos"], p["h"], R_cw, C, f, cx, cy, W, H, 0.0)
             dr = _project_box(p["pos"], p["h"], R_cw, C, f, cx, cy, W, H, B)
+            if dl is not None:                       # attach a detected FACE box at the head
+                hx = R_cw @ (p["pos"] + UP * (p["h"] * 0.5) - C)
+                if hx[2] > 1e-6:
+                    dl.face = (f * hx[0] / hx[2] + cx, f * hx[1] / hx[2] + cy, 40, 40)
             # simulate a 2-frame detector DROPOUT of person 0 (occlusion) at k=15,16
             if pi == 0 and k in (15, 16):
                 dl = dr = None
@@ -310,6 +339,15 @@ def selftest(verbose=True):
     hgt_ok = 1400 < t.height < 2000
     checks.append(("anchor points sane (head above feet, height %.0f mm)" % t.height,
                    head_up and hgt_ok))
+    # (6) face-aligned head: the head anchor lands on the true head (from the face box, not the
+    #     body-box top) — the quality lever that puts the monkey's face on the real face
+    herr = []
+    for pi, tp in enumerate(truth):
+        near = min(final, key=lambda t: np.linalg.norm(t.pos - tp), default=None)
+        if near is not None:
+            herr.append(np.linalg.norm(near.points["head"] - (tp + UP * (people[pi]["h"] * 0.5))))
+    checks.append(("face-aligned head anchor lands on the true head (median %.0f mm)" % np.median(herr),
+                   np.median(herr) < 90))
 
     ok = all(v for _, v in checks)
     if verbose:

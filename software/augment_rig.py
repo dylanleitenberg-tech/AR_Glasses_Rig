@@ -28,7 +28,7 @@ import numpy as np
 
 from anchor import AnchorProjector
 from people_track import PeopleTracker
-from avatar import MonkeyAvatar, compose
+from avatar import MonkeyAvatar, compose, RenderSmoother
 
 
 class AugmentTelemetry:
@@ -55,10 +55,12 @@ class MonkeyAugmenter:
     """Owns the people tracker, the monkey avatar, and the world-locked projector; folds one
     frame (world detections + head pose) into a display canvas of monkeys."""
 
-    def __init__(self, display_map, display_w=1920, display_h=1080, texture=None):
+    def __init__(self, display_map, display_w=1920, display_h=1080, texture=None,
+                 smooth_alpha=0.5):
         self.projector = AnchorProjector(display_map)
         self.people = PeopleTracker()
         self.avatar = MonkeyAvatar(texture=texture)
+        self.smoother = RenderSmoother(alpha=smooth_alpha)   # EMA the drawn quad -> less jitter
         self.DW, self.DH = display_w, display_h
         self.tele = AugmentTelemetry()
 
@@ -73,6 +75,9 @@ class MonkeyAugmenter:
         items = self.avatar.render_all(tracks, self.projector, pose)
         # keep only monkeys that actually intersect the display window (clip the rest)
         items = [it for it in items if _quad_hits_display(it.quad)]
+        for it in items:                                     # temporal smoothing per identity
+            it.quad = self.smoother.smooth(it.id, it.quad)
+        self.smoother.prune({it.id for it in items})
         canvas = compose(items, self.DW, self.DH)
         t.people = len(tracks)
         t.monkeys = len(items)

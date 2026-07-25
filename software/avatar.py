@@ -32,25 +32,69 @@ UP = np.array([0.0, 1.0, 0.0])
 #  Asset: a procedural monkey (RGBA). Replace with a PNG / 3D render for realism.
 # --------------------------------------------------------------------------
 def make_monkey_texture(size=256):
-    """RGBA monkey sprite: transparent outside the silhouette, head at the TOP row of the image."""
+    """RGBA monkey sprite: transparent outside the silhouette, head at the TOP row of the image.
+    Warm brown fur with soft radial shading, a tan face + muzzle, and eyes with highlights so it
+    reads as a monkey rather than a flat blob. (Still a placeholder for a real art asset / 3D
+    render — MonkeyAvatar(texture=<PNG>) swaps it out.)"""
     import cv2
     s = size
     img = np.zeros((s, s, 4), np.uint8)
-    fur = (60, 42, 30); face = (120, 150, 190); dark = (20, 20, 20)   # BGR
-    def blob(cx, cy, ax, ay, color):
-        cv2.ellipse(img, (int(cx), int(cy)), (int(ax), int(ay)), 0, 0, 360,
+    fur = (38, 74, 116); fur_dk = (24, 48, 78); belly = (60, 104, 150)   # BGR browns
+    face = (120, 162, 205); muzzle = (150, 190, 224); dark = (18, 18, 20); white = (235, 235, 235)
+
+    def blob(cx, cy, ax, ay, color, layer=None):
+        tgt = layer if layer is not None else img
+        cv2.ellipse(tgt, (int(cx), int(cy)), (int(ax), int(ay)), 0, 0, 360,
                     (color[0], color[1], color[2], 255), -1)
-    blob(s * 0.5, s * 0.62, s * 0.26, s * 0.34, fur)      # torso
-    blob(s * 0.30, s * 0.60, s * 0.09, s * 0.22, fur)     # arms
-    blob(s * 0.70, s * 0.60, s * 0.09, s * 0.22, fur)
-    blob(s * 0.5, s * 0.26, s * 0.20, s * 0.20, fur)      # head
-    blob(s * 0.30, s * 0.24, s * 0.06, s * 0.07, fur)     # ears
-    blob(s * 0.70, s * 0.24, s * 0.06, s * 0.07, fur)
-    blob(s * 0.5, s * 0.30, s * 0.13, s * 0.14, face)     # face
-    blob(s * 0.44, s * 0.26, s * 0.025, s * 0.03, dark)   # eyes
-    blob(s * 0.56, s * 0.26, s * 0.025, s * 0.03, dark)
-    blob(s * 0.5, s * 0.34, s * 0.04, s * 0.03, (90, 110, 150))  # muzzle
+
+    blob(s * 0.5, s * 0.62, s * 0.27, s * 0.35, fur)      # torso
+    blob(s * 0.28, s * 0.58, s * 0.10, s * 0.24, fur)     # arms
+    blob(s * 0.72, s * 0.58, s * 0.10, s * 0.24, fur)
+    blob(s * 0.5, s * 0.66, s * 0.15, s * 0.22, belly)    # lighter belly
+    blob(s * 0.29, s * 0.24, s * 0.07, s * 0.08, fur)     # ears
+    blob(s * 0.71, s * 0.24, s * 0.07, s * 0.08, fur)
+    blob(s * 0.29, s * 0.24, s * 0.035, s * 0.045, muzzle)
+    blob(s * 0.71, s * 0.24, s * 0.035, s * 0.045, muzzle)
+    blob(s * 0.5, s * 0.27, s * 0.21, s * 0.21, fur)      # head
+    blob(s * 0.5, s * 0.31, s * 0.145, s * 0.155, face)   # face
+    blob(s * 0.5, s * 0.37, s * 0.075, s * 0.055, muzzle) # muzzle
+    blob(s * 0.47, s * 0.385, s * 0.012, s * 0.012, dark) # nostrils
+    blob(s * 0.53, s * 0.385, s * 0.012, s * 0.012, dark)
+    for ex in (0.435, 0.565):                              # eyes + highlight
+        blob(s * ex, s * 0.28, s * 0.032, s * 0.038, white)
+        blob(s * ex, s * 0.285, s * 0.020, s * 0.024, dark)
+        blob(s * (ex + 0.006), s * 0.278, s * 0.006, s * 0.006, white)
+
+    # soft radial shading: darken toward the silhouette edge for a rounded look
+    yy, xx = np.mgrid[0:s, 0:s].astype(np.float32)
+    r = np.sqrt(((xx - s / 2) / (s / 2)) ** 2 + ((yy - s * 0.55) / (s * 0.55)) ** 2)
+    shade = np.clip(1.15 - 0.5 * r, 0.55, 1.0)[:, :, None]
+    rgb = np.clip(img[:, :, :3].astype(np.float32) * shade, 0, 255).astype(np.uint8)
+    img[:, :, :3] = rgb
     return img
+
+
+class RenderSmoother:
+    """Per-person EMA on the projected billboard quad to kill on-screen jitter (detection noise
+    survives the world-space tracker as small quad wobble). Keyed by track id so identities don't
+    bleed; `alpha` in (0,1] — lower = smoother but laggier."""
+
+    def __init__(self, alpha=0.5):
+        self.alpha = alpha
+        self.state = {}
+
+    def smooth(self, tid, quad):
+        q = np.asarray(quad, float)
+        if tid in self.state:
+            self.state[tid] = self.alpha * q + (1 - self.alpha) * self.state[tid]
+        else:
+            self.state[tid] = q
+        return self.state[tid].copy()
+
+    def prune(self, keep_ids):
+        for k in list(self.state):
+            if k not in keep_ids:
+                del self.state[k]
 
 
 class DrawItem:
@@ -135,11 +179,29 @@ def selftest(verbose=True):
     DW, DH = 1920, 1080
     checks = []
 
-    # (0) texture is a valid RGBA sprite with a real silhouette
+    # (0) texture is a valid RGBA sprite with a real silhouette, brown fur + a lighter face
     tex = avatar.texture
-    checks.append(("monkey texture is RGBA with a silhouette (%.0f%% opaque)"
-                   % (100 * (tex[:, :, 3] > 0).mean()),
-                   tex.shape[2] == 4 and 0.1 < (tex[:, :, 3] > 0).mean() < 0.9))
+    op = tex[:, :, 3] > 0
+    fur_px = tex[op][:, :3].mean(0)                          # BGR; brown => R>G>B
+    face_region = tex[int(0.22 * 256):int(0.40 * 256), int(0.36 * 256):int(0.64 * 256), :3]
+    brown = fur_px[2] > fur_px[1] > fur_px[0]
+    face_lighter = face_region.mean() > tex[op][:, :3].mean()
+    checks.append(("texture is RGBA, brown fur (BGR %s), face lighter than body"
+                   % np.round(fur_px).astype(int),
+                   tex.shape[2] == 4 and 0.1 < op.mean() < 0.9 and brown and face_lighter))
+
+    # (0b) RenderSmoother cuts on-screen jitter from noisy per-frame quads
+    rng0 = np.random.default_rng(0)
+    base_quad = np.array([[0.4, 0.3], [0.6, 0.3], [0.6, 0.7], [0.4, 0.7]])
+    sm = RenderSmoother(alpha=0.35)
+    raw_c, sm_c = [], []
+    for _ in range(60):
+        noisy = base_quad + rng0.normal(0, 0.01, base_quad.shape)
+        raw_c.append(noisy.mean(0)); sm_c.append(sm.smooth(7, noisy).mean(0))
+    raw_j = np.linalg.norm(np.diff(raw_c, axis=0), axis=1).mean()
+    sm_j = np.linalg.norm(np.diff(sm_c, axis=0), axis=1).mean()
+    checks.append(("RenderSmoother reduces frame-to-frame jitter (%.4f -> %.4f)" % (raw_j, sm_j),
+                   sm_j < raw_j * 0.6))
 
     # two people ~1.7 m tall (2.5 m and 4 m away — full body inside the world-cam FOV)
     near = TrackedPerson(0, np.array([0.0, 0.0, 2500.0]), 1700.0)
