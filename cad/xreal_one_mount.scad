@@ -545,8 +545,12 @@ module led_bracket_local(sd) {                      // sd=+1 right / -1 left; bu
         union() {
             hull() for (p=[[sd*mh,6],[sd*mh,-6],[sd*22,LED_SPREAD],[sd*22,-LED_SPREAD]])
                 translate([p[0], p[1], bz]) cylinder(d=6, h=2.8);             // base plate
-            capsule([sd*22,  LED_SPREAD, bz+1.4], ledA + 0.08*(eye-ledA), 4);// arm runs INTO pocket A
-            capsule([sd*22, -LED_SPREAD, bz+1.4], ledB + 0.08*(eye-ledB), 4);// arm runs INTO pocket B
+            // arms: FLUSH root (a disc coincident with the plate, so NO dome pokes through
+            // either plate face) tapering up INTO the pocket base (keeps it one solid).
+            for (L = [ledA, ledB]) hull() {
+                translate([sd*22, L[1], bz]) cylinder(d=6, h=2.8);            //  root = plate corner, flush
+                translate(L + 0.08*(eye-L)) sphere(2);                        //  far end lands inside the pocket
+            }
             led_pocket_at(ledA, eye);
             led_pocket_at(ledB, eye);
         }
