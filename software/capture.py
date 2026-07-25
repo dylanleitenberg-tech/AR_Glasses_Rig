@@ -126,15 +126,16 @@ class LiveCapture:
             self.sim_blink_inject = sim_blink_inject
             self.sim_stereo_loss = sim_stereo_loss
         else:
-            from cameras import CameraBank
-            from dot_detector import DotDetector
+            from sync_capture import SyncBank          # SYNCHRONIZED grab (barrier-aligned), not
+            from dot_detector import DotDetector        #  a sequential read that smears the set
             from eye_tracker import EyeCornerTracker
             from pupil_tracker import PupilTracker
             import os
             if role_index is None:
-                raise ValueError("real capture needs a role_index (see cameras.list_cameras)")
+                raise ValueError("real capture needs a role_index (see connect.load_map)")
             tdir = template_dir or self.cfg.template_dir
-            self.bank = CameraBank(role_index)
+            self.bank = SyncBank(role_index).start()
+            self.jitter_ms = 0.0                        # last synchronized-set jitter (telemetry)
             self.dot = DotDetector()
             self.pupil_trk = PupilTracker()
             self.corner = {k: EyeCornerTracker(os.path.join(tdir, "%s.png" % k))
@@ -227,7 +228,9 @@ class LiveCapture:
         return self._finish(parts, valid, blink, 1.0, truth)
 
     def _read_real(self) -> CaptureResult:
-        frames = self.bank.read()
+        fs = self.bank.sync_frame()            # one barrier-aligned grab across all roles
+        frames = fs.frames
+        self.jitter_ms = fs.jitter_ms          # expose the sync quality of this set
         parts, valid, conf = {}, {}, []
         blink = {"L": False, "R": False}
         for k in ("worldL", "worldR"):
@@ -247,18 +250,19 @@ class LiveCapture:
             valid[kk] = xy is not None
             if xy is not None:
                 parts[kk] = np.asarray(xy); conf.append(sc)
-        if "pupil" in self.bank.cams:
-            pres = self.pupil_trk.detect(frames.get("pupil")) if frames.get("pupil") is not None else None
+        if "pupilR" in self.bank.cams:         # was checking role "pupil" (never present) -> pupil
+            f = frames.get("pupilR")           #  feature was silently dead on real hardware
+            pres = self.pupil_trk.detect(f) if f is not None else None
             if BlinkDetector.is_blink_pupil(pres):
                 blink["R"] = True; valid["pupilR"] = False
-            else:
+            elif pres is not None:
                 parts["pupilR"] = np.asarray(pres.pupil); valid["pupilR"] = True; conf.append(pres.conf)
         no_target = not (valid.get("worldL") and valid.get("worldR"))   # no world dot -> nothing to register
         return self._finish(parts, valid, blink, float(min(conf)) if conf else 0.0, None, no_target)
 
     def close(self):
         if not self.simulate:
-            self.bank.release()
+            self.bank.close()
 
 
 # ----------------------------------------------------------------------

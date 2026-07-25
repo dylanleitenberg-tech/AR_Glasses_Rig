@@ -34,6 +34,27 @@ python3 main.py --selftest        # prints a learning curve, should end in PASS
 | `input_ctl.py` | keyboard nudge/approve/quit (gamepad optional via pygame) |
 | `main.py` | the integrated loop + all the modes |
 
+### Hardware bring-up layer (connect · sync · adjust · mesh)
+
+The host-side stack that gets the 6 cameras running on the Mac — see **[../HARDWARE_BRINGUP.md](../HARDWARE_BRINGUP.md)**. Every module has a headless `--selftest` (in the release gate):
+
+| File | Role |
+|------|------|
+| `connect.py` | auto-classify the 6 USB cams (color/mono, res), assign roles, persist `data/rig_cameras.json` |
+| `sync_capture.py` | `SyncBank`: barrier-aligned **synchronized** grab across all cameras + measured jitter |
+| `autoexpose.py` | per-role **continuous** exposure/gain control (world sharp, pupil glints hot / field dark) |
+| `world_mesh.py` | **real-world mesh tracking**: stereo triangulate + robust Kabsch VO + IMU-fused pose + Delaunay mesh |
+| `imu_serial.py` | `GyroIntegrator`: XIAO gyro → per-frame rotation increment for the mesh |
+| `rig_test.py` | one-command bring-up test: enumerate · fps · sync jitter · IR test · focus |
+| `snapshot.py` | save one synchronized frame-set (6 PNGs + trustworthy `meta.json`) |
+| `live_rig.py` | the integrated driver: sync grab → auto-expose → mesh track → feature capture, live telemetry |
+
+```bash
+python3 connect.py --auto && python3 connect.py --identify   # map cameras -> roles (once)
+python3 rig_test.py --run        # is the rig fit to calibrate on?
+python3 live_rig.py --run --imu  # everything running together
+```
+
 ## Running
 
 ```bash

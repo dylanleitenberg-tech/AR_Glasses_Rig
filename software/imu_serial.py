@@ -79,9 +79,11 @@ class ImuSerial:
     with (t_ms, filtered_pitch, filtered_roll, bump). `bump` = gyro magnitude spike."""
     BUMP_DPS = 25.0
 
-    def __init__(self, port=None, simulate=False, on_sample=None, baud=115200, seed=0):
+    def __init__(self, port=None, simulate=False, on_sample=None, baud=115200, seed=0,
+                 on_raw=None):
         self.on_sample = on_sample
-        self.filter = imu.ImuFilter()
+        self.on_raw = on_raw            # optional callback(t_ms, accel_g[3], gyro_dps[3]) — raw,
+        self.filter = imu.ImuFilter()   #  used by GyroIntegrator to integrate a rotation increment
         self.bad_lines = 0
         self.n = 0
         if simulate:
@@ -113,6 +115,8 @@ class ImuSerial:
                 self.bad_lines += 1
                 continue
             t_ms, acc, gyr = rec
+            if self.on_raw:
+                self.on_raw(t_ms, acc, gyr)
             dt = 1e-3 * (t_ms - last_ms) if last_ms is not None else 1.0 / 150
             last_ms = t_ms
             ap, ar = accel_to_tilt(acc)
@@ -125,6 +129,104 @@ class ImuSerial:
             if self.on_sample:
                 self.on_sample(*sample)
         return out
+
+
+def _rodrigues(rvec):
+    """Axis-angle rotation vector (radians) -> 3x3 rotation matrix (exact, small-angle safe)."""
+    rvec = np.asarray(rvec, float)
+    th = float(np.linalg.norm(rvec))
+    if th < 1e-12:
+        return np.eye(3)
+    k = rvec / th
+    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+    return np.eye(3) + math.sin(th) * K + (1 - math.cos(th)) * (K @ K)
+
+
+class GyroIntegrator:
+    """Integrates the 3-axis gyro into a rotation INCREMENT the world-mesh tracker can consume.
+
+    The mesh needs, each camera frame, an estimate of how the head (and thus the camera) rotated
+    since the last frame — used as a prior and to carry the pose through a visual dropout. The
+    gyro gives body angular velocity (deg/s); this composes each sample's incremental rotation
+    (Rodrigues of omega*dt) into an accumulator, and consume_rotation() hands back the net
+    rotation since the previous call and resets. Runs the ImuSerial pump on a background thread so
+    the vision loop just calls consume_rotation() at its own rate.
+
+    NOTE: the body->camera axis mapping (imu_mount orientation) is a fixed one-time calibration;
+    the mesh uses this as a PRIOR/gate (imu_gate_deg), so an approximate mapping is fine. Set
+    `axes` to permute/flip gyro axes onto the camera frame once measured on hardware."""
+
+    def __init__(self, port=None, simulate=False, seed=0, axes=(0, 1, 2), signs=(1, 1, 1)):
+        import threading
+        self._lock = threading.Lock()
+        self._accum = np.eye(3)
+        self._last_ms = None
+        self.samples = 0
+        self.axes = axes
+        self.signs = np.asarray(signs, float)
+        self.imu = ImuSerial(port=port, simulate=simulate, seed=seed, on_raw=self._ingest)
+        self._thread = None
+        self._threading = threading
+
+    def _ingest(self, t_ms, acc, gyr):
+        dt = 1e-3 * (t_ms - self._last_ms) if self._last_ms is not None else 1.0 / 150
+        self._last_ms = t_ms
+        g = np.asarray(gyr, float)[list(self.axes)] * self.signs        # map onto camera axes
+        rvec = np.radians(g) * max(1e-4, dt)                            # deg/s -> rad increment
+        R_step = _rodrigues(rvec)
+        with self._lock:
+            self._accum = R_step @ self._accum
+            self.samples += 1
+
+    def consume_rotation(self):
+        """Net world->cam rotation increment since the last call; resets the accumulator. Returns
+        identity if no samples have arrived yet."""
+        with self._lock:
+            R = self._accum
+            self._accum = np.eye(3)
+            return R
+
+    def start(self):
+        """Run the pump on a daemon thread (real hardware / continuous sim)."""
+        self._thread = self._threading.Thread(target=self.imu.pump, daemon=True)
+        self._thread.start()
+        return self
+
+    def pump_n(self, n):
+        """Synchronously pump n samples (used by the sim selftest)."""
+        self.imu.pump(n_samples=n)
+
+
+def gyro_selftest(verbose=True):
+    """Integrator math: a known constant angular velocity integrates to the expected rotation,
+    and a quiet (noise-only) sim stream stays near identity over a short window."""
+    checks = []
+    # (1) constant 30 deg/s about +z for 2 s -> ~60 deg net rotation about z
+    gi = GyroIntegrator(simulate=True)          # src unused; we feed _ingest directly
+    for k in range(200):                        # 200 samples * 0.01 s = 2 s
+        gi._ingest(k * 10, [0, 0, 1.0], [0.0, 0.0, 30.0])
+    R = gi.consume_rotation()
+    ang = math.degrees(math.acos((np.trace(R) - 1) / 2))
+    axis_z = abs(R[1, 0] - R[0, 1]) > 1e-6      # rotation is about z (sanity)
+    checks.append(("constant 30 deg/s x 2 s integrates to %.1f deg about z" % ang,
+                   abs(ang - 60.0) < 0.5 and axis_z))
+    # (2) consume RESETS the accumulator
+    R2 = gi.consume_rotation()
+    checks.append(("consume_rotation resets to identity",
+                   np.allclose(R2, np.eye(3), atol=1e-9)))
+    # (3) a quiet noise-only sim stream stays near identity over ~1 s
+    gq = GyroIntegrator(simulate=True, seed=2)
+    gq.pump_n(150)
+    Rq = gq.consume_rotation()
+    drift = math.degrees(math.acos(np.clip((np.trace(Rq) - 1) / 2, -1, 1)))
+    checks.append(("quiet sim stream drift over ~1 s is small (%.2f deg)" % drift, drift < 5.0))
+    ok = all(v for _, v in checks)
+    if verbose:
+        print("== gyro integrator selftest ==")
+        for name, v in checks:
+            print("  [%s] %s" % ("PASS" if v else "FAIL", name))
+        print("  => %s" % ("GYRO INTEGRATOR OK ✅" if ok else "PROBLEM ⚠️"))
+    return ok
 
 
 def selftest(verbose=True):
@@ -151,6 +253,7 @@ def selftest(verbose=True):
         print("  sim stream: %d samples, resting tilt %.1f deg (true -7), step jitter %.3f deg"
               % (len(rows), resting, jitter))
         print("  => %s" % ("PASS ✅" if ok else "FAIL ❌"))
+    ok = bool(ok) and gyro_selftest(verbose)          # include the rotation-integrator checks
     return ok
 
 

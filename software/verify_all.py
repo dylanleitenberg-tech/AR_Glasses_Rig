@@ -77,8 +77,16 @@ def main(fast=False):
         ("feature contract + device bridge", "python3 main.py --contract-test", "DEVICE BRIDGE OK"),
         ("capture/blink/fallback", "python3 main.py --capture-test", "PROVEN"),
         ("imu filter selftest", "python3 imu.py", "IMU FILTER OK"),
-        ("imu serial selftest", "python3 imu_serial.py --selftest", "PASS ✅"),
+        ("imu serial + gyro integrator", "python3 imu_serial.py --selftest", "GYRO INTEGRATOR OK ✅"),
         ("binocular oracle", "python3 main.py --binocular-test", "BINOCULAR PHYSICS OK"),
+        # hardware bring-up layer (headless selftests — no cameras needed)
+        ("sync capture (barrier/jitter)", "python3 sync_capture.py --selftest", "SYNC CAPTURE OK"),
+        ("auto-exposure (per-role control)", "python3 autoexpose.py --selftest", "AUTOEXPOSE OK"),
+        ("world mesh tracking (VO+IMU)", "python3 world_mesh.py --selftest", "WORLD MESH OK"),
+        ("camera connect/classify/persist", "python3 connect.py --selftest", "CONNECT OK"),
+        ("rig bring-up metrics", "python3 rig_test.py --selftest", "RIG_TEST OK"),
+        ("synchronized snapshot", "python3 snapshot.py --selftest", "SNAPSHOT OK"),
+        ("integrated live rig loop", "python3 live_rig.py --selftest", "LIVE RIG OK"),
     ]:
         rc, out = run(cmd)
         check(name, needle in out, "" if needle in out else out.strip().splitlines()[-1][:120] if out.strip() else "no output")
