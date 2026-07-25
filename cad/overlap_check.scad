@@ -34,6 +34,7 @@ module comp(name) {
     else if (name == "pupilR_boom") pupil_cam(1, render = "boom");
     else if (name == "pupilR_hold") pupil_cam(1, render = "holder");
     else if (name == "pupilR_pcb")  pupil_cam(1, render = "pcbzone");
+    else if (name == "pupilR_led")  pupil_led(1);                     // mounted LED bracket (right)
     else if (name == "glasses")  translate([0, 0, -wall]) glasses_dummy();  // preview() offset
     else if (name == "eyeballR") translate(sim2cad([ ipd/2, 0, -28.5])) sphere(12);
     else if (name == "eyeballL") translate(sim2cad([-ipd/2, 0, -28.5])) sphere(12);

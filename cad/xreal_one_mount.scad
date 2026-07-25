@@ -515,6 +515,48 @@ module pupil_cam(side, render = "all") {    // NIR eye-tracking cam — ONE PER 
            elev = BOOM_ELEV - 1, elbow_fill = true, led_pad = side);  // bottom boom LOWERED 1 mm + corners
                                                                       // filled; + LED-bracket mount shelf
 }
+// =====================================================================
+//  LED ILLUMINATOR BRACKET — separate print, 2 baffled 940 nm LEDs PER EYE
+// =====================================================================
+//  Bolts to the pupil holder's LED shelf (2 M2) and reaches FORWARD toward the lens plane so the
+//  LEDs sit ~46 mm from the cornea (vs ~70 mm at the shelf itself) and ~31 deg off the camera axis
+//  (dark-pupil), spread 18 mm to give TWO resolvable PCCR glints. Emitter RECESSED behind the
+//  baffle rim (ir_recess); whole assembly stays > 40 mm from the eye (>> ir_min_standoff = 10).
+//  Insert + wire each LED from the BACK (away from the eye). Print two (mirrored): part="led_bracket".
+LED_ARM_X = 21;  LED_ARM_Z = -2;  LED_SPREAD = 9;   // LED positions in the pupil-holder local frame
+function _bp_ov() = OV_PITCH + m2_boss + 4;
+module led_pocket_at(pos, aim) {                    // baffled 3 mm LED pocket at pos, opening toward aim
+    h = ir_led_h + ir_recess + ir_baffle_wall;
+    translate(pos) aim_z_at([0,0,0], [aim[0]-pos[0], aim[1]-pos[1], aim[2]-pos[2]])
+        difference() {
+            cylinder(h = h, d = ir_led_d + 2*ir_baffle_wall);                 // shroud
+            cylinder(h = ir_led_h + 0.5, d = ir_led_d);                       // LED pocket (insert from back)
+            translate([0,0,ir_led_h+0.3]) cylinder(h = h, d = ir_led_d - 0.8);// beam aperture (front -> eye)
+        }
+}
+module led_bracket_local(sd) {                      // sd=+1 right / -1 left; built in the pupil-holder frame
+    ztl = -BACK - 0.8 - standoff_h - 1.3;           // = the pupil camera_holder plate centre (zt)
+    mh  = _bp_ov()/2 + 11;                          // shelf mount-hole x (matches the shelf holes)
+    bz  = ztl + 1.5;                                // shelf top face (bracket base sits here)
+    eye = [0, 0, 40];                               // aim point (pupil plane), local +z is toward the eye
+    ledA = [sd*LED_ARM_X, +LED_SPREAD, LED_ARM_Z];
+    ledB = [sd*LED_ARM_X, -LED_SPREAD, LED_ARM_Z];
+    color("red") difference() {
+        union() {
+            hull() for (p=[[sd*mh,6],[sd*mh,-6],[sd*22,LED_SPREAD],[sd*22,-LED_SPREAD]])
+                translate([p[0], p[1], bz]) cylinder(d=6, h=2.8);             // base plate
+            capsule([sd*22,  LED_SPREAD, bz+1.4], ledA + 0.08*(eye-ledA), 4);// arm runs INTO pocket A
+            capsule([sd*22, -LED_SPREAD, bz+1.4], ledB + 0.08*(eye-ledB), 4);// arm runs INTO pocket B
+            led_pocket_at(ledA, eye);
+            led_pocket_at(ledB, eye);
+        }
+        for (dy=[-6,6]) translate([sd*mh, dy, bz-1]) cylinder(d=m2_d+0.6, h=10);  // 2 M2 clearance holes
+    }
+}
+module pupil_led(side) {                            // the bracket placed on its pupil holder (preview/check)
+    C = sim2cad([side*PUPIL_SIM[0], PUPIL_SIM[1], PUPIL_SIM[2]]);
+    translate(C) aim_z_at(C, sim2cad([side*COR_SIM[0], COR_SIM[1], COR_SIM[2]])) led_bracket_local(side);
+}
 // One IR LED inside a SAFETY BAFFLE: the shroud + LED extend AWAY from the eye (+y), the LED tip
 // is RECESSED behind the eye-facing cap, and the cap has only a small beam aperture. So no emitter
 // sits close to the eye, close-range/off-axis direct paths are blocked, and the eye-facing rim
@@ -718,14 +760,18 @@ module ir_ring_part(side) {
 }
 // Fit-check preview ONLY (not printable): the clip-on + translucent eye + translucent glasses.
 // (Set show_cams=true at the top to also see the bought camera modules in the holders.)
+show_led = false;   // preview: also show the LED brackets mounted on the pupil shelves
 module preview() {
     carrier();
+    if (show_led) { pupil_led(1); pupil_led(-1); }
     eye_standin();
     translate([0, 0, -wall]) glasses_dummy();
 }
 
 if      (part == "carrier")   carrier();                              // <- PRINT THIS (the clip-on)
 else if (part == "ir_ring")   { ir_ring_part(1); ir_ring_part(-1); }  // <- PRINT (IR ring, clips to lens rim)
+else if (part == "led_bracket") { led_bracket_local(1);              // <- PRINT (2 LED illuminators, mirrored;
+                                  led_bracket_local(-1); }            //  naturally separate at +x / -x)
 else if (part == "imu_mount") imu_mount();                            // standalone IMU shelf (already in carrier)
 else if (part == "board_cam") board_cam(OV_BOARD, OV_PITCH);          // a single holder, for tuning
 else if (part == "bond_pads") bond_pads();                            // optional permanent-bond hard-points

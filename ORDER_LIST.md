@@ -39,7 +39,7 @@ URLs). Verify price/stock/variant at checkout. **CORE** = 6‑camera binocular b
 ## C. NIR illumination
 | ✔ | tier | part | qty | link |
 |---|---|---|---|---|
-| ☐ | core | 940 nm IR LEDs, 3 mm (NOT 850), an IR ring around **BOTH** eyes (~6 per eye = 12) | 1 pack | https://www.amazon.ca/s?k=940nm+IR+LED+3mm |
+| ☐ | core | 940 nm IR LEDs, 3 mm (NOT 850): **2 per eye = 4** on the under-eye `led_bracket` (buy a pack for spares) | 1 pack | https://www.amazon.ca/s?k=940nm+IR+LED+3mm |
 | ☐ | core | IR‑pass filter 850-1000 nm, one per NIR **pupil** cam (**2** binocular; +stereo optional) | 2 | https://www.amazon.ca/s?k=IR+pass+filter+850nm+10mm |
 | ☐ | core | Resistor kit (need 330-470 Ω for the LED strings **+ one 10 kΩ MOSFET-gate pull-down**) | 1 | https://www.amazon.ca/s?k=1%2F4W+resistor+assortment+kit |
 | ☐ | core | **Seeed XIAO** (RP2040/SAMD21), strobes **both** LED rings + IMU I²C→USB bridge + safety watchdog | 1 | https://www.amazon.ca/s?k=Seeed+XIAO+RP2040 |

@@ -16,7 +16,7 @@ during bring-up, then before any change.
   proves the logic only; the same conditions must be bench-tested on real hardware at bring-up.
 - ✅ At build: verify fail-safe FIRST (host app off ⇒ IR off; USB unplug ⇒ IR off), then
   **measure corneal-plane irradiance with the IR power meter** (ORDER_LIST), aggregate of
-  ALL 6 LEDs per eye, target ≪ 1 mW/cm² average, and check the stuck-on (continuous) case.
+  ALL 2 LEDs per eye (on the under-eye illuminator bracket), target ≪ 1 mW/cm² average, and check the stuck-on (continuous) case.
 - ⚠️ The retina cannot feel IR, never "check by feel"; never substitute security-camera
   IR illuminators.
 
