@@ -72,6 +72,12 @@ EC_X = NOMINAL_IPD / 2 + 36.0
 EC_UP = -5.0           # lowered -2 -> -5 (2026-07-16: longer side booms); the aim at
 #                        the canthus re-tilts automatically (look_at), no other change needed
 EC_FWD = -6.0
+# EYE-CORNER cam AIM BIAS (2026-07-26): the mounted eye cam framed the outer corner low + inboard
+# (bottom-left of frame), risking losing it on a glasses slip. Re-aim DOWN + OUTWARD so the canthus
+# sits nearer frame centre. Mirrored per side. AIM ONLY — EC_X/UP/FWD (position) and
+# nominal_outer_canthus() (the tracked landmark, hence CANTH_SIM parity) are UNCHANGED.
+EC_AIM_DOWN = 6.0   # mm the aim point drops (rig +y is up) -> ~11 deg downward tilt
+EC_AIM_OUT  = 3.0   # mm the aim point moves outward (toward the temple), mirrored per side
 EYE_FOV = 90.0
 EYE_K1 = -0.10            # wide eye-corner lenses distort more
 EYE_RES = 640
@@ -227,11 +233,13 @@ def build():
         PinholeCamera([-WC_X, WC_UP, WC_FWD], np.eye(3), WORLD_FOV, WORLD_K1, 0, WORLD_RES),
         PinholeCamera([+WC_X, WC_UP, WC_FWD], np.eye(3), WORLD_FOV, WORLD_K1, 0, WORLD_RES),
     ]
+    aimL = canth[0] + np.array([-EC_AIM_OUT, -EC_AIM_DOWN, 0.0])   # DOWN + OUTWARD (left)
+    aimR = canth[1] + np.array([+EC_AIM_OUT, -EC_AIM_DOWN, 0.0])   # DOWN + OUTWARD (right, mirror)
     eye = [
         PinholeCamera([-EC_X, EC_UP, EC_FWD],
-                      look_at([-EC_X, EC_UP, EC_FWD], canth[0]), EYE_FOV, EYE_K1, 0, EYE_RES),
+                      look_at([-EC_X, EC_UP, EC_FWD], aimL), EYE_FOV, EYE_K1, 0, EYE_RES),
         PinholeCamera([+EC_X, EC_UP, EC_FWD],
-                      look_at([+EC_X, EC_UP, EC_FWD], canth[1]), EYE_FOV, EYE_K1, 0, EYE_RES),
+                      look_at([+EC_X, EC_UP, EC_FWD], aimR), EYE_FOV, EYE_K1, 0, EYE_RES),
     ]
     # fov_deg is the HORIZONTAL FOV. XREAL One Pro is specced at 57 deg DIAGONAL, which on a
     # 16:9 1080p panel is ~50.6 deg horizontal -> 50 here matches the One Pro (NOT a mismatch).

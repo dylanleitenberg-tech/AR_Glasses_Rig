@@ -114,6 +114,11 @@ CANTH_SIM = [44.5, 3.160, -17.673];  // = rig.nominal_outer_canthus()[1], EYE_BE
                                      //    One Pro's 3-stage tilt tops out at ±3.5°)
 disp_ipd  = 68.13;                   // rig.py DISPLAY_IPD (pupil cams aim at OPTIC + T0)
 COR_SIM   = [disp_ipd/2, 0, -28.5];  // right eye nominal CoR (pupil-cam aim; = OPTIC_R + T0)
+// EYE-CORNER cam AIM BIAS (2026-07-26): mounted eye cam framed the outer corner low+inboard, so
+// re-aim DOWN + OUTWARD to centre the canthus. Mirrored via `side`. AIM ONLY — EYE_SIM position +
+// CANTH_SIM (parity) unchanged. Matches rig.py EC_AIM_DOWN/EC_AIM_OUT. Tune if it over/undershoots.
+EC_AIM_DOWN = 6;                     // sim +y is up -> lower the aim point = tilt cam down (~11 deg)
+EC_AIM_OUT  = 3;                     // move the aim point outward (toward the temple), per side
 
 // ---------- real camera MODULES (vendor dims; verify with calipers) ----
 WORLD_BOARD = 38;  WORLD_PITCH = 28;   // ELP AR0234 USB: 38x38 board, ~28 mm mount pattern
@@ -477,7 +482,8 @@ module eye_cam(side, render = "all") {
     // boss offset [0,10]: toward the plate's top edge, where the drop leg arrives — the
     // centred boss forced the jog through the board's keep-out (4.2 mm^3, split-check)
     cam_at([side*58, ANCHOR_Y, ANCHOR_Z], C,
-           sim2cad([side*CANTH_SIM[0], CANTH_SIM[1], CANTH_SIM[2]]), OV_BOARD, OV_PITCH,
+           sim2cad([side*(CANTH_SIM[0]+EC_AIM_OUT), CANTH_SIM[1]-EC_AIM_DOWN, CANTH_SIM[2]]),
+           OV_BOARD, OV_PITCH,
            render = render, att_off = [0, -10],    // 58: foot clears the world plate (52) and the
            foot_wing_len = 12, ov_conn = true,     // wing SHORTENED 24->12 (2026-07-23) so it clears
            elev = BOOM_ELEV - 2);                  // the world foot; side boom LOWERED 2 mm, no elbow fill
