@@ -36,17 +36,23 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   order (to Hawaii) is fully vetted (see `ORDER_LIST.md` + the memory). Returning the current
 >   XREAL, ordering a new one to Hawaii. Building in Hawaii; final print in **ASA/PETG at home**.
 >
-> **>>> IMMEDIATE NEXT STEP: rerun the sim against the new CAD + updated diagram. <<<**
-> The eye-cam re-aim + the electrical/diagram updates are the latest changes. Re-run and confirm:
+> **>>> IMMEDIATE NEXT STEP: rerun the sim so every output MATCHES the current specs. <<<**
+> The eye-cam **re-aim** (`EC_AIM_DOWN=6` / `EC_AIM_OUT=3`, applied in BOTH `rig.py` and the CAD)
+> plus the electrical/diagram updates are the latest changes. Some `data/` artifacts were built
+> on the PRE-re-aim geometry, so bring the whole sim into line with the current `rig.py`:
 > ```
 > cd software && source .venv/bin/activate
-> python3 verify_all.py --fast          # parity + all selftests (must PASS)
-> python3 accuracy_map.py               # per-position accuracy; was 1.88 px median post-re-aim
+> python3 verify_all.py --fast     # CAD<->rig parity (0.0003mm) + every selftest must PASS
+> python3 accuracy_map.py          # per-position accuracy; was 1.88 px median post-re-aim
 > ```
-> Confirm CAD↔rig parity still 0.0003 mm and accuracy still ~1.9 px median (the re-aim was
-> accuracy-neutral — the canthus is still the tracked landmark, just re-centred). Report any
-> drift. Then the build proceeds once parts arrive (PLA test print of the re-aimed carrier
-> first → verify eye-cam framing + glasses clearance on-head → then ASA/PETG final).
+> Then **regenerate the geometry-dependent trained artifacts** on the current geometry so the
+> data matches the specs (see each script's header for exact flags):
+> `pixel_map.py` → `data/pixel_map.npz`; `calibrate.py` → `data/calibration_db.npz`;
+> `autotrain.py`/`megarun.py` → the warm-start prior (`meta.db` / `mega_*.npz`, research-scale).
+> Confirm parity stays 0.0003 mm and accuracy stays ~1.9 px median (the re-aim is
+> accuracy-neutral — the canthus is still the tracked landmark, just re-centred); **report the
+> deltas vs those numbers.** Then the build proceeds once parts arrive (PLA test print of the
+> re-aimed carrier → verify eye-cam framing + glasses clearance on-head → ASA/PETG final).
 >
 > **Guardrails (do NOT break):**
 > - `software/rig.py` is the single source of truth for camera geometry; `cad/xreal_one_mount.scad`
