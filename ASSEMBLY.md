@@ -3,7 +3,7 @@
 Builds the **6-camera binocular** rig from the printed **carrier** (`cad/xreal_one_mount.scad`),
 mounted with **removable padded brow CLAMPS + M3 thumbscrews** (no adhesive, bonding via
 `bond_pads` is the later rigid-phase upgrade). The carrier holds all 6 cameras **and** the IMU
-(midline tower); the **IR rings are 2 separate prints** (`part="ir_ring"`). The XREAL One
+(midline tower); the **LED brackets are 2 separate prints** (`part="led_bracket"`). The XREAL One
 Pro's **own padded nose pads** carry the face, no separate printed nose bridge is required.
 Wire it to your host through the powered hub. Read `EYE_TRACKING.md` first, especially **§3 IR
 eye safety**, and `WIRING.md` for the power + safety interlocks, and `ORDER_LIST.md` for parts.
@@ -25,8 +25,8 @@ Legend:  🔧 do  ·  ✅ check  ·  ⚠️ safety
    `OPTIC_DROP` for your unit (see `cad/README.md`). Leave `build_stereo = false` (6-cam CORE).
 3. ✅ Open it in OpenSCAD, **F5 preview**: the eye-facing lenses point at the pupils/canthi,
    no camera sits in the see-through cone (the red cone is the preview guide; `software/cad_fit.py`
-   enforces it), the IR rings (baffled) sit around both eye apertures, and the IMU pocket is on
-   the rail.
+   enforces it), the LED brackets sit under each eye (baffled, aimed up at the pupil), and the
+   IMU pocket is on the rail.
 
 ---
 
@@ -36,10 +36,10 @@ Legend:  🔧 do  ·  ✅ check  ·  ⚠️ safety
    camera-to-frame motion < 0.2 mm. 3 perimeters / high infill, brim on thin booms.
    ```
    openscad -D 'part="carrier"' -o carrier.stl  cad/xreal_one_mount.scad
-   openscad -D 'part="ir_ring"' -o ir_ring.stl  cad/xreal_one_mount.scad   # 2 rings in one file
+   openscad -D 'part="led_bracket"' -o led_bracket.stl  cad/xreal_one_mount.scad   # both brackets, one file
    ```
-   (The IMU tower is part of the carrier; the IR rings print separately and mount at the lens
-   rims. `part="bond_pads"` exists for the LATER rigid/bonded phase only.)
+   (The IMU tower is part of the carrier; the LED brackets print separately and **bolt onto the
+   pupil-holder shelves** — 2 M2 each. `part="bond_pads"` exists for the LATER rigid/bonded phase only.)
    **Print a cheap PLA DRAFT first** (fast settings, supports under the horizontal boom legs),
    dry-fit it on the glasses + your face, and only then print the stiff version.
    ⚠️ **Brow heat (measured on this unit):** the One Pro's brow gets noticeably warm in use , 
@@ -66,18 +66,20 @@ Legend:  🔧 do  ·  ✅ check  ·  ⚠️ safety
 
 ---
 
-## 3. Populate the carrier (cameras + IR rings)
+## 3. Populate the carrier (cameras + LED brackets)
 
 1. 🔧 Screw each camera board onto its holder's **4 M2 standoffs** with **SELF-TAPPING M2
    screws** (the 1.8 mm bores are sized for these, NOT heat-set inserts), cable out the notch,
    zip-tied to the strain-relief post. Six holders: worldL/R (brow), eyeL/R (temple),
    pupilL/R (under-eye). There is **no printed lens shroud**: after focusing, baffle stray
    light on the NIR cams with a slip-on collar or matte tape around the M12 barrel.
-2. 🔧 Press the **940 nm IR LEDs** into the ring bosses around **both** eye apertures, seated in
-   their **baffles** (`ir_baffle`: keeps each LED recessed and ≥ 10 mm from the eye). Bend leads
-   back along the rail.
-3. ⚠️ **Wire each LED with its current-limiting resistor (330-470 Ω, ~5-15 mA).** Never connect
-   an IR LED straight to 5 V. Spread, low current, see `EYE_TRACKING.md §3`.
+2. 🔧 Insert the **940 nm IR LEDs** into the **`led_bracket`'s baffled pockets** (2 per eye;
+   the baffle keeps each LED recessed + off-axis and ≥ 10 mm from the eye); leads exit the back.
+   **Bolt each bracket to its pupil-holder shelf** (2 M2 self-tap). Then twist the leads into
+   the IR bundle.
+3. ⚠️ **Wire each LED with its own current-limiting resistor (330-470 Ω → ~8-12 mA/LED, 4 LEDs
+   ≈ 48 mA total).** Never connect an IR LED straight to 5 V. Low current, strobed, see
+   `EYE_TRACKING.md §3`; run the IR 5 V off the **rail, not the XIAO**.
 4. 🔧 Common the LED leads into the IR bundle (each LED with its own resistor). This bundle is
    the **strobed IR branch**: keep it as a twisted pair, separate from the data cables.
 
@@ -85,7 +87,7 @@ Legend:  🔧 do  ·  ✅ check  ·  ⚠️ safety
 
 ## 4. Mount the IMU (robustness sensor, slip/motion + Kalman drift filter)
 
-1. 🔧 Seat the **ICM-20948** breakout flat in the carrier's IMU pocket (`imu_mount`, on the
+1. 🔧 Seat the **MPU-6050** breakout flat in the carrier's IMU pocket (`imu_mount`, on the
    rail), **board X → +x (right), Y → +y (forward)**, M2 screws, so its tilt maps to pose
    `dev[0]`/`dev[2]` as in `software/imu.py`.
 2. 🔧 Run the IMU's **I2C** leads (SDA/SCL/3V3/GND) back with the bundle to the strobe MCU.
@@ -100,15 +102,23 @@ Power tree: **12 V brick → industrial USB 3.0 hub → 5 V/3 A main rail**, spl
 bus-powered cameras + hub, and (b) **a 300 mA PTC polyfuse → the IR branch**.
 
 1. 🔧 Cameras (all 6) → the **industrial powered USB 3.0 hub**. Run MJPEG.
-2. 🔧 Decouple the 5 V rail at the carrier: **470 µF 10 V electrolytic + 0.1 µF ceramic**.
-3. 🔧 IR branch: 5 V rail → **300 mA polyfuse** → LED strings; switch the **low side with a
-   2N7002 logic-level MOSFET** (NOT a 2N2222) gated by the **MCU**, with a **gate pull-down**
-   (fail-safe OFF). Add a **5 V TVS** clamp across the rail.
-4. 🔧 Trunk wire = **24/26 AWG silicone** (carries 3 A); component branches = **30 AWG** only.
-5. 🔧 Route the **IR twisted pair separate from the USB data cables**; give the IR branch its
+2. 🔧 Decouple the 5 V rail at the carrier: **470 µF 10 V electrolytic + 0.1 µF ceramic + a
+   SMAJ5.0A TVS** across 5 V/GND.
+3. 🔧 IR branch: 5 V rail → **300 mA polyfuse** → the **4 LEDs** (each via its own **330-470 Ω**,
+   ~8-12 mA/LED, ~48 mA total); switch the **low side with a 2N7000 logic-level MOSFET** (NOT a
+   2N2222) gated by the **MCU** through a 100 Ω series resistor, with a **10 kΩ gate pull-down**
+   (fail-safe OFF). ⚠️ **Tap this 5 V from the rail, NOT from the XIAO's 5 V pin** (keeps the
+   strobe pulses off the MCU).
+4. ⚠️ **Rail monitor:** feed the 5 V rail into a XIAO ADC pin through a **2:1 divider** (two
+   equal ~10 kΩ → 5 V reads 2.5 V; firmware ×2). **Never wire 5 V straight to the ADC** (3.3 V
+   max — it will fry the pin).
+5. 🔧 Trunk wire = **24/26 AWG silicone**; component branches = **30 AWG** only.
+6. 🔧 Route the **IR twisted pair separate from the USB data cables**; give the IR branch its
    **own return to the rail's star-ground point** (EM + data-integrity).
-6. 🔧 **IMU I2C → the strobe MCU** (Mac path: it bridges I2C→USB and runs the safety watchdog).
-7. ✅ With the host running, all **6** cameras enumerate (+ the MCU as a serial device):
+7. ⚠️ **IMU: power from the XIAO 3V3 pin, NOT 5 V** (GY-521 boards pull I²C to VCC; 5 V would
+   over-volt the XIAO's 3.3 V GPIO). Run its **I2C → the strobe MCU** (Mac path: bridges
+   I2C→USB and runs the safety watchdog).
+8. ✅ With the host running, all **6** cameras enumerate (+ the MCU as a serial device):
    ```
    cd software && source .venv/bin/activate && python3 main.py --list-cams
    ```
@@ -172,7 +182,7 @@ bus-powered cameras + hub, and (b) **a 300 mA PTC polyfuse → the IR branch**.
   keeps up (global shutter earning its place). The live `GazeStabilizer` smooths fixation jitter.
 - ✅ **Calibration accuracy:** overlay error vs a known target is your real result, compare
   honestly to the simulation, not the other way around.
-- 🔧 Poor tracking? More even IR (move/add ring LEDs), better focus, IR-pass filter, shorter
+- 🔧 Poor tracking? More even IR (re-aim/add bracket LEDs), better focus, IR-pass filter, shorter
   exposure, re-aim. Illumination usually matters more than the camera.
 
 ---
@@ -181,6 +191,6 @@ bus-powered cameras + hub, and (b) **a 300 mA PTC polyfuse → the IR branch**.
 - 940 nm only, low current (~5-15 mA), spread, **strobed in sync with the shutter**, recessed
   behind baffles **≥ 10 mm from the eye**, powered only while tracking.
 - **Fail-safe IR-OFF:** USB/host drop, over/under-voltage, polyfuse trip, blink, or MCU reset all
-  cut IR immediately (2N7002 gate pull-down). Verify this before trusting the rig.
+  cut IR immediately (2N7000 gate pull-down). Verify this before trusting the rig.
 - The retina can't feel IR, when unsure, use **less** light. Never use security-camera IR
   illuminators near the eye.

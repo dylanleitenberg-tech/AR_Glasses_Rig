@@ -19,9 +19,10 @@ The XREAL One Pro has a **display per eye**, so both eyes are tracked and regist
 | **eye-facing (4)** | `eyeL`, `eyeR` | 2 | OV9281 mono NoIR, global shutter | eye-corner (canthus), glasses-on-face pose |
 | | `pupilL`, `pupilR` | 2 | OV9281 mono NoIR + IR-pass | NIR pupil + corneal glints (PCCR), one per eye |
 
-\+ **940 nm IR LED rings around BOTH eyes** (strobed, separate printed `ir_ring` parts at the
-lens rims) and a **9-DoF IMU** on the carrier's midline TOWER (flat shelf on the rail top,
-board X→+x right / Y→+y forward, the `imu.py` axis contract).
+\+ **940 nm IR LED brackets — 2 LEDs per eye = 4 total** (strobed; on the separate printed
+`led_bracket` parts under each eye, aimed at the pupil) and a **6-axis IMU (MPU-6050;
+ICM-20948 also works)** on the carrier's midline TOWER (flat shelf on the rail top,
+board X→+x right / Y→+y forward, the `imu.py` axis contract — only accel + gyro are used).
 Honest accuracy: ~4.3 px PERCEIVED deployed (vernier UI + per-user offset, simulated with realistic user error), 0.89 px pipeline bound; the <1 px pathway (stereo + multi-vergence kappa) awaits hardware validation.
 
 > **FUTURE UPGRADE (separate tier, not the 6-cam model): 8-camera FULL.** Adds `eye2L`,
@@ -34,7 +35,7 @@ Honest accuracy: ~4.3 px PERCEIVED deployed (vernier UI + per-user offset, simul
    worldL,R ───USB──┐
    eyeL,eyeR ──USB──┤      ┌─ industrial powered USB 3.0 hub ─┐
    pupilL,R(NIR)USB─┤ 6×USB┤   (own 12 V PSU -> 5 V/3 A rail) ├─USB─► Mac
-   IR ringsL,R ─► MCU(XIAO): strobe + IMU I2C→USB ───────USB──┘
+   IR bracketsL,R ─► MCU(XIAO): strobe + IMU I2C→USB ───────USB──┘
    IMU ──I2C──► MCU
 ```
 
@@ -50,6 +51,18 @@ One AC source feeds everything: a **single industrial USB 3.0 hub with its own 1
 supply**, which regulates down to a **5 V / 3 A (15 W) main rail**. Nothing is drawn from the
 Mac's port for power.
 
+> ### ⚠️ Three wiring details that protect parts (get these right)
+> 1. **IMU on 3.3 V, never 5 V.** Power the MPU-6050 from the XIAO **3V3** pin. Many GY-521
+>    boards pull SDA/SCL up to VCC, so 5 V would drive the I²C lines to 5 V and **over-volt the
+>    XIAO's 3.3 V GPIO (abs-max ~3.6 V).**
+> 2. **Rail-monitor ADC needs a 2:1 divider.** The XIAO ADC maxes at 3.3 V — feed the 5 V rail
+>    through **two equal ~10 kΩ resistors** (5 V → 2.5 V), never straight in. (Resistors are in
+>    the kit.)
+> 3. **IR 5 V + the divider tap the RAIL, not the XIAO's 5 V pin** — keeps the pulsed strobe
+>    current off the MCU's power path.
+>
+> All three are buildable with parts already in the BOM — no extra components.
+
 ```
   AC mains
    └─ 12 V DC brick (the industrial hub's own PSU)
@@ -62,23 +75,27 @@ Mac's port for power.
        ┌──────────┴───────────┐                          ┌────────────────┴───────────────┐
        │ CAMERAS + hub logic  │                          │ 300 mA PTC POLYFUSE             │
        │ (6× UVC, bus-powered │                          │   └─► IR branch (on carrier):   │
-       │  5 V on their own    │                          │        IR LED rings (940 nm)    │
-       │  USB cables)         │                          │        switched by a 2N7002     │
+       │  5 V on their own    │                          │     IR LED brackets 2×/eye 940nm│
+       │  USB cables)         │                          │        switched by a 2N7000     │
        └──────────────────────┘                          │        MOSFET (MCU strobe)      │
                                                           └────────────────────────────────┘
 ```
 
 - **12 V → hub → 5 V/3 A rail.** The hub's internal regulator is the 5 V/3 A (15 W) source.
   At MJPEG / modest resolution (~0.25-0.35 A per UVC camera) the 6 cameras draw ~1.5-2.1 A,
-  leaving headroom for the low-current IR (~0.12 A) + IMU branch. ⚠️ **Verify your cameras'
-  actual draw**, at full resolution 6 cams can approach the 3 A limit; if so, raise the rail
-  budget (a higher-current industrial hub) or run lower resolution.
+  leaving headroom for the low-current IR (**~0.05 A: 4 LEDs × ~12 mA**) + IMU branch. ⚠️
+  **Verify your cameras' actual draw**, at full resolution 6 cams can approach the 3 A limit;
+  if so, raise the rail budget (a higher-current industrial hub) or run lower resolution.
+  (The SABRENT 60 W / 12 V-5 A hub supplies ~5 A at 5 V — comfortable margin over 3 A.)
 - **The rail SPLITS two ways:**
   1. **Cameras + hub controller**: the six cameras are USB **bus-powered**, taking clean 5 V
      from the hub's own ports. No separate camera PSU.
-  2. **300 mA PTC polyfuse → IR-ring branch**: the IR branch taps the 5 V rail
+  2. **300 mA PTC polyfuse → IR-bracket branch**: the IR branch taps the 5 V rail
      through a **resettable 300 mA polyfuse** so any IR-side short or overcurrent trips the
      branch open (and self-resets after power-down) without taking down the cameras.
+     ⚠️ **Tap this 5 V from the rail (a hub-port 5 V), NOT through the XIAO's 5 V/VBUS pin** —
+     so the pulsed strobe current stays off the MCU's power path. The XIAO only supplies the
+     *gate signal* and reads the rail (below).
 - **Decoupling caps:** a **10 V 470 µF electrolytic** (bulk) **+ a 0.1 µF ceramic** (HF) sit
   across the 5 V rail at the carrier. The bulk cap absorbs the IR strobe's pulsed current and
   camera inrush so the rail doesn't sag/ring; the ceramic kills high-frequency switching
@@ -115,16 +132,18 @@ with the host connected and the rail in spec. Logic lives in `firmware/ir_strobe
 
 1. **Strobe in sync with the shutter.** The MCU pulses the IR only during each camera's
    exposure window (a few hundred µs), not continuously. Average IR power = peak × duty cycle
-   (≪ 1), so dose and heat are a fraction of continuous-on. The 2N7002 gate is driven only
+   (≪ 1), so dose and heat are a fraction of continuous-on. The 2N7000 gate is driven only
    inside that window.
 2. **USB drop instantly kills IR.** The MCU requires a periodic host heartbeat over USB; if
-   the USB/serial link drops (unplug, host sleep, app crash), a **watchdog forces the 2N7002
+   the USB/serial link drops (unplug, host sleep, app crash), a **watchdog forces the 2N7000
    gate low within one frame** → IR off. (And because the LEDs are powered from the hub's 5 V
    rail, pulling USB/host power also de-energises them outright.)
 3. **Voltage safeguard.** The MCU watches the 5 V rail on an ADC; if it leaves a safe window
-   (≈ 4.5-5.5 V, brownout, regulator fault, wrong PSU) it disables the strobe. A **TVS diode
-   / clamp** across the rail handles fast transients; the polyfuse handles sustained
-   overcurrent.
+   (≈ 4.5-5.5 V, brownout, regulator fault, wrong PSU) it disables the strobe. ⚠️ **The XIAO
+   ADC maxes at 3.3 V, so the 5 V rail MUST feed it through a 2:1 resistor divider** (two equal
+   ~10 kΩ from the resistor kit; 5 V → 2.5 V, so firmware scales the reading ×2). **Never feed
+   5 V straight into the ADC pin — it will damage it.** A **TVS diode / clamp** (SMAJ5.0A)
+   across the rail handles fast transients; the polyfuse handles sustained overcurrent.
 4. **Polyfuse overcurrent protection.** The **300 mA PTC** in series with the IR branch trips
    open on any IR-side short/overcurrent and self-resets after power-down, overcurrent can
    never drive the LEDs (or the wiring) to a dangerous level.
@@ -148,9 +167,9 @@ with the host connected and the rail in spec. Logic lives in `firmware/ir_strobe
 | World cam L / R | USB | hub | bus 5 V | visible, wide FOV, shared by both eyes |
 | Eye-corner cam L / R | USB | hub | bus 5 V | OV9281 mono global shutter, NoIR |
 | NIR pupil cam L / R | USB | hub | bus 5 V | OV9281 mono + IR-pass filter (one per eye) |
-| IMU 9-axis (ICM-20948) | I2C (SDA/SCL/3V3/GND) | strobe MCU (Mac path) | ~5 mA, 3V3 | rigid on the carrier's midline tower; tilt/gyro for slip + the Kalman drift filter (`imu.py`) |
-| IR LED rings (both eyes) | twisted pair | 5 V rail **via 300 mA polyfuse**, low-side **2N7002** | ~5-15 mA/LED, resistor per LED | 940 nm; strobed; **isolated return / star ground** |
-| Strobe MCU (Seeed XIAO) | USB | Mac | bus | strobes IR (2N7002), bridges IMU I2C→USB, runs the safety watchdog |
+| IMU 6-axis (MPU-6050; ICM-20948 OK) | I2C (SDA/SCL/**3V3**/GND) | strobe MCU (Mac path) | ~5 mA, **3.3 V — NOT 5 V** | ⚠️ power from the XIAO **3V3** pin: many GY-521 boards pull SDA/SCL up to VCC, so 5 V would push the I²C lines to 5 V and **over-volt the XIAO's 3.3 V GPIO**. Rigid on the midline tower; accel+gyro for slip + Kalman drift (`imu.py`) |
+| IR LED brackets (2 LEDs/eye = 4) | twisted pair | 5 V rail **via 300 mA polyfuse**, low-side **2N7000** | ~8-12 mA/LED (330-470 Ω each), ~48 mA total | 940 nm; strobed; per-LED resistor; 5 V tapped from the **rail, not the XIAO**; **isolated return / star ground** |
+| Strobe MCU (Seeed XIAO) | USB | Mac | bus | strobes IR (2N7000), bridges IMU I2C→USB, runs the safety watchdog |
 | **10 kΩ gate pull-down** | XIAO strobe GPIO → GND | at the MOSFET gate |, | GPIOs FLOAT during MCU boot/reset; the pull-down holds the gate OFF until firmware takes over (the LEDs would only reach the resistor-limited safe current anyway, Rule 7, but a floating gate must not flash them at all) |
 | Industrial USB 3.0 hub | USB-C/A + 12 V brick | Mac + AC | 12 V → 5 V/3 A | the 5 V/3 A (15 W) main rail; self-powered |
 | Decoupling |, | across 5 V rail |, | 10 V 470 µF electrolytic + 0.1 µF ceramic |
@@ -161,17 +180,19 @@ with the host connected and the rail in spec. Logic lives in `firmware/ir_strobe
 
 | XIAO pin | Connects to | Wire | Function |
 |---|---|---|---|
-| **D0** (GPIO26) | 100 Ω series → 2N7002 **gate**; **10 kΩ pull-down** gate→GND at the FET | 30 AWG | IR strobe control (LOW = off; floats-at-boot held off by the pull-down) |
-| **D4** (GPIO6, SDA) | ICM-20948 **SDA** | 30 AWG (twisted with SCL) | IMU I²C data |
-| **D5** (GPIO7, SCL) | ICM-20948 **SCL** | 30 AWG | IMU I²C clock |
-| **3V3** | ICM-20948 **VDD** | 30 AWG | IMU power (~5 mA) |
-| **GND** | ICM-20948 GND + 2N7002 **source** + IR-branch return (star point) | 30 AWG | common ground, ONE star point at the perfboard |
+| **D0** (GPIO26) | 100 Ω series → 2N7000 **gate**; **10 kΩ pull-down** gate→GND at the FET | 30 AWG | IR strobe control (LOW = off; floats-at-boot held off by the pull-down) |
+| **D4** (GPIO6, SDA) | MPU-6050 **SDA** | 30 AWG (twisted with SCL) | IMU I²C data |
+| **D5** (GPIO7, SCL) | MPU-6050 **SCL** | 30 AWG | IMU I²C clock |
+| **3V3** | MPU-6050 **VDD** (⚠️ **3.3 V, NOT the 5 V pin** — keeps its I²C at 3.3 V) | 30 AWG | IMU power (~5 mA) |
+| **A1** (GPIO27, ADC) | **2:1 divider midpoint** (5 V rail → 10 kΩ → A1 → 10 kΩ → GND) | 30 AWG | rail monitor; reads ~2.5 V at 5 V, firmware ×2. ⚠️ never wire 5 V straight to A1 |
+| **GND** | MPU-6050 GND + 2N7000 **source** + IR-branch return + divider bottom (star point) | 30 AWG | common ground, ONE star point at the perfboard |
 | **USB-C** | Mac (direct or dock, NOT through the camera hub) | stock | power + serial (IMU stream out, strobe/watchdog control in) |
 
-2N7002: **drain** → IR LED cathode rail; LED anodes → per-LED 330-470 Ω → 5 V **via the
-300 mA polyfuse** off the hub rail. 470 µF + 0.1 µF across 5 V/GND at the perfboard; TVS
-clamp across the same. Firmware contract: gate LOW at boot, RP2040 **hardware watchdog**
-armed before the first strobe, any host silence > 500 ms ⇒ gate LOW + watchdog reset.
+2N7000: **drain** → IR LED cathode rail; LED anodes → per-LED 330-470 Ω → 5 V **via the
+300 mA polyfuse** off the hub rail (~48 mA total, 4 LEDs). 470 µF + 0.1 µF + SMAJ5.0A TVS
+across 5 V/GND at the perfboard. **The IR 5 V and the ADC divider both tap the RAIL, not the
+XIAO's 5 V pin.** Firmware contract: gate LOW at boot, RP2040 **hardware watchdog** armed
+before the first strobe, any host silence > 500 ms ⇒ gate LOW + watchdog reset.
 
 ## Cable routing on the glasses (comfort + strain relief + EM)
 
