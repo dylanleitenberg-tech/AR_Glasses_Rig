@@ -36,10 +36,24 @@ def _need_cv2():
 
 
 def _open(cv2, index):
-    """Open a camera index with the Mac-friendly backend, falling back to the default."""
+    """Open a camera index with the Mac-friendly backend, falling back to the default.
+    Forces MJPG + a high fps request: without MJPG the global-shutter UVC cams fall back to
+    uncompressed YUYV, which caps ~15 fps at 1280x800 — MJPG is compressed and unlocks full rate
+    (this is what sync_capture.py does for the real pipeline)."""
     for backend in (getattr(cv2, "CAP_AVFOUNDATION", 0), cv2.CAP_ANY):
         cap = cv2.VideoCapture(index, backend)
         if cap.isOpened():
+            try:
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))  # <- unlocks full fps
+            except Exception:
+                pass
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)
+            cap.set(cv2.CAP_PROP_FPS, 120)
+            try:
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)     # freshest frame, lowest latency
+            except Exception:
+                pass
             ok, _ = cap.read()
             if ok:
                 return cap
