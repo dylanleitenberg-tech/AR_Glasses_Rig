@@ -36,23 +36,31 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   order (to Hawaii) is fully vetted (see `ORDER_LIST.md` + the memory). Returning the current
 >   XREAL, ordering a new one to Hawaii. Building in Hawaii; final print in **ASA/PETG at home**.
 >
-> **>>> IMMEDIATE NEXT STEP: rerun the sim so every output MATCHES the current specs. <<<**
-> The eye-cam **re-aim** (`EC_AIM_DOWN=6` / `EC_AIM_OUT=3`, applied in BOTH `rig.py` and the CAD)
-> plus the electrical/diagram updates are the latest changes. Some `data/` artifacts were built
-> on the PRE-re-aim geometry, so bring the whole sim into line with the current `rig.py`:
-> ```
-> cd software && source .venv/bin/activate
-> python3 verify_all.py --fast     # CAD<->rig parity (0.0003mm) + every selftest must PASS
-> python3 accuracy_map.py          # per-position accuracy; was 1.88 px median post-re-aim
-> ```
-> Then **regenerate the geometry-dependent trained artifacts** on the current geometry so the
-> data matches the specs (see each script's header for exact flags):
-> `pixel_map.py` → `data/pixel_map.npz`; `calibrate.py` → `data/calibration_db.npz`;
-> `autotrain.py`/`megarun.py` → the warm-start prior (`meta.db` / `mega_*.npz`, research-scale).
-> Confirm parity stays 0.0003 mm and accuracy stays ~1.9 px median (the re-aim is
-> accuracy-neutral — the canthus is still the tracked landmark, just re-centred); **report the
-> deltas vs those numbers.** Then the build proceeds once parts arrive (PLA test print of the
-> re-aimed carrier → verify eye-cam framing + glasses clearance on-head → ASA/PETG final).
+> **>>> IMMEDIATE NEXT STEP: ASSEMBLY — the parts have ARRIVED (2026-07). <<<**
+> Guide the physical build per `ASSEMBLY.md` + `WIRING.md`, verifying each step and asking for
+> photos. Order:
+> 1. **PLA test print of the re-aimed carrier FIRST.** The eye-cam re-aim (`EC_AIM_DOWN=6` /
+>    `EC_AIM_OUT=3`) is UNVERIFIED on hardware. Mount an eye cam and check on-head that the outer
+>    corner centres AND the cam clears the glasses hinge (it sat tight there — see
+>    `media/session-2026-07/rig_mounted_on_glasses.jpg`). Only then print the **ASA/PETG final**.
+> 2. Prep cameras: NoIR remote test; 940 nm filter on the **2 pupil** cams only; focus + **lock**
+>    each M12 lens.
+> 3. Populate: M2 self-tap boards to holders; bolt the **LED brackets** to the pupil shelves
+>    (2 M2 each); seat the **4 LEDs** in the baffled pockets.
+> 4. Wire the strobe/power circuit — **obey the three part-protecting rules (WIRING.md callout):**
+>    IMU on **3.3 V not 5 V**; rail-monitor ADC via a **2:1 divider**; IR 5 V + divider **tap the
+>    rail, not the XIAO**. 4 LEDs × 330-470 Ω → 300 mA polyfuse → 2N7000 low-side (100 Ω gate +
+>    10 kΩ pull-down); 470 µF + 0.1 µF + SMAJ5.0A across the rail.
+> 5. Bring-up (software): `connect.py --auto && --identify` → `rig_test.py --run` →
+>    `snapshot.py` → `live_rig.py --run`.
+> **⚠️ Safety:** measure corneal-plane IR irradiance with the meter (≪ 1 mW/cm²) BEFORE wearing
+> with LEDs energized; verify the XIAO firmware fail-safe (gate low = IR off when the host app
+> isn't running) before enabling strobe. Multimeter-check continuity + the 5 V rail (4.9-5.1 V)
+> before powering IR.
+>
+> (Optional pre-flight: `verify_all.py --fast` + `accuracy_map.py` to reconfirm the sim matches
+> current specs — was 0.0003 mm parity / ~1.9 px median. Regenerate `data/` artifacts only if
+> you touch the geometry.)
 >
 > **Guardrails (do NOT break):**
 > - `software/rig.py` is the single source of truth for camera geometry; `cad/xreal_one_mount.scad`
