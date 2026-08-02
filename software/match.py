@@ -104,9 +104,10 @@ def fingerprint(sim, subj, prior, poses, dots, repeats, rng, cam):
             np.concatenate(imu_raw), np.concatenate(imu_cmp), np.concatenate(pupil))
 
 
-def train_prior(seed=7, n_faces=250, per=70):
+def train_prior(seed=7, n_faces=250, per=70, landmark=None):
+    landmark = rig.TRACKED_LANDMARK if landmark is None else landmark   # settled default
     """Generic population guesser: features -> registration pixel, fit across many faces."""
-    sim = autosim.Simulator(seed)
+    sim = autosim.Simulator(seed, landmark=landmark)
     X, Y = [], []
     for _ in range(n_faces):
         subj = sim.new_subject(); dev = sim.seat(); got = guard = 0

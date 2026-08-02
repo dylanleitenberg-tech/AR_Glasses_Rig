@@ -76,9 +76,33 @@ EC_FWD = -6.0
 # (bottom-left of frame), risking losing it on a glasses slip. Re-aim DOWN + OUTWARD so the canthus
 # sits nearer frame centre. Mirrored per side. AIM ONLY — EC_X/UP/FWD (position) and
 # nominal_outer_canthus() (the tracked landmark, hence CANTH_SIM parity) are UNCHANGED.
+# RE-AIM REMOVED 2026-07-27 (both were 6.0 / 3.0): the bias was inferred from a mounted photo
+# showing the corner edge-riding, but that framing is explained by the lens being ~45 deg rather
+# than the modelled 90 — a magnification effect, not an aim error. Two independent checks agree
+# the un-biased aim is the better one: the framing sweep puts the canthus at v=0.455 (frame
+# centre) un-biased vs 0.350 biased, with edge margin 0.442 vs 0.350 and 0.0% vs 0.7% falling off
+# the real 16:10 top edge; and accuracy_map is neutral either way (1.88 vs 1.90 px median).
 EC_AIM_DOWN = 6.0   # mm the aim point drops (rig +y is up) -> ~11 deg downward tilt
 EC_AIM_OUT  = 3.0   # mm the aim point moves outward (toward the temple), mirrored per side
-EYE_FOV = 90.0
+# MEASURED ON HARDWARE (2026-08-01): the eye-cam modules wear a ~45 deg M12 lens, NOT the 90 deg
+# one this model assumed. Confirmed by direct FOV measurement and corroborated by the mounted
+# images (the eye fills far more of the frame than a 90 deg lens would give). Consequence, with
+# the AS-PRINTED aim (outer canthus + EC_AIM_DOWN/OUT) against the real 16:10 sensor crop:
+#     outer canthus  41.9% in-frame  -> NOT TRACKABLE
+#     inner canthus 100.0% in-frame  (median u 0.838, v 0.414)
+# So the tracked landmark is the INNER canthus (autosim.Simulator(landmark="inner")), while the
+# camera AIM stays "outer" because that is what is physically printed and cannot be changed —
+# aim and tracked landmark are deliberately independent. The carrier is final (no printer
+# access), so remaining framing margin comes from the brow-clamp slop, not from geometry.
+EYE_FOV = 45.0
+
+# THE TRACKED LANDMARK — settled 2026-08-01, do not re-litigate per session.
+# The camera AIM is "outer" because that is what is physically printed (and the carrier is final:
+# ASA/PETG done, no printer access). The TRACKED point is "inner" because at the real 45 deg lens
+# the outer canthus is only 41.9% in-frame while the inner is 100%. Aim and tracked landmark are
+# independent by design. Defaulted here so every consumer (autosim.Simulator, preset.build_preset,
+# match.train_prior) inherits it from ONE place instead of each carrying its own default.
+TRACKED_LANDMARK = "inner"
 EYE_K1 = -0.10            # wide eye-corner lenses distort more
 EYE_RES = 640
 # ---- eye2: STEREO eye-corner pair = the 8-cam "FULL" FUTURE UPGRADE (NOT part of the 6-cam CORE) --
@@ -199,6 +223,27 @@ def nominal_outer_canthus():
     return (R0 @ face.T).T + T0
 
 
+def nominal_inner_canthus():
+    """Population-mean INNER (medial) canthus in the rig frame.
+
+    Alternative tracked landmark (see `landmark=` on build()/Simulator). Canthal tilt is
+    defined as the OUTER canthus rising relative to the inner one, so the inner canthus
+    carries no rise — it sits at eye level, ICD apart, at the same canthus depth.
+    """
+    face = np.array([[-anatomy.ICD_MEAN/2, 0.0, anatomy.CANTHUS_FWD_MEAN],
+                     [+anatomy.ICD_MEAN/2, 0.0, anatomy.CANTHUS_FWD_MEAN]])
+    return (R0 @ face.T).T + T0
+
+
+def nominal_canthus(landmark="outer"):
+    """The tracked landmark's population-mean position: 'outer' (default) or 'inner'."""
+    if landmark == "outer":
+        return nominal_outer_canthus()
+    if landmark == "inner":
+        return nominal_inner_canthus()
+    raise ValueError("landmark must be 'outer' or 'inner', got %r" % (landmark,))
+
+
 def build_pupil_camera():
     """NIR camera imaging the right eye's entrance pupil (rig frame)."""
     eye_rest = OPTIC_R + T0                      # nominal CoR of the right eye
@@ -213,9 +258,9 @@ def build_pupil_camera_left():
                          PUPIL_FOV, PUPIL_K1, 0, PUPIL_RES)
 
 
-def build_eye2_cameras():
+def build_eye2_cameras(landmark="outer"):
     """Second eye-corner camera pair (stereo with rig['eye']) for canthus-depth triangulation."""
-    canth = nominal_outer_canthus()
+    canth = nominal_canthus(landmark)
     return [
         PinholeCamera([-EC2_X, EC2_UP, EC2_FWD],
                       look_at([-EC2_X, EC2_UP, EC2_FWD], canth[0]), EYE2_FOV, EYE2_K1, 0, EYE2_RES),
@@ -224,11 +269,17 @@ def build_eye2_cameras():
     ]
 
 
-def build():
+def build(landmark="outer"):
     """Build the rig (6-cam BINOCULAR CORE): display optic + 2 world + 2 eye-corner + 2 NIR pupil
     (pupil = right/display eye, pupil_l = left eye mirror). 'eye2' is the 8-cam FULL upgrade pair
-    (stereo eye-corner), returned for use_stereo builds but not part of the 6-cam CORE."""
-    canth = nominal_outer_canthus()
+    (stereo eye-corner), returned for use_stereo builds but not part of the 6-cam CORE.
+
+    `landmark` selects which canthus the eye-corner cams AIM at (and, paired with
+    Simulator(landmark=), which one they track): 'outer' is the built design and the only
+    one CAD parity covers; 'inner' is the medial-canthus variant under evaluation
+    (landmark_test.py). Camera POSITIONS are identical either way — only the aim changes,
+    so this is an aim-only experiment, exactly like EC_AIM_DOWN/OUT."""
+    canth = nominal_canthus(landmark)
     world = [
         PinholeCamera([-WC_X, WC_UP, WC_FWD], np.eye(3), WORLD_FOV, WORLD_K1, 0, WORLD_RES),
         PinholeCamera([+WC_X, WC_UP, WC_FWD], np.eye(3), WORLD_FOV, WORLD_K1, 0, WORLD_RES),
@@ -244,7 +295,8 @@ def build():
     # fov_deg is the HORIZONTAL FOV. XREAL One Pro is specced at 57 deg DIAGONAL, which on a
     # 16:9 1080p panel is ~50.6 deg horizontal -> 50 here matches the One Pro (NOT a mismatch).
     display = DisplayOptics(fov_deg=50.0, k1=0.06, virtual_dist=VIRTUAL_DIST)
-    return {"display": display, "world": world, "eye": eye, "eye2": build_eye2_cameras(),
+    return {"display": display, "world": world, "eye": eye,
+            "eye2": build_eye2_cameras(landmark),
             "pupil": build_pupil_camera(), "pupil_l": build_pupil_camera_left(),
             "display_eye": DISPLAY_EYE, "optic": OPTIC_R, "optic_l": OPTIC_L}
 

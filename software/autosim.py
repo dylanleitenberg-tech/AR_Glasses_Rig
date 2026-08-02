@@ -27,11 +27,23 @@ import optics
 
 
 class Simulator:
-    def __init__(self, seed=0, use_pupil=False, use_stereo=False):
+    def __init__(self, seed=0, use_pupil=False, use_stereo=False, landmark=None):
+        # landmark=None -> rig.TRACKED_LANDMARK (the settled project default), so the choice
+        # lives in ONE place. Pass it explicitly only to A/B the alternative.
+        landmark = rig.TRACKED_LANDMARK if landmark is None else landmark
         self.rng = np.random.default_rng(seed)
         self.use_pupil = use_pupil          # append the NIR pupil-centre feature
         self.use_stereo = use_stereo        # append the 2nd eye-corner (stereo) features
-        self.rig = rig.build()
+        # which canthus the eye-corner cams aim at AND track: "outer" (the built design) or
+        # "inner" (the medial-canthus variant — see landmark_test.py). Feature ORDER and count
+        # are unchanged; only which facial point those 4 numbers report.
+        self.landmark = landmark
+        # Per-capture soft-tissue motion of the tracked landmark. None => rig.SOFT_TISSUE_SD
+        # for BOTH landmarks: there is no measured basis in this project for the medial
+        # canthus being steadier than the lateral one, so the default A/B compares pure
+        # geometry. The sensitivity sweep sets this explicitly instead of assuming a value.
+        self.soft_tissue_override = None
+        self.rig = rig.build(landmark)
         self._apply_unit_tolerance()       # fixed per-device errors (same every session)
 
     def _apply_unit_tolerance(self):
@@ -62,6 +74,16 @@ class Simulator:
         d2 = np.random.default_rng(rig.DEVICE_SEED + 1)
         for cam in self.rig["eye2"]:
             perturb(cam, d2)
+
+    # ---- tracked landmark -------------------------------------------------
+    def _canthus(self, subject):
+        """(2,3) face-frame position of the landmark the eye-corner cams track."""
+        return subject.outer_canthus if self.landmark == "outer" else subject.inner_canthus
+
+    def soft_tissue_sd(self):
+        """Per-capture soft-tissue motion of the tracked landmark (mm)."""
+        return rig.SOFT_TISSUE_SD if self.soft_tissue_override is None \
+            else self.soft_tissue_override
 
     # ---- subjects & poses ------------------------------------------------
     def new_subject(self):
@@ -117,8 +139,8 @@ class Simulator:
         dev[3:] += self.rng.normal(0, rig.HEAD_MOTION_TRANS_SD, 3)
         R, t = rig.pose_R_t(dev)
         cor = (R @ subject.cor.T).T + t
-        st = self.rng.normal(0, rig.SOFT_TISSUE_SD, (2, 3))   # soft-tissue canthus motion
-        outer = (R @ (subject.outer_canthus + st).T).T + t
+        st = self.rng.normal(0, self.soft_tissue_sd(), (2, 3))   # soft-tissue canthus motion
+        outer = (R @ (self._canthus(subject) + st).T).T + t
 
         wL = self.rig["world"][0].project(P)
         wR = self.rig["world"][1].project(P)
@@ -187,7 +209,7 @@ class Simulator:
         (no blink/head-motion/jitter/pupil-size/tracker noise), so it is repeatable."""
         R, t = rig.pose_R_t(dev)
         cor = (R @ subject.cor.T).T + t
-        outer = (R @ subject.outer_canthus.T).T + t
+        outer = (R @ self._canthus(subject).T).T + t
         wL = self.rig["world"][0].project(P)
         wR = self.rig["world"][1].project(P)
         cL = self.rig["eye"][0].project(outer[0])

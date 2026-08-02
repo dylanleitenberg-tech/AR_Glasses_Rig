@@ -64,6 +64,17 @@ class LiveRig:
         self.mesh = WorldMesh()
         self.tele = RigTelemetry()
         self.world_tracker = None            # set to a world_mesh.WorldTracker on hardware
+        self._mesh_stride = 1                # perf.QualityController may raise this under load
+
+    def apply_quality(self, settings):
+        """Push a perf.QualityController level onto the trackers that cost time.
+
+        Only the ORB budget is a live knob here; mesh_stride is honoured by the caller (it
+        decides whether to run the mesh stage at all this frame), and render_scale belongs to
+        the overlay compositor in augment_rig."""
+        if self.world_tracker is not None:
+            self.world_tracker.set_max_features(settings["orb_feat"])
+        self._mesh_stride = max(1, int(settings.get("mesh_stride", 1)))
 
     def step(self, frames, jitter_ms=0.0, imu_dR=None, world_corr=None):
         """Process one synchronized set.
@@ -87,7 +98,8 @@ class LiveRig:
             ids, cam3d = world_corr
             info = self.mesh.ingest(ids, cam3d, imu_dR=imu_dR)
         elif self.world_tracker is not None and frames.get("worldL") is not None \
-                and frames.get("worldR") is not None:
+                and frames.get("worldR") is not None \
+                and (t.frames % self._mesh_stride == 0):     # stride: skip the heavy stage under load
             info = self.world_tracker.track(frames["worldL"], frames["worldR"], imu_dR)
             self.mesh = self.world_tracker.mesh
         if info is not None:
@@ -106,7 +118,8 @@ class LiveRig:
 # --------------------------------------------------------------------------
 #  Hardware run
 # --------------------------------------------------------------------------
-def run(fps=100, budget_ms=3.0, seconds=None, use_imu=False, verbose=True):
+def run(fps=100, budget_ms=3.0, seconds=None, use_imu=False, target_fps=30.0,
+        cpu_budget=0.50, verbose=True):
     """Open the mapped bank + all trackers and run the live loop until Ctrl-C (or `seconds`)."""
     from connect import load_map, validate_map
     from sync_capture import SyncBank
@@ -134,19 +147,31 @@ def run(fps=100, budget_ms=3.0, seconds=None, use_imu=False, verbose=True):
         except Exception as e:
             print("IMU unavailable (%s) — running vision-only" % e)
 
+    # Frame budget: cameras + mesh together must fit the deadline, and must not do it by
+    # burning every core. LoadManager degrades ORB/mesh-stride until both hold.
+    from perf import LoadManager
+    load = LoadManager(target_fps=target_fps, cpu_budget=cpu_budget)
+    rig.apply_quality(load.quality.settings)
+
     t_end = None if seconds is None else time.monotonic() + seconds
     try:
         while t_end is None or time.monotonic() < t_end:
-            fs = bank.sync_frame()
-            imu_dR = imu.consume_rotation() if imu is not None else None
-            tele = rig.step(fs.frames, jitter_ms=fs.jitter_ms, imu_dR=imu_dR)
+            with load.stage("sync"):
+                fs = bank.sync_frame()
+            with load.stage("imu"):
+                imu_dR = imu.consume_rotation() if imu is not None else None
+            with load.stage("track"):
+                tele = rig.step(fs.frames, jitter_ms=fs.jitter_ms, imu_dR=imu_dR)
+            frame_ms, settings = load.end_frame()
+            rig.apply_quality(settings)
             if verbose and tele.frames % 15 == 0:
-                print("  " + tele.line())
+                print("  %s  %.1f ms %s" % (tele.line(), frame_ms, load.quality.name))
     except KeyboardInterrupt:
         pass
     finally:
         bank.close()
     print("stopped after %d frames (%.1f fps avg)" % (rig.tele.frames, rig.tele.fps))
+    print("\n".join(load.lines()))
     return 0
 
 
@@ -233,7 +258,12 @@ if __name__ == "__main__":
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--seconds", type=float, default=None)
     ap.add_argument("--imu", action="store_true", help="fuse the XIAO IMU gyro")
+    ap.add_argument("--target-fps", type=float, default=30.0,
+                    help="frame budget the adaptive quality controller holds")
+    ap.add_argument("--cpu-budget", type=float, default=0.50,
+                    help="max fraction of the whole machine's CPU")
     args = ap.parse_args()
     if args.run:
-        sys.exit(run(seconds=args.seconds, use_imu=args.imu))
+        sys.exit(run(seconds=args.seconds, use_imu=args.imu,
+                     target_fps=args.target_fps, cpu_budget=args.cpu_budget))
     sys.exit(selftest())

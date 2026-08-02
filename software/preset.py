@@ -18,6 +18,7 @@ import numpy as np
 
 import anatomy
 import autosim
+import rig
 from config import Config
 from calibrator import Calibrator
 from main import new_calibrator
@@ -39,7 +40,8 @@ def descriptor_to_subject(d):
     return s
 
 
-def build_preset(theta, n_sweep=2000, degree=3, seed=1, use_pupil=False):
+def build_preset(theta, n_sweep=2000, degree=3, seed=1, use_pupil=False, landmark=None):
+    landmark = rig.TRACKED_LANDMARK if landmark is None else landmark   # settled default
     """Sweep the identified geometry over the full pose range -> a calibrator (the preset).
 
     Two things make this a high-fidelity preset:
@@ -49,7 +51,7 @@ def build_preset(theta, n_sweep=2000, degree=3, seed=1, use_pupil=False):
         features drops the true-geometry floor from ~2.7 px to ~0.75 px (see kappa_live.py /
         the sub-2px study). The per-USER live calibrator stays degree-2 (a handful of noisy
         samples); this fidelity is only for the dense synthetic sweep."""
-    sim = autosim.Simulator(seed, use_pupil=use_pupil)   # same device extrinsics as the captures
+    sim = autosim.Simulator(seed, use_pupil=use_pupil, landmark=landmark)  # same device extrinsics
     subj = descriptor_to_subject(theta)
     X, Y = [], []
     dev = sim.seat()

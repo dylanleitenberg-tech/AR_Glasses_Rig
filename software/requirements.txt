@@ -4,3 +4,9 @@ opencv-python>=4.8      # world + eye cameras, dot detection, overlay window
 pygame>=2.5            # joystick / gamepad input (keyboard fallback if absent)
 # The learning core (calibrator.py, dataset.py, synth.py) needs only numpy + stdlib,
 # so `python3 main.py --selftest` runs without opencv/pygame or any hardware.
+
+# --- optional ---
+# open3d>=0.19          # world_memory.py: TSDF fusion + BVH raycasting (MIT licence).
+#                       # Without it world_memory falls back to an unfused numpy grid mesh —
+#                       # same memory semantics, noisier surface, O(faces) raycasting. Both
+#                       # paths are covered by `python3 world_memory.py --selftest`.

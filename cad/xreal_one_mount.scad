@@ -117,6 +117,9 @@ COR_SIM   = [disp_ipd/2, 0, -28.5];  // right eye nominal CoR (pupil-cam aim; = 
 // EYE-CORNER cam AIM BIAS (2026-07-26): mounted eye cam framed the outer corner low+inboard, so
 // re-aim DOWN + OUTWARD to centre the canthus. Mirrored via `side`. AIM ONLY — EYE_SIM position +
 // CANTH_SIM (parity) unchanged. Matches rig.py EC_AIM_DOWN/EC_AIM_OUT. Tune if it over/undershoots.
+// RE-AIM REMOVED 2026-07-27 (both were 6 / 3) — mirrors rig.py; see the rationale there. The
+// mounted photo's edge-riding is a ~45 deg LENS (magnification) effect, not an aim error, and
+// the un-biased aim frames the canthus closer to centre with more slip margin.
 EC_AIM_DOWN = 6;                     // sim +y is up -> lower the aim point = tilt cam down (~11 deg)
 EC_AIM_OUT  = 3;                     // move the aim point outward (toward the temple), per side
 
@@ -150,6 +153,35 @@ plate_t = 2.6;  standoff_h = 4;  m2_d = 2.5;  m2_boss = 5.5;  boom_w = 9;   // b
 // vertical hole shrinks/bridges shut in FDM). 2.3 prints open ~2.0 so an M2 self-tapping screw
 // threads straight in and bites the walls; boss widened 5 -> 5.5 to keep a ~1.5 mm wall.
 cf_rod_d = 1.5;        // glued-in carbon rod through each boom leg (0 = none) — stiffness
+// ---------- PRINT MANUFACTURABILITY (2026-07-27) ---------------------------------
+// Added to make the carrier printable with FEWER SUPPORTS, printed resting on the FRONT
+// (world) boom. These ONLY ADD material — no camera position, aim, angle, board size or
+// mount pitch changes, so CAD<->rig parity is untouched (verified by verify_all).
+//   front_boom_out : the front boom grows in +y ONLY (outward, away from the face) into a
+//                    flat-faced slab -> a broad first-layer footprint to print on. The round
+//                    profile is unchanged in x and z; nothing grows toward the face.
+//   boss_flare     : a cone gusset where a boom's boss meets its holder plate — increases the
+//                    fused contact area at the joint that carries the camera, and being a
+//                    <=45 deg widening it is self-supporting.
+//   solid_rail     : the brow bar is FILLED — the wire groove and the 4 tabs that bridged it are
+//                    gone, so the rail prints as one solid bar (the tabs were the only true
+//                    bridges on it) and gets stiffer. The zip-tie through-slots are KEPT: with no
+//                    internal channel they become the anchor points for routing the 6 USB cables
+//                    along the OUTSIDE of the rail. External dimensions are unchanged.
+solid_rail     = true;  // fill the brow bar's wire groove (false = the old channelled rail)
+//   ir_boom_out    : the IR (NIR pupil) boom's MAST — the long x=0 column down the nose-bridge
+//                    corridor, y=18.83, z +10.5..-77.5 — grows in +y ONLY into a flat face, out
+//                    to y=31.05 so it lands COPLANAR with the pupil plates' outward faces. That
+//                    turns an 88 mm spine + the two plates into the print's flat bottom.
+//                    Clearance: the two see-through cones do not close on x=0 until y=44.6, so
+//                    stopping at 31.05 keeps 13.5 mm of margin. Applied to the DROP leg only —
+//                    the riser/out legs sit back at y=2.5 by the rail and must not grow forward.
+//                    NOTE: this was first wired (wrongly) to the WORLD boom, which sits BEHIND
+//                    its own plate (face y 4.6..7.2); growing it +y drove the slab to y=10, into
+//                    the board keep-out (7.2..12.8). The world boom cannot thicken outward at all.
+ir_boom_out    = 7.72;  // mm the IR boom's mast extends outward -> flat, coplanar with the plates
+boss_flare     = 6.0;   // mm radial flare of the boom-to-plate gusset — fills the gap between the
+boss_flare_h   = 6.0;   // plate and the boom (d 11 -> 23 at the plate); 45 deg = self-supporting
 // L-ROUTED booms (2026-07-02): the old straight diagonals cut through the brow
 // clamps, the glasses brow, and each other. Each boom now rises from the rail top, runs OUT
 // horizontally at BOOM_ELEV (above the brow, clamps, hinge bump, IMU and wire channel), then
@@ -251,6 +283,17 @@ module curved_visor(R, arc, th, h, r) {
         rotate_extrude(angle = arc, $fn = 160) translate([R, 0]) rrect(th, h, r);
 }
 module capsule(p0, p1, d) { hull() { translate(p0) sphere(d/2); translate(p1) sphere(d/2); } }
+// OUTWARD SLAB (2026-07-27): a flat-faced rib grown on the +y (away-from-face) side of a boom
+// leg, from the leg axis out to d/2 + t. Overlaps the round capsule so the two fuse; the leg's
+// x and z envelope is unchanged (the slab is exactly d wide and d tall), so the boom only ever
+// gets thicker OUTWARD. Gives the front boom a broad flat face to print on.
+module out_slab(p0, p1, d, t) {
+    dep = d/2 + t;                                   // spans y = 0 .. d/2+t about the leg axis
+    hull() {
+        translate([p0[0], p0[1] + dep/2, p0[2]]) rbox(d, dep, d, 1.0);
+        translate([p1[0], p1[1] + dep/2, p1[2]]) rbox(d, dep, d, 1.0);
+    }
+}
 module aim_z_at(from, to) {                 // aim children's +z from `from` toward `to`
     v = [to[0]-from[0], to[1]-from[1], to[2]-from[2]]; L = norm(v);
     rotate([-asin(v[1]/L), atan2(v[0], v[2]), 0]) children();
@@ -306,6 +349,12 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = 
             translate([0, 0, zt]) rbox(bp, bp, 2.6, 1.2);                     // thin backing plate
             for (sx=[-1,1]) for (sy=[-1,1])                                    // 4 standoffs: plate -> PCB back
                 translate([sx*pitch/2, sy*pitch/2, zt]) cylinder(d = m2_boss, h = standoff_h + 1.3);
+            // GUSSET (2026-07-27): flare the boss where it lands on the plate's back face, so the
+            // boom-to-plate joint fuses over a much larger area (d 11 -> 17 at the plate). A cone
+            // widening as it rises is <=45 deg, so it needs no support and it prints cleanly.
+            if (boss_flare > 0)
+                translate([boss_off[0], boss_off[1], zt - 1.3 - boss_flare_h])
+                    cylinder(d1 = 11, d2 = 11 + 2*boss_flare, h = boss_flare_h);
             translate([boss_off[0], boss_off[1], zt - 1.3 - 2.5 - boss_depth]) // boom-attachment boss;
                 cylinder(d = 11, h = 2.7 + boss_depth);                        //  boss_depth extends it
                                                                                //  BACKWARD so the boom can
@@ -319,12 +368,18 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = 
             if (!(ov_conn && sy > 0 && sx == csx))                            // skip the one the JST slot crowds
                 translate([sx*(pitch/2 - 1), sy*(bp/2 - 3.2), zt])            //  (standoff blocks moving it; 3
                     cube([3.2, 2, 6], center = true);                         //   ties still back up the 4 screws)
+        // Slot depth must clear the BOSS + its FLARE, not just the plate (2026-07-27): the cuts
+        // used to stop at zt-4 while the flare reaches zt-1.3-boss_flare_h, so flare material
+        // survived BEHIND the slot and blocked it. Cut right through everything on the boom side.
+        // (The bosses themselves are never touched: the world slot's inner edge is y=-5.75 vs the
+        //  boss face at -5.5, and the JST slot sits at y 9.5..16 vs the boss max |y| 5.5.)
+        slot_h = 8 + 2*(boss_flare_h + boss_depth);
         if (ov_conn)                                                         // JST port pass-through slot
             translate([CONN_SLOT_CTR[0], CONN_SLOT_CTR[1], zt])              //  (connector + cable exit the back)
-                cube([CONN_SLOT[0], CONN_SLOT[1], 8], center = true);
+                cube([CONN_SLOT[0], CONN_SLOT[1], slot_h], center = true);
         else if (wcable)                                                     // WORLD cable: CENTERED back slot
             translate([0, -9, zt])                                           //  (just below the central boss,
-                cube([CONN_SLOT[0], CONN_SLOT[1], 8], center = true);        //   clear of all 4 screw holes)
+                cube([CONN_SLOT[0], CONN_SLOT[1], slot_h], center = true);   //   clear of all 4 screw holes)
         else
             translate([0, -bp/2, zt]) cube([7, 6, 4], center = true);        // edge cable notch (fallback)
     }
@@ -391,7 +446,8 @@ module pcb_zone(board, u_keep = [-99, 99]) {
 // lowered without moving the camera. `elbow_fill` rounds the boom's corners (the turn-downs).
 module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off = [0, 0],
               zone_u_keep = [-99, 99], foot_wing_len = 0, ov_conn = false, boss_depth = 0,
-              elev = undef, elbow_fill = false, wcable = false, elbow_top = true, led_pad = 0) {
+              elev = undef, elbow_fill = false, wcable = false, elbow_top = true, led_pad = 0,
+              out_thick = 0) {
     ax = unit([target[0]-C[0], target[1]-C[1], target[2]-C[2]]);
     ra = -asin(ax[1]);  rb = atan2(ax[0], ax[2]);    // aim_z_at's rotation angles
     e1 = [cos(rb), 0, -sin(rb)];                     // holder-local +x in world
@@ -415,6 +471,10 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
         capsule(top, p1, boom_w);                                         // OUT leg
         capsule(p1, p2, boom_w);                                          // DOWN leg
         capsule(p2, att, boom_w);                                         // in-jog into the boss
+        // FLAT OUTWARD FACE to print on: the DROP leg only (the long mast that hangs in open
+        // air). The riser/OUT legs sit back at the rail and the in-jog already runs +y into the
+        // boss — growing either of those drives material into a plate or its board keep-out.
+        if (out_thick > 0) out_slab(p1, p2, boom_w, out_thick);
         if (elbow_fill) {                                                 // ROUND the turn-down corners
             if (elbow_top) translate(top) sphere(boom_w/2 + 1);           //  (rail-side elbow — SKIP for
             translate(p1)  sphere(boom_w/2 + 1);                          //   world: its riser is right
@@ -518,7 +578,8 @@ module pupil_cam(side, render = "all") {    // NIR eye-tracking cam — ONE PER 
     // Risers at x=±7 fuse INTO the IMU tower pedestal: pedestal + risers + column = one mast.
     cam_at([side*7, ANCHOR_Y, ANCHOR_Z], C, sim2cad([side*COR_SIM[0], COR_SIM[1], COR_SIM[2]]),
            OV_BOARD, OV_PITCH, drop_x = 0, render = render, att_off = [-13*side, 0], ov_conn = true,
-           elev = BOOM_ELEV - 1, elbow_fill = true, led_pad = side);  // bottom boom LOWERED 1 mm + corners
+           elev = BOOM_ELEV - 1, elbow_fill = true, led_pad = side,   // bottom boom LOWERED 1 mm + corners
+           out_thick = ir_boom_out);                                  // + flat outward face = the print base
                                                                       // filled; + LED-bracket mount shelf
 }
 // =====================================================================
@@ -597,14 +658,16 @@ module ir_leds(side) {                       // 940 nm ring around one eye's ape
 module rail() {
     difference() {
         translate([0, 0, rail_h/2 - 0.5]) rbox(2*rail_half, rail_t, rail_h, 1.5);
-        translate([0, wire_ch_y, rail_h - 0.5]) // groove: full length minus the ends, opens up
-            cube([2*rail_half - 8, wire_ch_w, 2*wire_ch_d], center = true);
-        for (x = wire_slot_xs)                  // zip-tie through-slots (for the fat USB bundle)
+        if (!solid_rail)                        // FILLED by default (2026-07-27) — see solid_rail
+            translate([0, wire_ch_y, rail_h - 0.5]) // groove: full length minus the ends, opens up
+                cube([2*rail_half - 8, wire_ch_w, 2*wire_ch_d], center = true);
+        for (x = wire_slot_xs)                  // zip-tie through-slots (for the fat USB bundle) —
             translate([x, wire_ch_y, rail_h/2 - 0.5]) cube([4, 2, rail_h + 2], center = true);
-    }
-    for (x = wire_tab_xs)                       // retaining tabs bridging the groove — DIP INTO the
-        translate([x, wire_ch_y, rail_h - 0.5])  // rail (2026-07-23): centred on the rail top so the
-            cube([wire_tab_w, wire_ch_w + 3, wire_tab_t + 1.4], center = true);  // tab OVERLAPS the rail
+    }                                           //  KEPT when solid: they anchor the cables OUTSIDE
+    if (!solid_rail)                            // the tabs only exist to retain cables IN the groove
+        for (x = wire_tab_xs)                   // retaining tabs bridging the groove — DIP INTO the
+            translate([x, wire_ch_y, rail_h - 0.5])  // rail (2026-07-23): centred on the rail top so the
+                cube([wire_tab_w, wire_ch_w + 3, wire_tab_t + 1.4], center = true);  // tab OVERLAPS the rail
                                                 //  at its y-ends (was a coincident face that floated off)
 }
 // Removable PADDED brow clamp: a C that drops onto the brow rail; jaw opening = brow + silicone

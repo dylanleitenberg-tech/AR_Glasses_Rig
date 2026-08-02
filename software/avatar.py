@@ -145,20 +145,46 @@ class MonkeyAvatar:
 # --------------------------------------------------------------------------
 #  Compositor: paint DrawItems onto a transparent (black) display canvas.
 # --------------------------------------------------------------------------
-def compose(items, display_w=1920, display_h=1080):
+def compose(items, display_w=1920, display_h=1080, render_scale=1.0):
     """Painter's algorithm (far->near) alpha-composite. Returns a BGR canvas; black = transparent on
-    the see-through AR display, so only the monkeys show and nearer ones occlude farther ones."""
+    the see-through AR display, so only the monkeys show and nearer ones occlude farther ones.
+
+    COST (the reason this is written the way it is): the obvious implementation warps each texture
+    into a FULL display-sized buffer and alpha-blends the WHOLE canvas per item, so a monkey 80 px
+    tall costs exactly as much as one filling the screen — O(items x 1920 x 1080) float ops either
+    way. Two changes keep it real-time:
+
+      * BOUNDING BOX: warp and blend only inside the quad's clipped bbox. Pixel-identical to the
+        full-canvas version (everything outside the quad is transparent by construction), but the
+        cost now scales with the monkey's actual screen area.
+      * RENDER_SCALE: compose at a fraction of display resolution and upscale once at the end.
+        Cost scales with the SQUARE of the factor, so 0.5 is ~4x cheaper. Driven by
+        perf.QualityController when the loop is missing its deadline.
+    """
     import cv2
-    canvas = np.zeros((display_h, display_w, 3), np.uint8)
+    W = max(16, int(round(display_w * render_scale)))
+    H = max(16, int(round(display_h * render_scale)))
+    canvas = np.zeros((H, W, 3), np.uint8)
     for it in sorted(items, key=lambda d: -d.depth):           # far first
-        dst = it.quad * np.array([display_w, display_h])       # normalized -> pixels
+        dst = it.quad * np.array([W, H])                       # normalized -> pixels
+        x0 = int(np.clip(np.floor(dst[:, 0].min()), 0, W))
+        x1 = int(np.clip(np.ceil(dst[:, 0].max()), 0, W))
+        y0 = int(np.clip(np.floor(dst[:, 1].min()), 0, H))
+        y1 = int(np.clip(np.ceil(dst[:, 1].max()), 0, H))
+        if x1 <= x0 or y1 <= y0:                               # fully off-display
+            continue
         th, tw = it.texture.shape[:2]
         src = np.array([[0, 0], [tw, 0], [tw, th], [0, th]], np.float32)
-        M = cv2.getPerspectiveTransform(src, dst.astype(np.float32))
-        warped = cv2.warpPerspective(it.texture, M, (display_w, display_h),
+        # warp straight into the ROI by folding the bbox origin into the transform
+        M = cv2.getPerspectiveTransform(src, (dst - [x0, y0]).astype(np.float32))
+        warped = cv2.warpPerspective(it.texture, M, (x1 - x0, y1 - y0),
                                      flags=cv2.INTER_LINEAR, borderValue=(0, 0, 0, 0))
-        rgb = warped[:, :, :3]; a = (warped[:, :, 3:4].astype(np.float32) / 255.0)
-        canvas[:] = (rgb.astype(np.float32) * a + canvas.astype(np.float32) * (1 - a)).astype(np.uint8)
+        roi = canvas[y0:y1, x0:x1]
+        a = warped[:, :, 3:4].astype(np.float32) / 255.0
+        roi[:] = (warped[:, :, :3].astype(np.float32) * a
+                  + roi.astype(np.float32) * (1.0 - a)).astype(np.uint8)
+    if (W, H) != (display_w, display_h):
+        canvas = cv2.resize(canvas, (display_w, display_h), interpolation=cv2.INTER_LINEAR)
     return canvas
 
 
@@ -248,6 +274,44 @@ def selftest(verbose=True):
     moved = np.linalg.norm(item2.quad.mean(0) - item.quad.mean(0)) > 1e-3
     checks.append(("after a head turn the monkey re-projects onto the person (locked, moved on screen)",
                    cover2 and moved))
+
+    # (N) COMPOSE OPTIMISATION GUARD: the bbox composite must be pixel-identical to the naive
+    #     full-canvas one (it is 15x faster, so a silent regression here would be invisible in
+    #     tests but obvious in framerate), and render_scale must still return a full-size canvas.
+    def _full_canvas_reference(items, DW, DH):
+        import cv2
+        canvas = np.zeros((DH, DW, 3), np.uint8)
+        for it in sorted(items, key=lambda d: -d.depth):
+            dst = it.quad * np.array([DW, DH])
+            th, tw = it.texture.shape[:2]
+            src = np.array([[0, 0], [tw, 0], [tw, th], [0, th]], np.float32)
+            M = cv2.getPerspectiveTransform(src, dst.astype(np.float32))
+            w = cv2.warpPerspective(it.texture, M, (DW, DH), flags=cv2.INTER_LINEAR,
+                                    borderValue=(0, 0, 0, 0))
+            a = w[:, :, 3:4].astype(np.float32) / 255.0
+            canvas[:] = (w[:, :, :3].astype(np.float32) * a
+                         + canvas.astype(np.float32) * (1 - a)).astype(np.uint8)
+        return canvas
+
+    rng2 = np.random.default_rng(5)
+    bb_items = []
+    for i in range(3):
+        cx, cy = rng2.uniform(0.25, 0.75), rng2.uniform(0.35, 0.65)
+        qw, qh = 0.09, 0.22
+        bb_items.append(DrawItem(np.array([[cx - qw, cy - qh], [cx + qw, cy - qh],
+                                           [cx + qw, cy + qh], [cx - qw, cy + qh]]),
+                                 avatar.texture, depth=2000 + 300 * i, tid=i))
+    fast = compose(bb_items, DW, DH)
+    slow = _full_canvas_reference(bb_items, DW, DH)
+    identical = int(np.abs(fast.astype(int) - slow.astype(int)).max()) == 0
+    half = compose(bb_items, DW, DH, render_scale=0.5)
+    # an item entirely off-display must be skipped, not crash on an empty ROI
+    off = compose([DrawItem(np.array([[-0.9, -0.9], [-0.6, -0.9], [-0.6, -0.6], [-0.9, -0.6]]),
+                            avatar.texture, depth=1000, tid=9)], DW, DH)
+    checks.append(("compose: bbox path pixel-identical to full-canvas, render_scale keeps size, "
+                   "off-screen quad skipped",
+                   identical and half.shape == (DH, DW, 3) and off.shape == (DH, DW, 3)
+                   and off.max() == 0))
 
     ok = all(v for _, v in checks)
     if verbose:

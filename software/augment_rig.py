@@ -63,6 +63,17 @@ class MonkeyAugmenter:
         self.smoother = RenderSmoother(alpha=smooth_alpha)   # EMA the drawn quad -> less jitter
         self.DW, self.DH = display_w, display_h
         self.tele = AugmentTelemetry()
+        self.render_scale = 1.0          # perf.QualityController lowers this under load
+        self.detect_stride = 1           # ...and raises this (tracker dead-reckons between detects)
+
+    def apply_quality(self, settings):
+        """Adopt a perf.QualityController level. `render_scale` shrinks the compositing buffer
+        (cost scales with its square); `detect_stride` is read by the caller, which owns the
+        detector — PeopleTracker already dead-reckons through gaps, so skipping detections
+        degrades latency-to-new-person, not track continuity."""
+        self.render_scale = float(settings.get("render_scale", 1.0))
+        self.detect_stride = max(1, int(settings.get("detect_stride", 1)))
+        return self.render_scale
 
     def step(self, detL, detR, pose, jitter_ms=0.0):
         """detL/detR: people_track.Detection lists from the two world cams (on hardware these come
@@ -78,7 +89,7 @@ class MonkeyAugmenter:
         for it in items:                                     # temporal smoothing per identity
             it.quad = self.smoother.smooth(it.id, it.quad)
         self.smoother.prune({it.id for it in items})
-        canvas = compose(items, self.DW, self.DH)
+        canvas = compose(items, self.DW, self.DH, self.render_scale)
         t.people = len(tracks)
         t.monkeys = len(items)
         return canvas, tracks

@@ -158,7 +158,22 @@ class SyncBank:
     ROLE_RES = {"worldL": 1280, "worldR": 1280, "eyeL": 640, "eyeR": 640,
                 "pupilL": 640, "pupilR": 640, "eye2L": 640, "eye2R": 640}
 
-    def __init__(self, role_index, fps=100, opener=None, clock=time.monotonic):
+    # Per-role capture MODE (width, height) — EXPLICIT, not derived from ROLE_RES.
+    #
+    # MEASURED 2026-08-01 on the real modules (ELP AR0234 + InnoMaker OV9281, one SABRENT hub):
+    # both sensors are 16:10 (1920x1200 and 1280x800), so the old `int(res * 3 // 4)` rule asked
+    # the world cams for 1280x960 — a mode NEITHER sensor has. The driver silently fell back to
+    # an uncompressed mode, and four streams collapsed the shared USB 2.0 bus to ~1 fps with
+    # multi-SECOND sync jitter. 640x480 is a mode these modules actually serve over MJPEG: all
+    # four cameras run at ~54 fps on ONE bus.
+    #
+    # TO GO FULL RESOLUTION: the bus carries THREE native streams at ~37 fps (bank_bringup.py
+    # --ramp --native), so split the cameras across two host controllers (3+3) and pass
+    # modes=bank_bringup.NATIVE_MODES. Features are normalised to [0,1], so capture resolution
+    # only sets localisation noise — it does not change the model contract.
+    ROLE_MODE = {r: (640, 480) for r in ROLE_RES}
+
+    def __init__(self, role_index, fps=100, opener=None, clock=time.monotonic, modes=None):
         if not role_index:
             raise ValueError("SyncBank needs at least one role")
         bad = [r for r in role_index if r not in self.ROLE_RES]
@@ -170,8 +185,11 @@ class SyncBank:
         # +1 party: the CONTROLLER thread (sync_frame caller) also crosses the barrier, so it
         # blocks until every camera has issued its aligned grab — that is the sync point.
         self._barrier = threading.Barrier(len(self.roles) + 1)
+        self.modes = dict(self.ROLE_MODE)
+        if modes:
+            self.modes.update(modes)
         _open = opener or (lambda role, idx: open_cv2_capture(
-            idx, self.ROLE_RES[role], int(self.ROLE_RES[role] * 3 // 4), fps))
+            idx, self.modes[role][0], self.modes[role][1], fps))
         self.cams = {}
         for role, idx in role_index.items():
             cap = _open(role, idx)

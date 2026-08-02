@@ -11,6 +11,7 @@ and shows it.
 In the window:
     0-9   switch to that camera index        s   save a snapshot (PNG, next to this file)
     i     toggle the info + brightness probe  f   flip the image (mirror)
+    r     reset the focus peak-hold          FOCUS bar: turn lens until it stops rising
     q/Esc quit
 
 IR REMOTE TEST (proves a camera is NoIR / IR-sensitive): open the feed, point any TV/AC
@@ -93,6 +94,7 @@ def run(index=0):
     win = "cam_view — 0-9 switch  s snap  i info  f flip  q quit"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     show_info, flip = True, False
+    focus_peak = [0.0]                 # peak-hold for the focus meter ('r' resets)
     t_prev, fps = time.time(), 0.0
     print("showing camera %d. Point a TV remote at the lens and press a button for the IR test." % index)
 
@@ -117,9 +119,24 @@ def run(index=0):
             cbright = float(roi.mean()) if roi.size else 0.0
             cv2.rectangle(frame, (cx - r, cy - r), (cx + r, cy + r), (0, 255, 0), 1)
             cv2.drawMarker(frame, (cx, cy), (0, 255, 0), cv2.MARKER_CROSS, 2 * r, 1)
+            # FOCUS METER (variance of Laplacian, same metric as rig_test.focus_score).
+            # Turning an M12 lens by eye is guesswork: sharpness peaks and falls off either
+            # side, and you cannot see the peak while your hand is on the barrel. So show the
+            # live number AND a peak-hold — turn until the bar stops rising, then back off to
+            # the peak. Measured on the CENTRE box, which is what you are focusing on.
+            lap = cv2.Laplacian(roi, cv2.CV_64F) if roi.size else None
+            focus = float(lap.var()) if lap is not None else 0.0
+            focus_peak[0] = max(focus_peak[0], focus)
+            frac = 0.0 if focus_peak[0] <= 0 else min(1.0, focus / focus_peak[0])
+            bar_w = int(frac * (w - 40))
+            cv2.rectangle(frame, (20, h - 34), (w - 20, h - 18), (60, 60, 60), 1)
+            cv2.rectangle(frame, (20, h - 34), (20 + bar_w, h - 18),
+                          (0, 255, 0) if frac > 0.95 else (0, 200, 255), -1)
             for i, txt in enumerate([
                 "cam %d   %dx%d   %.0f fps" % (index, w, h, fps),
                 "center brightness %5.1f / 255   (peak %d)" % (cbright, int(gray.max())),
+                "FOCUS %8.1f   peak %8.1f   %3.0f%% of best  [r reset peak]"
+                % (focus, focus_peak[0], frac * 100),
                 "IR test: remote at lens -> bright dot = NoIR",
             ]):
                 cv2.putText(frame, txt, (10, 24 + 22 * i), cv2.FONT_HERSHEY_SIMPLEX,
@@ -131,6 +148,8 @@ def run(index=0):
         k = cv2.waitKey(1) & 0xFF
         if k in (ord('q'), 27):
             break
+        elif k == ord('r'):
+            focus_peak[0] = 0.0        # reset peak-hold when you move to a new target
         elif k == ord('i'):
             show_info = not show_info
         elif k == ord('f'):

@@ -281,13 +281,30 @@ class WorldTracker:
     def __init__(self, f=DEFAULT_F, B=DEFAULT_B, max_feat=400, row_tol=3.0):
         import cv2
         self.cv2 = cv2
-        self.orb = cv2.ORB_create(max_feat)
+        self.max_feat = int(max_feat)
+        self.orb = cv2.ORB_create(self.max_feat)
         self.bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
         self.f = f; self.B = B; self.row_tol = row_tol
         self.mesh = WorldMesh()
         self._next_id = 0
         self._prev_gray = None
         self._tracks = {}                # id -> (uL,vL) in the previous left frame
+
+    def set_max_features(self, n):
+        """Change the ORB feature budget LIVE — perf.QualityController's main lever.
+
+        ORB detect + BF match is the heaviest stage in the loop and its cost is roughly linear
+        in the feature count, so this is the knob that buys frame time. No-op when unchanged,
+        because rebuilding the detector every frame would cost more than it saves."""
+        n = int(max(20, n))
+        if n == self.max_feat:
+            return
+        self.max_feat = n
+        try:
+            self.orb.setMaxFeatures(n)          # cheap in-place update where available
+        except Exception:
+            self.orb = self.cv2.ORB_create(n)   # older cv2: rebuild
+        return n
 
     def _gray(self, img):
         if img.ndim == 3:
