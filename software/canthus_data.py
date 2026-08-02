@@ -13,15 +13,30 @@ WHY NOT WEB IMAGES
     ("glasses-mounted close-up can't use face-mesh"). A model trained on web faces sees nothing it
     recognises here. The ONLY data in the right domain is this rig, on this face.
 
-HOW THE LABELS COME FOR FREE
-    The templates already localise well (measured margin 0.25-0.46 at 200 px). So: run the
-    template matcher over thousands of live frames and keep ONLY the frames where it locks
-    unambiguously. Those become labels. You box once — already done — and never again.
+AUTO-LABELLING FROM THE TEMPLATE: TRIED, MEASURED, REJECTED (2026-08-02)
+    The plan was to let the template teach the model — run the matcher over thousands of frames,
+    keep only unambiguous locks, call those labels. It does not work, and the way it fails is
+    instructive enough to keep here so nobody rebuilds it.
 
-    The obvious objection is that a model trained on template labels cannot beat the template.
-    True on average, and not the point: the template's weakness is not its accuracy, it is that it
-    must be RE-CAPTURED every session and drifts as appearance changes. A model trained across
-    many seatings, blinks and lighting conditions generalises where a fixed patch cannot.
+    When the rig shifts on the face, the matcher settles on FEATURELESS SKIN — nose bridge, cheek
+    — and does so CONFIDENTLY. Measured on a real 1500-frame run: labels more than 0.20 (frame
+    units) from the per-eye median were 34.8% of eyeL and 5.2% of eyeR, and those outliers
+    averaged margin 0.486 against a corpus median of 0.414. The wrong labels scored HIGHER than
+    the right ones. No confidence threshold can filter that — the gate is anti-correlated with
+    correctness. Eyelashes do the same thing for the same reason (highest-contrast structure in
+    frame, so a lash-lock is genuinely unambiguous, just wrong).
+
+    Second symptom, same cause: one eyeL template locked at u=0.84 before a replug and u=0.15
+    after, both at high margin. A teacher that confidently reports two positions 0.7 frame-widths
+    apart cannot supervise anything.
+
+    WHAT WORKS INSTEAD: a small HUMAN-labelled seed (click a point, template's guess pre-filled,
+    ENTER to accept) -> train -> let the MODEL auto-label the rest -> retrain. The model reads lid
+    shape and iris position, so blank skin is not a candidate for it the way it is for
+    correlation. The frames collected here are still valuable; only the labels were bad.
+
+    The collector below is kept because the FRAME capture is sound and its stability gate is
+    worth having, but treat its labels as a PROPOSAL to be reviewed, never as ground truth.
 
 QUALITY GATE
     A wrong label is worse than no label, so a frame is only stored when the match is BOTH strong
@@ -48,6 +63,25 @@ STORE_W, STORE_H = 320, 200
 
 MIN_MARGIN = 0.15      # above calib_preflight's 0.08 usability bar — labels must be BETTER
 MIN_PEAK = 0.55        # a weak absolute match is unreliable even when it is unique
+
+# TEMPORAL STABILITY GATE — the defence against lash-locks.
+#
+# Margin alone CANNOT catch this failure. Eyelashes are the highest-contrast structure in the
+# frame, so when the matcher slips onto them it does so with a HIGH margin: the lock is genuinely
+# unambiguous, it is simply on the wrong thing. Score and uniqueness both say "confident", and the
+# label is confidently wrong — the worst kind to train on. Observed on hardware 2026-08-02.
+#
+# What separates a lash-lock from the real corner is PERSISTENCE, not confidence. A lash-lock is
+# transient: it appears for a frame or a few and snaps back. The canthus is where the matcher sits
+# the rest of the time.
+#
+# Crucially this must NOT reject re-seating, which is the most valuable variation in the corpus —
+# taking the glasses off and putting them back on legitimately moves the corner in-frame. So the
+# test is not "close to where it has always been" (that would throw away every re-seat); it is
+# "the last STABLE_N detections agree with each other". A sustained new position after a re-seat
+# is admitted once it holds for a few frames; a one-frame jump to the lashes never is.
+STABLE_N = 4           # consecutive detections that must agree
+STABLE_RADIUS = 0.035  # normalised frame units they must agree WITHIN
 
 
 def match_with_margin(gray, tmpl, cv2):
