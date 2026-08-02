@@ -129,23 +129,86 @@ def run_list_cams() -> int:
     return 0
 
 
-def run_calibrate_corners(cfg: Config) -> int:
+def run_calibrate_corners(cfg: Config, only=None) -> int:
+    """Capture the eye-corner templates.
+
+    LIVE preview first, then freeze and draw. The original version grabbed ONE frame per eye and
+    made you draw on whatever it happened to catch — blink, look away, or catch a bad exposure and
+    your only recourse was to re-run the whole thing and redo the eye you had already got right.
+    That cost two runs on 2026-08-02. Now: SPACE freezes the frame you like, ENTER accepts the
+    box, and `only` re-does a single eye without touching the other.
+
+    Templates need STRUCTURE, not just position: a crop of smooth skin correlates ~1.0 with any
+    other smooth patch, so it scores perfectly and localises nowhere (see
+    calib_preflight.template_margin). The live view prints a running texture reading so you can
+    see whether what you are about to box has any edges in it at all."""
+    import cv2
+    import numpy as np
     from cameras import Camera
     from eye_tracker import EyeCornerTracker
-    print("Capturing eye-corner templates. A window opens per eye:")
-    print("  drag a small box tightly around the corner of your eye, ENTER to accept.")
-    for name, idx in (("eyeL", cfg.eye_cam_left), ("eyeR", cfg.eye_cam_right)):
+
+    targets = [t for t in (("eyeL", cfg.eye_cam_left), ("eyeR", cfg.eye_cam_right))
+               if only is None or t[0].lower() == ("eye" + only.lower())]
+    if not targets:
+        print("  !! nothing to do for --eye %s" % only)
+        return 1
+
+    print("Capturing eye-corner templates (%s)." % ", ".join(n for n, _ in targets))
+    print("  LIVE view per eye:  SPACE = freeze this frame   Q = skip this eye")
+    print("  then drag a box CENTRED on the corner (lid margin / lash roots / caruncle), ENTER.")
+    print("  DRAW IT BIG — roughly 150-200 px, not a tight little crop. MEASURED on this rig")
+    print("  2026-08-02, cross-frame localisation margin vs box size:")
+    print("      30px 0.038   45px 0.058   |   60px 0.122   80px 0.203   150px 0.211   200px 0.368")
+    print("  Under ~60 px the template does not localise at all: this eye is low-contrast enough")
+    print("  that a small crop matches everywhere. Bigger wins until the box stops being about")
+    print("  the corner. Trade-off: a big box takes in more skin, which deforms when you squint")
+    print("  or talk, so keep the CORNER at its centre and hold a neutral face when calibrating.")
+
+    for name, idx in targets:
         cam = Camera(idx, cfg.cam_width, cfg.cam_height, name=name)
-        frame = None
-        for _ in range(10):                          # let exposure settle
+        win = "%s — SPACE freezes, Q skips" % name
+        cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+        frame, frozen = None, None
+        while True:
             frame = cam.read()
-        if frame is None:
-            print("  !! no frame from %s (index %d)" % (name, idx)); cam.release()
-            return 1
+            if frame is None:
+                print("  !! no frame from %s (index %d)" % (name, idx)); cam.release()
+                cv2.destroyWindow(win)
+                return 1
+            shown = frame.copy()
+            g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
+            tex = cv2.Laplacian(g, cv2.CV_64F).var()
+            sat = float((g >= 250).mean() * 100)
+            cv2.putText(shown, "texture %6.1f   saturated %4.1f%%" % (tex, sat), (10, 28),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+            cv2.imshow(win, shown)
+            k = cv2.waitKey(30) & 0xFF
+            if k == 32:                      # SPACE — freeze this one
+                frozen = frame.copy()
+                break
+            if k in (ord("q"), 27):
+                break
+        cv2.destroyWindow(win)
+        if frozen is None:
+            cam.release()
+            print("  %s: skipped (no frame frozen)" % name)
+            continue
+
         tracker = EyeCornerTracker("%s/%s.png" % (cfg.template_dir, name))
-        ok = tracker.calibrate(frame, "select %s corner" % name)
+        ok = tracker.calibrate(frozen, "select %s corner" % name)
         cam.release()
-        print("  %s: %s" % (name, "saved" if ok else "skipped (box too small)"))
+        if not ok:
+            print("  %s: skipped (box too small)" % name)
+            continue
+        # Report the template's own texture immediately — a flat one is worth knowing about NOW,
+        # not 30 corrections into a run when the tracker starts drifting.
+        t = cv2.imread("%s/%s.png" % (cfg.template_dir, name), cv2.IMREAD_GRAYSCALE)
+        if t is not None:
+            tv = cv2.Laplacian(t, cv2.CV_64F).var()
+            flag = "" if tv >= 20 else "   <-- LOW TEXTURE, expect a weak lock; re-grab on edges"
+            print("  %s: saved  %dx%d px, texture %.1f%s" % (name, t.shape[1], t.shape[0], tv, flag))
+        else:
+            print("  %s: saved" % name)
     return 0
 
 
@@ -380,6 +443,9 @@ def main(argv=None) -> int:
                    help="headless convergence test (numpy only, no GUI/hardware)")
     p.add_argument("--list-cams", action="store_true")
     p.add_argument("--calibrate-corners", action="store_true")
+    p.add_argument("--eye", choices=("L", "R", "l", "r"), default=None,
+                   help="with --calibrate-corners: re-do ONE eye only (L or R), leaving the "
+                        "other template untouched")
     p.add_argument("--world-cam-left", type=int)
     p.add_argument("--world-cam-right", type=int)
     p.add_argument("--eye-cam-left", type=int)
@@ -636,7 +702,7 @@ def main(argv=None) -> int:
     if args.list_cams:
         return run_list_cams()
     if args.calibrate_corners:
-        return run_calibrate_corners(cfg)
+        return run_calibrate_corners(cfg, only=args.eye)
     return run_loop(cfg, simulate=args.simulate)
 
 
