@@ -188,12 +188,37 @@ def dot_geometry(pL, pR, width_px=640, edge_margin=0.05,
     return depth, dv, warns
 
 
-def check_corner_lock(frames, template_dir):
-    """The templates must actually match in the live frames, not merely exist on disk."""
+def template_margin(frame, tmpl, cv2):
+    """How UNIQUELY does `tmpl` localise in `frame`? Returns (peak, best_rival, margin).
+
+    Match SCORE alone is not evidence of a usable template, and trusting it is an active trap: a
+    featureless crop — flat skin, a patch of shadow — correlates ~1.0 against every other
+    featureless patch, so it scores near-perfect while carrying no localisation whatsoever. What
+    matters is whether the peak STANDS OUT from the best rival elsewhere in the frame.
+
+    Measured on this rig 2026-08-02: templates whose peaks were 0.97/0.95 (and which the old
+    score-only check passed as "locked") had rivals at 0.955/0.941 — margins of 0.017 and 0.005.
+    At that margin any blink or small head movement lets the rival win and the tracker silently
+    jumps mid-session, after the corrections have already been spent. Their Laplacian variance was
+    ~5, i.e. essentially no edge structure at all."""
+    res = cv2.matchTemplate(frame, tmpl, cv2.TM_CCOEFF_NORMED)
+    _, peak, _, loc = cv2.minMaxLoc(res)
+    masked = res.copy()
+    r = max(tmpl.shape[:2]) * 2                  # suppress the peak's own neighbourhood
+    masked[max(0, loc[1] - r):loc[1] + r, max(0, loc[0] - r):loc[0] + r] = -1.0
+    rival = float(masked.max())
+    return float(peak), rival, float(peak) - rival
+
+
+def check_corner_lock(frames, template_dir, min_margin=0.08):
+    """The templates must actually match in the live frames, not merely exist on disk —
+    and must match in ONE place. See template_margin() for why score alone is not enough."""
+    import cv2
     from eye_tracker import EyeCornerTracker
-    scores, missing = {}, []
+    scores, margins, missing = {}, {}, []
     for r in ("eyeL", "eyeR"):
-        trk = EyeCornerTracker(os.path.join(template_dir, "%s.png" % r))
+        path = os.path.join(template_dir, "%s.png" % r)
+        trk = EyeCornerTracker(path)
         if not trk.ready:
             missing.append(r)
             continue
@@ -203,13 +228,31 @@ def check_corner_lock(frames, template_dir):
             continue
         xy, sc = trk.track(f)
         scores[r] = (xy, sc)
-    ok = len(scores) == 2 and all(xy is not None and sc > 0.5 for xy, sc in scores.values())
-    detail = ("locked: " + ", ".join("%s score %.2f" % (r, scores[r][1]) for r in scores)) \
-        if scores else "no template/frame for: %s" % ", ".join(missing)
-    if scores and not ok:
+        tmpl = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        g = f if f.ndim == 2 else cv2.cvtColor(f, cv2.COLOR_BGR2GRAY)
+        if tmpl is not None and g.shape[0] >= tmpl.shape[0] and g.shape[1] >= tmpl.shape[1]:
+            margins[r] = template_margin(g, tmpl, cv2)
+
+    locked = len(scores) == 2 and all(xy is not None and sc > 0.5 for xy, sc in scores.values())
+    vague = sorted(r for r, (_, _, m) in margins.items() if m < min_margin)
+    ok = locked and not vague
+    if scores:
+        detail = "locked: " + ", ".join(
+            "%s score %.2f%s" % (r, scores[r][1],
+                                 " (margin %.3f)" % margins[r][2] if r in margins else "")
+            for r in sorted(scores))
+    else:
+        detail = "no template/frame for: %s" % ", ".join(missing)
+    if scores and not locked:
         detail += "  (weak — aim the cam at the eye corner / re-grab the template)"
+    if vague:
+        detail += ("  ⚠ NOT UNIQUE: %s — the best rival elsewhere in the frame scores within "
+                   "%.3f of the peak, so this template does not localise and the tracker will "
+                   "jump. Re-grab it on real structure (lid margin / lash line / caruncle), "
+                   "not flat skin or shadow." % (", ".join(vague), min_margin))
     return Check("corner lock", ok, detail,
-                 fix="python3 main.py --calibrate-corners  (with the cam aimed at your canthus)")
+                 fix="python3 main.py --calibrate-corners  (box the canthus ITSELF — the lid "
+                     "margin and lash roots, not a patch of smooth cheek)")
 
 
 def run(roles=None, seconds=3.0, verbose=True):
@@ -364,6 +407,24 @@ def selftest(verbose=True):
                    and any("REVERSED" in w for w in rev_warns)
                    and fwd_depth is not None and rev_depth is not None
                    and abs(fwd_depth - rev_depth) < 1e-6))
+
+    # (8) corner lock must reject a FEATURELESS template. A flat crop scores ~1.0 against any
+    #     other flat patch, which is how two Laplacian-var~5 templates passed at 0.99/0.97 on
+    #     2026-08-02 with rivals 0.017/0.005 away. Score-only checking cannot see this; the
+    #     margin can. Structured template -> unique peak; flat template -> no margin.
+    #     NOTE the background must be SMOOTH+SELF-SIMILAR, not random: white noise localises
+    #     perfectly, so a noise crop would be a distinctive template and prove nothing.
+    yy, xx = np.mgrid[0:200, 0:260]
+    scene = (100 + 8 * np.sin(xx / 9.0) + 6 * np.sin(yy / 11.0)).astype(np.uint8)
+    cv2.circle(scene, (170, 60), 9, 20, -1)                        # one distinctive dark feature
+    cv2.line(scene, (150, 70), (195, 88), 35, 2)
+    good_t = scene[45:80, 150:195].copy()                          # crop ON the feature
+    flat_t = scene[130:165, 30:75].copy()                          # crop on featureless "skin"
+    _, _, good_m = template_margin(scene, good_t, cv2)
+    flat_peak, _, flat_m = template_margin(scene, flat_t, cv2)
+    checks.append(("corner lock: structured template localises (margin %.2f) but a FLAT one does "
+                   "not (%.3f) despite a %.2f peak" % (good_m, flat_m, flat_peak),
+                   good_m > 0.30 and flat_m < 0.08 and flat_peak > 0.8))
 
     ok = all(v for _, v in checks)
     if verbose:
