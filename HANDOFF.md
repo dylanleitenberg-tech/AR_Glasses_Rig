@@ -111,6 +111,14 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   kill daylight (NoIR sensors soak up IR, so sunlight hits them far harder than LED light).
 > - In `--calibrate-corners`, drag the ROI box around the **INNER** canthus (tear-duct side).
 >   Note it captures ONE frozen frame per eye — whatever it happened to grab is what you draw on.
+> - **The template must contain STRUCTURE, not just be in the right place.** Box the lid margin,
+>   the lash roots and the caruncle — the highest-contrast thing you can see. A box on smooth
+>   skin, cheek or shadow produces a template that correlates ~1.0 with *any* other smooth patch:
+>   it scores beautifully and localises nowhere. First attempt on 2026-08-02 produced Laplacian
+>   variance ~5 on both eyes, scored 0.99/0.97, and had rivals only 0.017/0.005 away — meaning a
+>   blink would move the lock somewhere else entirely. `corner lock` now fails this (min margin
+>   0.08) instead of passing it, and prints the margin so you can see how much headroom you have.
+>   Sanity numbers: a good template margins > 0.3; anything under ~0.1 is not a template.
 > - `calib_preflight.py --run` checks all six preconditions and names the failing one. The
 >   historically-red row is **`world dot`**: it needs a **dark round dot on white paper**, ~2-3 cm,
 >   ~0.5-2 m away, **roughly centred in BOTH world cams**, away from a bright window. Its
