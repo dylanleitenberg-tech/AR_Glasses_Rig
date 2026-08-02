@@ -87,6 +87,8 @@ def main(fast=False):
         ("frame budget + adaptive quality", "python3 perf.py --selftest", "PERF OK"),
         ("calibration preflight checks", "python3 calib_preflight.py --selftest",
          "CALIB PREFLIGHT OK"),
+        ("canthus corpus gate (margin, not score)", "python3 canthus_data.py --selftest",
+         "CANTHUS DATA OK"),
         ("sync capture (barrier/jitter)", "python3 sync_capture.py --selftest", "SYNC CAPTURE OK"),
         ("auto-exposure (per-role control)", "python3 autoexpose.py --selftest", "AUTOEXPOSE OK"),
         ("world mesh tracking (VO+IMU)", "python3 world_mesh.py --selftest", "WORLD MESH OK"),

@@ -1,5 +1,11 @@
 # virtualenv + caches
 software/.venv/
+# training-only venv: torch 2.2.2 + numpy<2, kept SEPARATE because this Intel Mac tops out at
+# torch 2.2.2 (no cp39 x86_64 wheel above it) and that build predates numpy 2 — torch.from_numpy
+# raises "Numpy is not available" against the main venv's numpy 2.0.2. Runtime stays numpy-only:
+# train here, export .npz weights, run the forward pass in numpy. Disposable; recreate with
+#   python3 -m venv software/.venv-train && pip install "numpy<2" torch
+software/.venv-train/
 __pycache__/
 *.pyc
 .DS_Store
