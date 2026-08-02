@@ -35,6 +35,13 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > - **NoIR/IR-remote test on the eye cams: already passed.** Do not ask for it again.
 > - **No IR LEDs are wired, and none are needed for calibration.** The pupil/PCCR path is
 >   `use_pupil=False` by default and was measured not to improve registration.
+> - **CUT THE RESOLUTION. 640x480, always.** Four streams only run on this one USB 2.0 bus at
+>   640x480. This has now cost more than one session — it is not a thing to rediscover. As of
+>   2026-08-02 `bank_bringup.py` reads `SyncBank.ROLE_MODE` so the default is finally correct;
+>   `--res 640` is the manual override if anything else ever asks for a bigger mode.
+> - **L/R is NOT settled by the scan and must be re-checked EVERY session.** `--scan` assigns
+>   L/R by ascending index, which is a coin flip. On 2026-08-02 it was right for the eye pair and
+>   WRONG for the world pair. Verify both, every time — the method is below.
 >
 > ## Hardware state + gotchas
 > - 4 cameras: 2× ELP AR0234 world (1920×1200) + 2× OV9281 eye (1280×800), one SABRENT hub.
@@ -45,6 +52,11 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   (~37 fps) is the limit; a 4th starves and — via `sync_capture`'s barrier — stalls the whole
 >   bank to ~1 fps. All four run fine at **640×480 (~54 fps)**, which is the default
 >   (`SyncBank.ROLE_MODE`). `WIRING.md`'s "one hub carries six" is **wrong** and not yet fixed.
+> - **What bus starvation LOOKS like** (measured 2026-08-02, so you can recognise it instantly):
+>   two roles at 100% misses with `shape None`, the survivors at ~1 fps, sync jitter ~118 ms.
+>   Same rig at 640×480: all four at ~40 fps, zero misses, **6.7 ms** jitter, CPU 4%. If two
+>   cameras look "dead", suspect the bus before the hardware — nothing was wrong with either
+>   camera or the hub.
 > - Full-load profile measured 2026-08-01: track 45.7 ms / sync 19.6 ms / overlay 8.8 ms,
 >   73.6 ms per frame, **CPU only 9% of 16 cores**. The loop is **I/O-bound, not CPU-bound**.
 >
@@ -57,7 +69,27 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > python3 main.py --world-cam-left <..> --world-cam-right <..> \
 >                 --eye-cam-left <..> --eye-cam-right <..> --fullscreen
 > ```
+> - **Verify L/R before anything else** (see the settled note above — `--scan` guesses it wrong):
+>   - **Eye cams:** `--calibrate-corners` opens `select eyeL corner` first. Look at it. If that
+>     window is not your LEFT eye, swap the two `--eye-cam-*` indices and re-run. Free, certain.
+>   - **World cams:** `calib_preflight.py --run` now fails the `world dot` row with an explicit
+>     "disparity is NEGATIVE ... pair is REVERSED" message. Swap `--world-cam-left/right` and
+>     the row goes green. Do NOT reason about it from images — sensor orientation and a swapped
+>     pair produce the *identical* symptom, and a still photo cannot separate them.
+> - **Measure the eye cams only while the glasses are WORN.** On the desk they stare at the room
+>   and every number is meaningless: 2026-08-02 the same two cams read 40.9%/20.2% of pixels
+>   saturated sitting on a table and **5.3%/3.3% once worn**. Same for focus — the M12 lenses are
+>   set for a canthus at ~3 cm, so a room 3 m away is *supposed* to look defocused.
+> - **Whole-frame Laplacian is not a focus metric for the eye cams.** An eye socket is mostly
+>   smooth skin; a living room is wall-to-wall edges. `bank_bringup` will show eye ~15 vs world
+>   ~800 on a perfectly focused rig. Judge eye focus by whether lashes/iris texture resolve.
+> - **There is NO software exposure control on macOS.** `cameras.py` sets width/height/fps and
+>   nothing else, and that is not an oversight: AVFoundation *rejects* `CAP_PROP_EXPOSURE`,
+>   `AUTO_EXPOSURE`, `GAIN` and `BRIGHTNESS` on these UVC devices — every `set()` returns False
+>   and reads back 0.000 (probed 2026-08-02). Exposure is a physical lever only: wear the rig,
+>   kill daylight (NoIR sensors soak up IR, so sunlight hits them far harder than LED light).
 > - In `--calibrate-corners`, drag the ROI box around the **INNER** canthus (tear-duct side).
+>   Note it captures ONE frozen frame per eye — whatever it happened to grab is what you draw on.
 > - `calib_preflight.py --run` checks all six preconditions and names the failing one. The
 >   historically-red row is **`world dot`**: it needs a **dark round dot on white paper**, ~2-3 cm,
 >   ~0.5-2 m away, **roughly centred in BOTH world cams**, away from a bright window. Its
@@ -70,6 +102,17 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > - **`WorldTracker` built 0 map points** across a 45 s hardware run — no usable stereo
 >   correspondences on real frames. Calibration does **not** touch the mesh (it uses
 >   `dot_detector` + `eye_tracker`), but the world-locked overlay depends on it entirely.
+>   **2026-08-02, partially explained — do not re-derive this half:** the world pair was
+>   REVERSED, and `world_mesh.py:334` filters on `(uL - uR) > 0.5`, so ~99% of matches were
+>   being discarded (measured: 1093 epipolar-consistent ORB matches, 99% negative disparity).
+>   Fixing the order takes peak inliers **0 → 6** and track ids **1 → 39** — but map points
+>   **stay 0**. So the swap was *a* cause, not *the* cause. Next place to look is
+>   `WorldMesh.ingest`, not the correspondence filter, which is now known-good.
+> - **`eyeL` framing is marginal** (2026-08-02, worn): the frame is mostly nose and cheek with
+>   the eye jammed into the bottom-left corner. Both eyes sit near **v≈0.75-0.85**, far below the
+>   settled prediction of **v≈0.414**. `EC_AIM_DOWN=6` is printed and cannot change, so the brow
+>   clamp is the only lever. Unresolved — a template cut against a frame edge is what makes the
+>   tracker lose lock mid-session, so fix framing BEFORE capturing templates.
 > - **The accuracy corpus is STALE.** `data/mega_prior*`, `calibration_db.npz`, `meta.db` and the
 >   1.88 px `accuracy_map` figure were all generated at `EYE_FOV=90` tracking the **outer**
 >   canthus. They no longer describe this rig — regenerate before quoting any accuracy number.
@@ -79,6 +122,10 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   (finds how many streams the bus carries), `--roles ROLE=INDEX` override, `--native`,
 >   `--no-warm`, `--view`.
 > - `calib_preflight.py` — the six calibration preconditions, with the fix printed per failing row.
+>   `dot_geometry()` now also checks the disparity **SIGN**. It used to take `abs()`, which made a
+>   reversed world pair completely invisible: identical depth, rows still aligned, row reads green.
+>   That is how a swapped pair passed a full preflight at 2054 mm on 2026-08-02. Covered by a
+>   selftest that asserts both orderings yield the same distance — i.e. why depth cannot catch it.
 > - `perf.py` — per-stage `Profiler` + `QualityController` + `LoadManager`. The controller runs an
 >   **effectiveness probe**: it reverts and freezes a down-step that doesn't actually buy frame
 >   time (this rig is I/O-bound, so degrading quality mostly costs without helping).

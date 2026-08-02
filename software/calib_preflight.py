@@ -145,6 +145,16 @@ def dot_geometry(pL, pR, width_px=640, edge_margin=0.05,
         same ROW in both. A large vertical offset means two different objects.
       * DEPTH — disparity converts to a distance via the rig's own focal length and baseline.
         A target at 18 cm (or 200 m) is not the thing you taped to the wall.
+      * DISPARITY SIGN — a real point in front of the rig lands FURTHER RIGHT in the LEFT cam,
+        so uL - uR must be POSITIVE. Negative means the pair is reversed: either the two
+        --world-cam-* indices are swapped, or both sensors are mounted 180 deg.
+
+    The sign test is not cosmetic. world_mesh.WorldTracker filters correspondences on
+    `(a[0] - b[0]) > 0.5`, so a reversed pair has EVERY stereo match silently discarded and the
+    map stays empty. Taking abs() here (as this function used to) hides that completely: a
+    reversed pair yields the identical depth number and reads green, which is exactly how a
+    swapped world pair survived a full preflight on 2026-08-02. USB indices shift between runs,
+    so this is a per-session hazard, not a one-time wiring mistake.
 
     Returns (depth_mm or None for infinity, dv, [warnings])."""
     from world_mesh import DEFAULT_F, DEFAULT_B
@@ -154,7 +164,15 @@ def dot_geometry(pL, pR, width_px=640, edge_margin=0.05,
         warns.append("vertical offset %.3f between the two cams (epipolar violation) — they are "
                      "probably locked onto DIFFERENT objects, not one shared dot" % dv)
     f = DEFAULT_F * (width_px / 1280.0)          # focal scales with capture width
-    d_px = abs(float(pL[0]) - float(pR[0])) * width_px
+    signed_px = (float(pL[0]) - float(pR[0])) * width_px
+    if signed_px < 0:
+        warns.append("disparity is NEGATIVE (%.1f px): the dot sits further right in worldR than "
+                     "in worldL. A point in front of the rig must be further right in the LEFT "
+                     "cam, so the world pair is REVERSED — swap --world-cam-left/--world-cam-right "
+                     "(or the sensors are mounted 180 deg). WorldTracker discards every match "
+                     "with negative disparity, so the mesh will stay empty until this is fixed"
+                     % signed_px)
+    d_px = abs(signed_px)
     depth = (f * DEFAULT_B / d_px) if d_px > 1e-6 else None
     if depth is not None and depth < min_depth_mm:
         warns.append("implied depth %.0f mm — far too close to be the target" % depth)
@@ -331,6 +349,21 @@ def selftest(verbose=True):
                    and not any("epipolar" in w for w in bad_warns)
                    and any("epipolar" in w for w in epi_warns)
                    and any("infinity" in w for w in far_warns)))
+
+    # (7) disparity SIGN: a REVERSED world pair is invisible to every other test here — abs()
+    #     hands back the identical depth, the rows still line up, neither hit is near an edge, so
+    #     the row reads green. That is exactly what happened on 2026-08-02: the preflight passed
+    #     at 2054 mm with the pair swapped, while WorldTracker's `(uL - uR) > 0.5` filter threw
+    #     away every correspondence and the map stayed empty. The assert below pins the reason
+    #     depth cannot catch it: both orderings give the SAME distance.
+    fwd_depth, _, fwd_warns = dot_geometry((0.50, 0.50), (0.50 - d_good, 0.50))
+    rev_depth, _, rev_warns = dot_geometry((0.50 - d_good, 0.50), (0.50, 0.50))
+    checks.append(("dot_geometry: reversed pair caught by SIGN — depth alone cannot "
+                   "(both orderings give %.0f mm)" % rev_depth,
+                   not any("REVERSED" in w for w in fwd_warns)
+                   and any("REVERSED" in w for w in rev_warns)
+                   and fwd_depth is not None and rev_depth is not None
+                   and abs(fwd_depth - rev_depth) < 1e-6))
 
     ok = all(v for _, v in checks)
     if verbose:

@@ -546,15 +546,22 @@ def run(seconds=15.0, max_index=8, target_rate=20.0, budget=0.50, res=None, skip
     time.sleep(0.4)
 
     # Explicit capture size. --native asks each sensor for its REAL mode (16:10); --res forces one
-    # width on everything (4:3, the SyncBank convention); otherwise keep SyncBank's default.
+    # width on everything (4:3); otherwise use SyncBank.ROLE_MODE verbatim.
+    #
+    # DO NOT re-derive the height from ROLE_RES here. This branch used to compute
+    # `h = int(ROLE_RES[role] * 3 // 4)`, which asks the 16:10 world cams for 1280x960 — a mode
+    # NEITHER sensor has. The driver falls back to an uncompressed mode, four streams swamp the
+    # shared USB 2.0 bus, and sync_capture's barrier stalls the whole bank: measured 2026-08-02 at
+    # ~1 fps with 118 ms jitter and TWO of four cameras missing every single grab, while still
+    # printing "BANK UP". ROLE_MODE is the single source of truth for capture modes and already
+    # encodes the 640x480 that all four cameras actually serve over MJPEG (~40 fps, 6.7 ms jitter).
     def opener(role, idx):
         if native:
             w, h = NATIVE_MODES[role]
         elif res:
             w, h = res if isinstance(res, tuple) else (res, int(res * 3 // 4))
         else:
-            w = SyncBank.ROLE_RES[role]
-            h = int(w * 3 // 4)
+            w, h = SyncBank.ROLE_MODE[role]
         return open_cv2_capture(idx, w, h, 100)
 
     bank = SyncBank(role_index, fps=100, opener=opener).start()
@@ -597,6 +604,13 @@ def run(seconds=15.0, max_index=8, target_rate=20.0, budget=0.50, res=None, skip
             cv2.destroyAllWindows()
 
     rep = stats.report()
+    # A role that delivered NOTHING is a failed bring-up, even when the loop ran its full clock.
+    # `reason == "done"` only means the timer expired; it says nothing about whether every camera
+    # actually produced frames. Reporting "BANK UP" while half the bank sat at 100% misses is how
+    # a starved USB bus gets mistaken for a healthy rig (measured 2026-08-02: eyeR and worldL
+    # missed 8 of 8 grabs and the run still printed BANK UP).
+    dead = sorted(r for r in rep
+                  if rep[r]["shape"] is None or (stats.sets and rep[r]["misses"] >= stats.sets))
     if verbose:
         grabs = 2 if warm else 1
         print("\n== result (%d sets, %.1f s, %d grab%s per set) =="
@@ -615,8 +629,17 @@ def run(seconds=15.0, max_index=8, target_rate=20.0, budget=0.50, res=None, skip
             print("  thermal: CPU_Speed_Limit=%d%%%s" % (
                 st.get("CPU_Speed_Limit", 100),
                 "  <-- macOS de-rated the CPU during the run" if thermally_throttled(st) else ""))
-        print("  =>", {"done": "BANK UP ✅", "cpu-stop": "STOPPED ON CPU BUDGET ⚠️",
-                       "camera-died": "A CAMERA DROPPED OUT ⚠️"}[reason])
+        if dead:
+            print("  => NO FRAMES FROM: %s ❌" % ", ".join(dead))
+            print("     %d of %d cameras delivered nothing. On this rig that is almost always the"
+                  % (len(dead), len(rep)))
+            print("     shared USB 2.0 bus, not a dead camera: the bus carries THREE native")
+            print("     streams, and a 4th starves while sync_capture's barrier stalls the bank.")
+            print("     Re-run with --res 640 (all four serve that over MJPEG), or use --ramp to")
+            print("     find how many streams this bus actually carries.")
+        else:
+            print("  =>", {"done": "BANK UP ✅", "cpu-stop": "STOPPED ON CPU BUDGET ⚠️",
+                           "camera-died": "A CAMERA DROPPED OUT ⚠️"}[reason])
         if reason == "cpu-stop":
             print("  levers: --rate lower, --res 640 (force small frames), fewer cameras,")
             print("          --cv-threads 1, and check `--scan` for a camera that negotiated a")
@@ -627,7 +650,7 @@ def run(seconds=15.0, max_index=8, target_rate=20.0, budget=0.50, res=None, skip
                                           "notes": notes})
         print("  wrote PROVISIONAL map ->", path)
         print("  confirm eye-vs-pupil + L/R with: python3 connect.py --identify")
-    return 0 if reason == "done" else 1
+    return 0 if (reason == "done" and not dead) else 1
 
 
 # --------------------------------------------------------------------------
