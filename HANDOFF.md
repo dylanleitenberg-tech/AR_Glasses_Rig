@@ -91,8 +91,16 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >                 --eye-cam-left <..> --eye-cam-right <..> --fullscreen
 > ```
 > - **Verify L/R before anything else** (see the settled note above — `--scan` guesses it wrong):
->   - **Eye cams:** `--calibrate-corners` opens `select eyeL corner` first. Look at it. If that
->     window is not your LEFT eye, swap the two `--eye-cam-*` indices and re-run. Free, certain.
+>   - **Eye cams — CROSS-MATCH THE TEMPLATES, it is fully automatic.** Once `eyeL.png`/`eyeR.png`
+>     exist they are eye-SPECIFIC, so match each template against BOTH mono cameras and take the
+>     pairing with the higher total margin (`canthus_data.match_with_margin`). Measured after a
+>     replug on 2026-08-02, rig worn: eyeL→cam0 **0.509** vs eyeL→cam1 0.090, eyeR→cam1 **0.358**
+>     vs eyeR→cam0 0.165 — correct pairing won by **3.4x**. No cover test, no human judgement, no
+>     guessing from mono close-ups (which I tried, and it is genuinely ambiguous by eye).
+>     Requires the rig ON A FACE — a template of your eye will not match your living room.
+>   - **Eye cams, first time only** (no templates yet): `--calibrate-corners` opens
+>     `select eyeL corner` first. If that window is not your LEFT eye, swap the `--eye-cam-*`
+>     indices and re-run.
 >   - **World cams:** `calib_preflight.py --run` now fails the `world dot` row with an explicit
 >     "disparity is NEGATIVE ... pair is REVERSED" message. Swap `--world-cam-left/right` and
 >     the row goes green. Do NOT reason about it from images — sensor orientation and a swapped
