@@ -129,6 +129,23 @@ def run_list_cams() -> int:
     return 0
 
 
+# Minimum eye-corner template size, in CAPTURE pixels. Measured on this rig 2026-08-02: the
+# cross-frame localisation margin is dominated by template SIZE, not by placement or contrast
+# enhancement. Sweep at the eyeR corner, cropping one frame and matching into a frame 1.2 s later:
+#     30px 0.041  45px 0.049  60px 0.057  80px 0.064  110px 0.066  150px 0.091  200px 0.207
+# Enforcing 150 took the two real captures from 0.046/0.021 to 0.121/0.057, confirming size is the
+# lever; 200 is where eyeR clears the bar with room to spare.
+#
+# TRADE-OFF, deliberately taken: 200 px is a quarter of the frame height, so the patch is as much
+# "face around the corner" as it is the canthus, and rig.py models the tracked point as the canthus
+# ITSELF. A constant offset is absorbed by the calibrator (it learns a mapping), and the patch
+# still MOVES with the corner, which is what the features encode. What it costs is sensitivity to
+# soft-tissue deformation -- and SOFT_TISSUE_SD=0.15mm in rig.py is a "holding still" placeholder
+# that squinting/talking already blows past. So: hold a neutral face when calibrating. A lock that
+# wanders is useless; a slightly impure landmark is merely biased, and bias is learnable.
+TEMPLATE_MIN_PX = 200
+
+
 def run_calibrate_corners(cfg: Config, only=None) -> int:
     """Capture the eye-corner templates.
 
@@ -195,7 +212,9 @@ def run_calibrate_corners(cfg: Config, only=None) -> int:
             continue
 
         tracker = EyeCornerTracker("%s/%s.png" % (cfg.template_dir, name))
-        ok = tracker.calibrate(frozen, "select %s corner" % name)
+        # You place the CENTRE; min_px guarantees the size. selectROI shows a scaled window with
+        # no size readout, so judging 150 image-pixels by eye is not a thing a person can do.
+        ok = tracker.calibrate(frozen, "select %s corner" % name, min_px=TEMPLATE_MIN_PX)
         cam.release()
         if not ok:
             print("  %s: skipped (box too small)" % name)

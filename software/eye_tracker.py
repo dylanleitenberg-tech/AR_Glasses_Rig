@@ -36,14 +36,32 @@ class EyeCornerTracker:
     def ready(self) -> bool:
         return self.template is not None
 
-    def calibrate(self, frame, window: str = "select eye corner") -> bool:
-        """Interactively grab the eye-corner template from a frame. Returns ok."""
+    def calibrate(self, frame, window: str = "select eye corner", min_px: int = 0) -> bool:
+        """Interactively grab the eye-corner template from a frame. Returns ok.
+
+        `min_px` grows whatever box you drew — about its own CENTRE — to at least min_px on each
+        side, clamped to the frame. The human picks WHERE; the code enforces HOW BIG.
+
+        WHY (measured 2026-08-02): template size is the dominant term in whether the template
+        localises at all on this rig, and cv2.selectROI renders the frame scaled into a window
+        with no size readout, so a person cannot judge "150 image-pixels" by eye. Three captures
+        in a row came out 26-77 px when 150 was asked for, and every one of them failed the
+        localisation margin. Cross-frame margin vs box size on this hardware:
+            30px 0.038   45px 0.058  |  60px 0.122   80px 0.203   150px 0.211   200px 0.368
+        Anything under ~60 px does not localise; asking a human to hit that blind does not work."""
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         roi = cv2.selectROI(window, frame, showCrosshair=True, fromCenter=False)
         cv2.destroyWindow(window)
         x, y, w, h = [int(v) for v in roi]
         if w < 4 or h < 4:
             return False
+        if min_px:
+            H, W = gray.shape[:2]
+            cx, cy = x + w / 2.0, y + h / 2.0          # keep the centre the user chose
+            w = int(min(max(w, min_px), W))
+            h = int(min(max(h, min_px), H))
+            x = int(round(min(max(cx - w / 2.0, 0), W - w)))
+            y = int(round(min(max(cy - h / 2.0, 0), H - h)))
         os.makedirs(os.path.dirname(self.template_path) or ".", exist_ok=True)
         cv2.imwrite(self.template_path, gray[y:y + h, x:x + w])
         self._load()
