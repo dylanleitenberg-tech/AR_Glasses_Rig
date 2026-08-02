@@ -11,9 +11,30 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > **built and working**; this session is **TESTING**, and the goal is a **first real calibration
 > run on hardware**.
 >
+> ## RULE ZERO — SAVE EVERYTHING TO THE DOC, AS YOU GO
+> **Dylan's standing instruction, verbatim: "from now on, save everything to the doc. if work is
+> done without being saved to the doc, it needs to be done again in the next session."**
+>
+> This is the completion bar for this project. A finding is **not done when you have demonstrated
+> it** — it is done when it is **written down and committed**. Nothing survives in a transcript.
+>
+> - **Save each thing as it lands, not in a batch at the end.** A session that ends early, hits a
+>   context limit, or gets interrupted loses everything not yet written. This has already cost
+>   real sessions: the 640×480 USB-bus limit was proven once, left in a transcript, and had to be
+>   rediscovered — Dylan's words were "we did this last time."
+> - **Where it goes:** this file (`HANDOFF.md`) for anything the next session must know up front;
+>   the memory file's settled-facts block for "do not re-derive" facts; **and a commit**, always.
+> - **Persist the METHOD, not just the answer, whenever the answer is per-session.** Camera
+>   indices shift between runs, so "worldL=3" is worthless next time — what matters is *how* to
+>   determine it. The strongest form is a **test or a check that fails loudly**, because a doc
+>   line can be skipped and a failing check cannot. Prefer that over prose every time.
+> - If you are unsure whether something is worth saving: save it. The cost of a redundant
+>   paragraph is nothing next to the cost of re-deriving a measurement on hardware.
+>
 > **Read first, in this order:**
 > 1. The memory file `project_ar_eye_calibration.md` — especially the **`SETTLED HARDWARE FACTS —
->    DO NOT RE-DERIVE`** block at the end. Read it before proposing anything physical.
+>    DO NOT RE-DERIVE`** blocks at the end (there are two; read both). Read them before proposing
+>    anything physical.
 > 2. `HARDWARE_BRINGUP.md`, then `ASSEMBLY.md` §6-8, `WIRING.md`, `SAFETY.md`.
 > 3. `git log --oneline | head -20` — the last three commits are this rig's hardware truth.
 >
@@ -138,8 +159,11 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > - Every new module needs a `--selftest` hooked into `verify_all.py`. **`python3 verify_all.py
 >   --fast` must end "ALL CHECKS PASS"** (currently 33 checks). Run it after touching shared
 >   capture/geometry code — and note it takes ~10 min, so run it in the background.
-> - **Persist settled decisions**: code (a named constant others default to) + the memory file's
->   settled-facts block + a commit. Never leave a decision only in the transcript.
+> - **Persist settled decisions** — see **RULE ZERO** at the top of this file, which is the one
+>   guardrail that outranks the rest: code (a named constant others default to) + the memory
+>   file's settled-facts block + a commit, written as each thing lands. Never leave a decision
+>   only in the transcript. If you finish a session with findings unsaved, the session did not
+>   happen.
 > - Be honest about sim vs hardware. Almost everything is sim-validated; what has actually run on
 >   real cameras is listed above, and no calibration has ever completed on hardware.
 
