@@ -156,15 +156,21 @@ class QualityController:
     down-step even when frame time looks fine — that catches the case where the loop is meeting
     its deadline only because it is burning every core to do it."""
 
-    def __init__(self, budget=None, level=0, down_after=3, up_after=45, levels=None):
+    def __init__(self, budget=None, level=0, down_after=3, up_after=45, levels=None,
+                 settle=30, min_gain=0.10):
         self.budget = budget or FrameBudget()
         self.levels = levels or QUALITY_LEVELS
         self.level = int(np.clip(level, 0, len(self.levels) - 1))
         self.down_after = down_after
         self.up_after = up_after
+        self.settle = settle          # frames to wait before judging a down-step
+        self.min_gain = min_gain      # fractional frame-time improvement that counts as "worked"
         self._over = 0
         self._head = 0
         self.changes = 0
+        self._probe = None            # (level_before, frame_ms_before, frames_left)
+        self.frozen = False           # True once degrading is proven not to help
+        self.frozen_reason = ""
 
     @property
     def settings(self):
@@ -175,14 +181,46 @@ class QualityController:
         return self.levels[self.level]["name"]
 
     def update(self, frame_ms, cpu_verdict="ok"):
-        """Feed one frame's total ms (+ optional CpuGuard verdict). Returns the new settings."""
-        v = self.budget.verdict(frame_ms)
-        if cpu_verdict in ("throttle", "stop"):
-            v = "over"                      # CPU pressure outranks a met deadline
+        """Feed one frame's total ms (+ optional CpuGuard verdict). Returns the new settings.
+
+        EFFECTIVENESS PROBE (added after the 2026-08-01 full-load run): degrading quality only
+        helps when the frame time is dominated by the work these knobs control. On this rig it
+        was not — 27% of the frame was USB wait and the CPU sat at 9% — so the controller walked
+        straight to `min` and held it for 45 s while frame time barely moved (91 -> 77 ms). That
+        is a pure quality loss. So after each down-step we WATCH: if the next `settle` frames do
+        not improve by `min_gain`, the step is reverted and further degrading is frozen. Real CPU
+        pressure still overrides the freeze, because that is the case degrading genuinely fixes.
+        """
+        cpu_pressed = cpu_verdict in ("throttle", "stop")
+        v = "over" if cpu_pressed else self.budget.verdict(frame_ms)
+
+        # judge the outstanding probe before considering another step
+        if self._probe is not None:
+            lvl_before, ms_before, left = self._probe
+            left -= 1
+            if left <= 0:
+                gain = (ms_before - frame_ms) / ms_before if ms_before > 0 else 0.0
+                if gain < self.min_gain and not cpu_pressed:
+                    self.level = lvl_before          # it did not help — take the quality back
+                    self.frozen = True
+                    self.frozen_reason = ("degrading gained only %.0f%% (%.1f -> %.1f ms); "
+                                          "frame time is not bound by these knobs"
+                                          % (gain * 100, ms_before, frame_ms))
+                self._probe = None
+            else:
+                self._probe = (lvl_before, ms_before, left)
+            return self.settings
+
+        if cpu_pressed and self.frozen:
+            self.frozen = False                       # real CPU pressure re-enables degrading
+            self.frozen_reason = ""
+
         if v == "over":
             self._head = 0
             self._over += 1
-            if self._over >= self.down_after and self.level < len(self.levels) - 1:
+            if (self._over >= self.down_after and self.level < len(self.levels) - 1
+                    and not self.frozen):
+                self._probe = (self.level, frame_ms, self.settle)
                 self.level += 1
                 self.changes += 1
                 self._over = 0
@@ -200,9 +238,12 @@ class QualityController:
 
     def line(self):
         s = self.settings
-        return ("quality[%s] orb=%d stride=%d render=%.2f detect=%d (budget %.1f ms)"
+        base = ("quality[%s] orb=%d stride=%d render=%.2f detect=%d (budget %.1f ms)"
                 % (s["name"], s["orb_feat"], s["mesh_stride"], s["render_scale"],
                    s["detect_stride"], self.budget.budget_ms))
+        if self.frozen:
+            base += "\n  degrading FROZEN: " + self.frozen_reason
+        return base
 
 
 class LoadManager:
@@ -264,18 +305,22 @@ def selftest(verbose=True):
                    and max(rep, key=lambda k: rep[k]["mean"]) == "mesh"
                    and abs(shares - 1.0) < 0.02 and abs(prof.frame_ms(50) - 30.0) < 0.01))
 
-    # (3) QualityController steps DOWN under sustained overrun and clamps at the floor
-    q = QualityController(FrameBudget(30.0), down_after=3)
+    # (3) QualityController steps DOWN under sustained overrun and clamps at the floor.
+    #     The load here RESPONDS to the knobs (frame time scales with the ORB budget), which is
+    #     the case degrading is meant for — so every step earns its keep and it walks to `min`.
+    #     (A load that does NOT respond is covered by check 5b, where it must freeze instead.)
+    q = QualityController(FrameBudget(30.0), down_after=3, settle=5, min_gain=0.10)
     start = q.name
-    for _ in range(3):
-        q.update(80.0)                       # way over a 33 ms budget
-    stepped = q.name
-    for _ in range(200):
-        q.update(80.0)
-    checks.append(("QualityController: '%s' -> '%s' under overrun, clamps at '%s'"
+    stepped = None
+    for _ in range(300):
+        ms = 120.0 * (q.settings["orb_feat"] / 400.0)   # 120 ms at full -> 18 ms at min
+        q.update(ms)
+        if stepped is None and q.level == 1:
+            stepped = q.name
+    checks.append(("QualityController: '%s' -> '%s' under responsive overrun, clamps at '%s'"
                    % (start, stepped, q.name),
                    start == "full" and stepped == "high" and q.name == "min"
-                   and q.level == len(QUALITY_LEVELS) - 1))
+                   and q.level == len(QUALITY_LEVELS) - 1 and not q.frozen))
 
     # (4) ...and back UP only after SUSTAINED headroom (hysteresis, no oscillation)
     q2 = QualityController(FrameBudget(30.0), level=2, down_after=3, up_after=10)
@@ -295,6 +340,32 @@ def selftest(verbose=True):
     for _ in range(2):
         q3.update(5.0, cpu_verdict="throttle")   # fast frames, but the CPU is pinned
     checks.append(("CPU 'throttle' outranks a met deadline (level %d)" % q3.level, q3.level == 1))
+
+    # (5b) THE REGRESSION FROM THE REAL RIG (2026-08-01): an I/O-bound loop, 73 ms/frame against
+    #      a 33 ms budget, but only 9% CPU — degrading did nothing (91 -> 77 ms over 45 s) yet the
+    #      controller pinned itself at `min`. It must now revert and freeze instead.
+    q_io = QualityController(FrameBudget(30.0), down_after=3, settle=10, min_gain=0.10)
+    for _ in range(3):
+        q_io.update(73.0, cpu_verdict="ok")           # over budget -> takes one step down
+    stepped = q_io.level == 1
+    for _ in range(10):
+        q_io.update(71.0, cpu_verdict="ok")           # ...which buys ~3%, not enough
+    checks.append(("I/O-bound loop: down-step reverted and degrading frozen (level %d, %s)"
+                   % (q_io.level, "frozen" if q_io.frozen else "NOT frozen"),
+                   stepped and q_io.level == 0 and q_io.frozen
+                   and "not bound by these knobs" in q_io.frozen_reason))
+
+    # (5c) ...but when degrading DOES pay off, it is kept and the controller keeps going.
+    q_cpu = QualityController(FrameBudget(30.0), down_after=3, settle=10, min_gain=0.10)
+    for _ in range(3):
+        q_cpu.update(73.0)
+    for _ in range(10):
+        q_cpu.update(40.0)                            # a real 45% win -> keep the step
+    kept = q_cpu.level == 1 and not q_cpu.frozen
+    # and genuine CPU pressure re-enables degrading even after a freeze
+    q_io.update(71.0, cpu_verdict="throttle")
+    checks.append(("effective down-step is kept (level %d); CPU pressure unfreezes (%s)"
+                   % (q_cpu.level, not q_io.frozen), kept and not q_io.frozen))
 
     # (6) knobs move monotonically the right way as quality drops
     orb = [l["orb_feat"] for l in QUALITY_LEVELS]
