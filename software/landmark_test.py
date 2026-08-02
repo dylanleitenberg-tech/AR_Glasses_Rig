@@ -248,11 +248,19 @@ def selftest():
     print("  feature count still 8 in both arms:         %s" % ("PASS" if n_ok else "FAIL"))
     ok &= n_ok
 
-    # 6. both landmarks stay on the real sensor at the design aim
+    # 6. the TRACKED landmark stays on the real sensor at the design aim.
+    #
+    # This used to assert BOTH landmarks were >90% in-frame, which silently encoded the old
+    # EYE_FOV=90 assumption. The real lens is 45 deg (measured 2026-08-01), and at 45 deg the
+    # OUTER canthus is only ~44% in-frame — that is precisely why rig.TRACKED_LANDMARK is
+    # "inner", so requiring both to be visible would fail on correct hardware. What actually
+    # matters is that whichever landmark we track is visible; assert that, and report the other
+    # for information.
     fo, fi = framing("outer", n_faces=40), framing("inner", n_faces=40)
-    fr = fo["inframe"] > 90 and fi["inframe"] > 90
-    print("  both land on the real sensor (>90%%):        %s  (outer %.0f%%, inner %.0f%%)"
-          % ("PASS" if fr else "FAIL", fo["inframe"], fi["inframe"]))
+    tracked = fi if rig.TRACKED_LANDMARK == "inner" else fo
+    fr = tracked["inframe"] > 90
+    print("  TRACKED (%s) on the real sensor (>90%%):  %s  (outer %.0f%%, inner %.0f%%)"
+          % (rig.TRACKED_LANDMARK, "PASS" if fr else "FAIL", fo["inframe"], fi["inframe"]))
     ok &= fr
 
     print("landmark_test selftest: %s" % ("PASS" if ok else "FAIL"))
