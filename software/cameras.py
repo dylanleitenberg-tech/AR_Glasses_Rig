@@ -88,7 +88,18 @@ class CameraBank:
         self.cams = {}
         for role, idx in role_index.items():
             res = ROLE_RES[role]
-            self.cams[role] = Camera(idx, res, int(res * 3 // 4), fps=fps, name=role)
+            # 16:10, NOT 4:3. This line used to compute `res * 3 // 4`, i.e. 640x480 for the eye
+            # cams and 1280x960 for the world cams -- a 4:3 shape imposed on sensors that are both
+            # natively 16:10 (OV9281 1280x800, AR0234 1920x1200).
+            #
+            # That is not a cosmetic mismatch. MEASURED 2026-08-03 by template-matching one mode
+            # into the other: asking these cameras for 640x480 returns a CROP of the sensor at
+            # scale 1.00 -- eyeL's 640x480 covers only x[288..928], y[50..530] of 1280x800, about
+            # 30% of the area, with a materially narrower field of view. 640x400 is a true 2x
+            # DOWNSCALE keeping the whole frame (full-frame correlation 0.981 against a best crop
+            # match of 0.725), needs LESS bandwidth than 640x480, and preserves the framing the
+            # canthus model was TRAINED on. Training frames are full-FOV; inference must be too.
+            self.cams[role] = Camera(idx, res, int(res * 10 // 16), fps=fps, name=role)
 
     def read(self) -> dict:
         """Live read: {role: frame-or-None}."""

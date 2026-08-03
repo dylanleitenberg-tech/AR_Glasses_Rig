@@ -42,7 +42,10 @@ def run(roles, tile=(480, 300)):
     #
     # Nothing is lost for this purpose: the view exists to position the target and the glasses,
     # and every detector downstream is scale-invariant in normalised coordinates.
-    cams = {r: Camera(i, 640, 480, name=r) for r, i in roles.items()}
+    # 640x400, not 640x480 -- see cameras.CameraBank: 640x480 is a CROP of these 16:10 sensors
+    # (measured, ~30% of the area), while 640x400 is a true downscale that keeps the full FOV the
+    # canthus model was trained on. It is also cheaper on the shared USB 2.0 bus.
+    cams = {r: Camera(i, 640, 400, name=r) for r, i in roles.items()}
     det = DotDetector()
     trk = {"eyeL": CanthusTracker(mirrored=True), "eyeR": CanthusTracker(mirrored=False)}
     win = "rig view — position everything until all four read green.  q quits"

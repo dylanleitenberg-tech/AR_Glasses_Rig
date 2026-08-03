@@ -40,7 +40,7 @@ SAT_DESK = {"eyeL": 40.9, "eyeR": 20.2}
 SAT_BLOWN = 15.0        # above this, the image is too clipped for the model to read texture
 
 
-SMOOTH_WORN_MIN = 87.0   # % of frame in flat regions; see smooth_frac() for why this and not sat
+SMOOTH_WORN_MIN = 84.0   # % of frame in flat regions; see smooth_frac() for why this and not sat
 
 
 def smooth_frac(gray, cv2):
@@ -138,8 +138,14 @@ def run(idx_l, idx_r, seconds=10.0, delay=0.0, save_dir="."):
         cap = cv2.VideoCapture(idx, getattr(cv2, "CAP_AVFOUNDATION", 0))
         # 640x480 matches every other tool in the repo. The net resizes to a fixed 160x100, so the
         # 16:10-vs-4:3 stretch cancels in normalised coordinates -- measured, du/dv both 0.000.
+        # 640x400, NOT 640x480. MEASURED 2026-08-03: asking these OV9281 cams for 640x480 returns
+        # a CROP of the 1280x800 sensor at scale 1.00 -- eyeL's 640x480 covers only x[288..928],
+        # y[50..530], about 30% of the sensor area and a materially narrower field of view.
+        # 640x400 is a true 2x DOWNSCALE that keeps the FULL frame (full-frame correlation 0.981
+        # vs a best crop match of 0.725). It is also the sensor's native 16:10 and needs LESS
+        # bandwidth than 640x480. Training frames are full-FOV, so inference must be too.
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 400)
         if not cap.isOpened():
             print("%s: COULD NOT OPEN index %d — is another tool (rig_view, preflight) still "
                   "running? On macOS only ONE process may hold a camera." % (role, idx))
