@@ -210,6 +210,53 @@ def template_margin(frame, tmpl, cv2):
     return float(peak), rival, float(peak) - rival
 
 
+def check_model_lock(frames):
+    """Validate the LEARNED canthus model on live frames, when --use-model is in play.
+
+    The template check below tests eye_tracker.EyeCornerTracker against hand-drawn patches. With
+    --use-model those templates are never loaded, so that row answers a question the run is not
+    asking -- it can fail while the actual tracker is fine, or pass while the model is broken.
+    Neither is useful. This checks the thing that will really run.
+
+    Passes when both eyes report state 'ok': the model produced a position that is ANATOMICALLY
+    PLAUSIBLE (inside rig.py's prior band for that camera) and did not jump. Those gates are
+    properties of the rig and the face rather than of the model, so unlike heatmap sharpness --
+    which inverted between two trainings -- they cannot silently flip meaning."""
+    try:
+        from canthus_net import CanthusTracker
+    except Exception as e:
+        return Check("model lock", False, "canthus_net unavailable: %s" % e,
+                     fix="train and export: canthus_train.py --train && --export")
+    out, bad = {}, []
+    for role, mirrored in (("eyeL", True), ("eyeR", False)):
+        f = frames.get(role)
+        if f is None:
+            bad.append("%s (no frame)" % role)
+            continue
+        try:
+            trk = CanthusTracker(mirrored=mirrored)
+            uv, score = trk.track(f)
+        except Exception as e:
+            return Check("model lock", False, "model failed on %s: %s" % (role, e),
+                         fix="check data/canthus_net.npz")
+        if uv is None:
+            bad.append("%s (no plausible landmark)" % role)
+        else:
+            out[role] = (uv, score)
+    ok = len(out) == 2 and all(sc >= 1.0 for _, sc in out.values())
+    if out:
+        detail = "model: " + ", ".join("%s u=%.3f v=%.3f%s" % (r, out[r][0][0], out[r][0][1],
+                                                              "" if out[r][1] >= 1.0 else " (HELD)")
+                                       for r in sorted(out))
+    else:
+        detail = "no landmark from: %s" % ", ".join(bad)
+    if bad:
+        detail += "  ⚠ " + ", ".join(bad)
+    return Check("model lock", ok, detail,
+                 fix="the model sees no anatomically plausible canthus — check the eye cams are "
+                     "on your face and in focus")
+
+
 def check_corner_lock(frames, template_dir, min_margin=0.08):
     """The templates must actually match in the live frames, not merely exist on disk —
     and must match in ONE place. See template_margin() for why score alone is not enough."""
@@ -255,7 +302,7 @@ def check_corner_lock(frames, template_dir, min_margin=0.08):
                      "margin and lash roots, not a patch of smooth cheek)")
 
 
-def run(roles=None, seconds=3.0, verbose=True):
+def run(roles=None, seconds=3.0, verbose=True, use_model=False):
     """Open the bank, grab a synchronized set, and run every check against it."""
     from sync_capture import SyncBank
     cfg = Config()
@@ -284,7 +331,10 @@ def run(roles=None, seconds=3.0, verbose=True):
         checks.append(check_cameras(roles, frames))
         checks.append(check_world_dot(frames))
         checks.append(check_templates(cfg.template_dir))
-        checks.append(check_corner_lock(frames, cfg.template_dir))
+        if use_model:
+            checks.append(check_model_lock(frames))
+        else:
+            checks.append(check_corner_lock(frames, cfg.template_dir))
     finally:
         bank.close()
     checks.append(check_display())
@@ -440,6 +490,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="check every precondition for a calibration session")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--run", action="store_true", help="run the live checks (needs cameras)")
+    ap.add_argument("--use-model", action="store_true",
+                    help="validate the LEARNED canthus model instead of the hand-drawn templates")
     ap.add_argument("--roles", nargs="*", default=None, metavar="ROLE=INDEX",
                     help="camera indices, e.g. --roles worldL=2 worldR=3 eyeL=0 eyeR=1")
     ap.add_argument("--seconds", type=float, default=3.0)
@@ -449,5 +501,6 @@ if __name__ == "__main__":
             roles = parse_roles(args.roles) if args.roles else None
         except ValueError as e:
             sys.exit("bad --roles: %s" % e)
-        sys.exit(run(roles=roles, seconds=args.seconds))
+        sys.exit(run(roles=roles, seconds=args.seconds,
+                     use_model=getattr(args, 'use_model', False)))
     sys.exit(selftest())
