@@ -9,9 +9,12 @@ guessing.
 READ THE CAVEATS, THEY ARE THE POINT:
 
   * MEASURE ONLY WHILE THE RIG IS WORN. On a desk the cams stare at the room and every number here
-    is meaningless. Settled measurement 2026-08-02: the same two cams read 40.9%/20.2% of pixels
-    saturated on a table and 5.3%/3.3% once worn. That ratio is the single fastest way to tell
-    whether the glasses are actually on a face, which is why it is the first thing printed.
+    is meaningless. Worn-vs-not is decided by smooth_frac() -- the share of the frame that is flat
+    skin -- NOT by the saturated-pixel ratio. Saturation was the original test and it was WRONG:
+    it called a dim room "consistent with the worn signature" at 0.2% saturated. Read
+    smooth_frac's docstring before trusting anything here. When the rig is not on a face this
+    tool now refuses to report exposure or model verdicts at all, because numbers about the
+    furniture are worse than no numbers.
 
   * WHOLE-FRAME LAPLACIAN IS NOT A FOCUS METRIC HERE. An eye socket is mostly smooth skin; a
     living room is wall-to-wall edges. A perfectly focused eye cam reads ~15 while a world cam
@@ -37,10 +40,48 @@ SAT_DESK = {"eyeL": 40.9, "eyeR": 20.2}
 SAT_BLOWN = 15.0        # above this, the image is too clipped for the model to read texture
 
 
-def _verdict(role, sat, states, in_band, n):
+SMOOTH_WORN_MIN = 87.0   # % of frame in flat regions; see smooth_frac() for why this and not sat
+
+
+def smooth_frac(gray, cv2):
+    """% of pixels sitting in a locally-flat region. THE worn-vs-not discriminator.
+
+    SATURATION DOES NOT WORK FOR THIS AND I SHIPPED IT ANYWAY -- read this before trusting any
+    number above. The first version of this file asserted that the saturated-pixel ratio was "the
+    single fastest way to tell whether the glasses are actually on a face". It is not. On
+    2026-08-03 it reported "EXPOSURE OK, consistent with the worn signature" about a camera
+    pointed at a wall with a picture frame on it: the room happened to be dim, so it read 0.2%
+    saturated, well inside the worn band. A metric that says "on a face" about a photograph of a
+    wall is the ninth-instance pattern all over again.
+
+    What actually separates the two is scene STRUCTURE, and it follows from the optics: the M12
+    lenses are focused for a canthus at ~3 cm, so when worn the frame is dominated by large flat
+    expanses of skin, while a room 3 m away is edges and objects everywhere. Measured over six
+    labelled frames from this rig:
+
+        WORN  92.1  90.7        ROOM  83.2  81.5        DESK  77.2  77.3
+
+    Separated by every threshold in 84..90; 87 is the midpoint of the gap. CALIBRATED ON SIX
+    FRAMES FROM ONE RIG -- treat it as a screen that catches the gross case, not proof. The
+    confirmation is still looking at the saved PNG, which is why one is always written.
+    """
+    g = gray.astype(np.float32)
+    local = cv2.blur((g - cv2.blur(g, (9, 9))) ** 2, (9, 9)) ** 0.5
+    return float((local < 3.0).mean() * 100)
+
+
+def _verdict(role, sat, states, in_band, n, smooth=None):
     """Turn the raw numbers into the one sentence that names the next action."""
     out = []
     worn, desk = SAT_WORN[role], SAT_DESK[role]
+    # NOT-WORN SHORT-CIRCUITS EVERYTHING. Reporting exposure and model verdicts on a picture of a
+    # room is worse than reporting nothing: it sends the session off adjusting hardware against
+    # numbers that describe furniture.
+    if smooth is not None and smooth < SMOOTH_WORN_MIN:
+        return ["NOT ON A FACE — only %.0f%% of the frame is flat skin (worn reads >%.0f%%, a room "
+                "reads ~77-83%%). Every other number below is about the room, not your eye. Put "
+                "the rig on and re-run; look at the saved PNG to confirm."
+                % (smooth, SMOOTH_WORN_MIN)]
     if sat >= SAT_BLOWN:
         near = "desk/blown-out (%.1f%%)" % desk if abs(sat - desk) < abs(sat - worn) else "blown out"
         out.append("BLOWN OUT — %.1f%% saturated, matches the %s signature, not the worn one "
@@ -129,6 +170,7 @@ def run(idx_l, idx_r, seconds=10.0, delay=0.0, save_dir="."):
         uus = np.array(uus)
         in_band = int(((uus >= lo) & (uus <= hi)).sum()) if lo is not None else 0
         lap = float(cv2.Laplacian(last, cv2.CV_64F).var())
+        smooth = smooth_frac(last, cv2)
         path = "%s/%s_worn.png" % (save_dir.rstrip("/"), role)
         cv2.imwrite(path, last)
 
@@ -139,9 +181,10 @@ def run(idx_l, idx_r, seconds=10.0, delay=0.0, save_dir="."):
         print("  laplacian   %.0f   (NOT a focus verdict for an eye cam — look at the PNG)" % lap)
         print("  model u     median %.3f as the gate sees it   (band [%s, %s])"
               % (np.median(uus), "%.3f" % lo if lo else "?", "%.3f" % hi if hi else "?"))
+        print("  flat-skin   %.0f%%   (worn >%.0f%% | room ~77-83%%)" % (smooth, SMOOTH_WORN_MIN))
         print("  tracker     %s" % (states or "{}"))
         print("  frame saved %s" % path)
-        for line in _verdict(role, sat, states, in_band, n):
+        for line in _verdict(role, sat, states, in_band, n, smooth):
             print("  -> %s" % line)
         print()
         results[role] = dict(sat=sat, states=states, in_band=in_band, n=n,
@@ -238,6 +281,15 @@ def selftest():
     # A locked model on a blown-out frame must still flag the exposure, not be excused by the lock.
     v = " ".join(_verdict("eyeR", 20.2, {"ok": 30}, 30, 30))
     chk("blown-out but locked STILL reports blowout", "BLOWN OUT" in v)
+    # THE FRAME THAT FOOLED THE OLD CHECK: a dim room read 0.2% saturated -- inside the worn
+    # band -- and was reported as "EXPOSURE OK". Flat-skin must veto it regardless of exposure.
+    v = " ".join(_verdict("eyeR", 0.2, {"ok": 30}, 30, 30, smooth=81.5))
+    chk("dim ROOM (0.2% sat, looks worn by exposure) is caught as NOT ON A FACE",
+        "NOT ON A FACE" in v)
+    chk("not-on-a-face suppresses the exposure verdict", "EXPOSURE OK" not in v)
+    chk("not-on-a-face suppresses the model verdict", "MODEL" not in v)
+    chk("genuinely worn (92.1%) is NOT vetoed",
+        "NOT ON A FACE" not in " ".join(_verdict("eyeL", 1.6, {"ok": 30}, 30, 30, smooth=92.1)))
     # Never-in-band vs jump-gate must be distinguishable, they have different fixes.
     v = " ".join(_verdict("eyeL", 5.3, {"lost": 30}, 0, 30))
     chk("never-in-band names the band, not the jump gate", "never in band" in v)
