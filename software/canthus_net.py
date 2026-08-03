@@ -32,32 +32,27 @@ WEIGHTS = os.path.join(DATA, "canthus_net.npz")
 
 
 def _conv2d(x, w, b, stride=1, pad=1):
-    """Direct convolution via im2col. Small net, small input — clarity beats cleverness here."""
+    """Convolution via im2col, vectorised with sliding_window_view.
+
+    The first version built the column matrix with a Python loop over C*KH*KW -- 576 array copies
+    per 64-channel 3x3 layer. Measured 27.9 ms per frame, which is 55.8 ms for two eyes against a
+    73.6 ms whole-frame budget: the landmark alone would have eaten most of the loop. Dylan flagged
+    it as slow on the live view before the profile did.
+
+    sliding_window_view produces the same patches as a strided VIEW, so the only real cost is the
+    single reshape that materialises it plus one matmul. Same arithmetic, same result -- the
+    selftest asserts the numpy runtime still reproduces the trained landmark."""
     N, C, H, W = x.shape
     F, _, KH, KW = w.shape
     if pad:
         x = np.pad(x, ((0, 0), (0, 0), (pad, pad), (pad, pad)))
-    OH = (x.shape[2] - KH) // stride + 1
-    OW = (x.shape[3] - KW) // stride + 1
-    cols = np.lib.stride_tricks.as_strided(
-        x,
-        shape=(N, C, OH, OW, KH, KW),
-        strides=(x.strides[0], x.strides[1],
-                 x.strides[2] * stride, x.strides[3] * stride,
-                 x.strides[2], x.strides[3]),
-        writeable=False,
-    ).reshape(N, C * KH * KW, OH * OW) if False else None
-    # as_strided on a padded copy is fragile across numpy versions; build cols explicitly.
-    cols = np.empty((N, C * KH * KW, OH * OW), np.float32)
-    k = 0
-    for c in range(C):
-        for i in range(KH):
-            for j in range(KW):
-                patch = x[:, c, i:i + OH * stride:stride, j:j + OW * stride:stride]
-                cols[:, k, :] = patch.reshape(N, -1)
-                k += 1
-    out = np.einsum("fk,nkp->nfp", w.reshape(F, -1).astype(np.float32), cols)
-    return (out + b.reshape(1, F, 1).astype(np.float32)).reshape(N, F, OH, OW)
+    win = np.lib.stride_tricks.sliding_window_view(x, (KH, KW), axis=(2, 3))
+    win = win[:, :, ::stride, ::stride]                  # (N, C, OH, OW, KH, KW)
+    OH, OW = win.shape[2], win.shape[3]
+    cols = win.transpose(0, 2, 3, 1, 4, 5).reshape(N, OH * OW, C * KH * KW)
+    out = cols @ w.reshape(F, -1).astype(np.float32).T   # (N, OH*OW, F)
+    out = out + b.reshape(1, 1, F).astype(np.float32)
+    return out.transpose(0, 2, 1).reshape(N, F, OH, OW)
 
 
 class CanthusNet:
