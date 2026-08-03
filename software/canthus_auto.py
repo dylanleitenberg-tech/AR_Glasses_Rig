@@ -82,6 +82,8 @@ PRIOR = os.path.join(DATA, "canthus_prior.npz")
 CONFIRM_N = 2          # consecutive confirmations required, as pixel_sweep does
 MAX_ROUNDS = 8         # give up rather than loop forever on an ambiguous frame
 CONFIRM_TOL = 0.012    # a correction smaller than this counts as "the corrector agrees"
+AGREE_TOL = 0.055      # A and B must land within this of each other (normalised frame units)
+WINDOW = 40            # frames per motion window ~ one seating segment
 CLOSED_AREA_FRAC = 0.35  # pupil area below this fraction of the session's OPEN median -> closing/closed
 
 
@@ -291,6 +293,68 @@ class TemplateProposer:
         return ((x0 + loc[0] + tw / 2.0) / W, (y0 + loc[1] + th / 2.0) / H), float(peak)
 
 
+def face_fixed_point(window, cv2, band, mount_mask, pupil_uv=None,
+                     exclude_r=0.10, max_r=0.30):
+    """ESTIMATOR B — find the canthus by MOTION, sharing nothing with the template.
+
+    The discriminator is that the inner canthus is FACE-fixed while the pupil is GAZE-driven. Look
+    around and your pupil sweeps the frame; your tear duct does not move at all. So within one
+    seating the canthus is a point that is TEXTURED (it has structure to see) and TEMPORALLY
+    STATIONARY (it does not move), whereas the iris is textured and highly mobile, and skin is
+    stationary but featureless.
+
+    Measured on the real corpus, among high-texture pixels the temporal sd spans 4.5 at the 25th
+    percentile to 27.5 at the 75th — a 6x separation between face-fixed and gaze-moving structure.
+
+    THIS IS WHY IT COUNTS AS INDEPENDENT of the template estimator. It uses temporal statistics
+    over a window; the template uses appearance in a single frame. They share no fitted parameter.
+    The previous corrector failed precisely because its offset was fitted from the template's own
+    output, so the two could never disagree and 'confirmation' was vacuous — the labels came out as
+    pupil-plus-a-constant, correlating 0.99 with the pupil.
+
+    Returns (u, v, score) or None.
+    """
+    S = np.asarray(window, np.float32)
+    med = np.median(S, 0)
+    sd = S.std(0)
+    H, W = med.shape
+
+    tex = np.abs(cv2.Laplacian(cv2.GaussianBlur(med, (5, 5), 0), cv2.CV_32F))
+    tex = cv2.GaussianBlur(tex, (9, 9), 0)
+    sd_s = cv2.GaussianBlur(sd, (9, 9), 0)
+
+    # textured AND stationary. sd is normalised by its own median so the score is exposure- and
+    # session-independent rather than tuned to one recording.
+    score = tex / (1.0 + sd_s / max(float(np.median(sd_s)), 1e-6))
+
+    keep = np.zeros_like(score, bool)
+    v0, v1 = band
+    keep[int(v0 * H):int(v1 * H), :] = True
+    if mount_mask is not None:
+        keep &= ~mount_mask                       # never the rig's own hardware
+    if pupil_uv is not None:
+        # ANNULUS around the eye centre, not merely "not the pupil".
+        #
+        # "Textured and stationary" describes many face features — nose-bridge edge, cheek
+        # highlight, brow — so an unbounded argmax picks the STRONGEST of them, not the canthus.
+        # Measured: it landed at u=0.825 on a bright nose-bridge edge while the eye sat at u~0.16.
+        # The constraint that actually singles out a canthus is that it lies ON THE BOUNDARY OF
+        # THE EYE APERTURE: close to the eye but never on the pupil.
+        #
+        # The pupil supplies LOCALITY only — where the eye is — never the position itself. That
+        # distinction is what went wrong before: anchoring the position to the pupil made the
+        # label track gaze (correlation 0.99). Here the estimate is still chosen by texture and
+        # stationarity within the region; the pupil only says which region.
+        yy, xx = np.mgrid[0:H, 0:W]
+        d = np.hypot(xx / W - pupil_uv[0], yy / H - pupil_uv[1])
+        keep &= (d > exclude_r) & (d < max_r)
+    if not keep.any():
+        return None
+    sc = np.where(keep, score, -1.0)
+    y, x = np.unravel_index(int(np.argmax(sc)), sc.shape)
+    return (x / float(W), y / float(H), float(sc[y, x]))
+
+
 class PupilCorrector:
     """Corrects a proposal using the pupil as an anchor.
 
@@ -449,30 +513,72 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
                       % (name, len(offs[rid])))
         print()
 
-    # ---- PASS 2: propose / correct / confirm --------------------------------------------
+    # ---- PASS 2: TWO INDEPENDENT ESTIMATORS + a proximity gate + a geometric validator ----
+    # Dylan's construction: "estimate separately and they have to overlap by some proximity, then
+    # a third checks that they are on point." The previous version failed because the two
+    # estimators shared a fitted parameter and so could never disagree. These share nothing:
+    #   A  appearance  -- template match inside the mount band, single frame
+    #   B  motion      -- textured AND temporally stationary over a window (face-fixed, not gaze)
+    #   C  geometry    -- mount band, rig.py's u prior, and NOT on the pupil
+    from pupil_tracker import PupilTracker
     idx, labels, rounds, status = [], [], [], []
-    n_closed = 0
-    for i in range(len(F)):
-        g = F[i]
-        rid = int(R[i])
+    for rid in (0, 1):
+        rows = np.where(R == rid)[0]
+        if len(rows) == 0 or rid not in band:
+            continue
         mirrored = (rid == 0)
-        closed, _ = looks_closed(g, ref_open.get(rid, 0.02), _trk)
-        if closed:
-            # A closed verdict is a PROPOSAL too: confirm it against neighbours before discarding.
-            near = [j for j in (i - 1, i + 1) if 0 <= j < len(F) and int(R[j]) == rid]
-            votes = sum(1 for j in near
-                        if looks_closed(F[j], ref_open.get(rid, 0.02), _trk)[0])
-            if votes >= 1:
-                n_closed += 1
-                status.append("closed")
-                continue
+        mmask = mount[rid]["mask"] if rid in mount else None
         prop = TemplateProposer(tmpl["eyeL" if rid == 0 else "eyeR"], prior, mirrored,
-                                band=band.get(rid))
-        corr = PupilCorrector(prior, mirrored, offset=offset.get(rid))
-        uv, r, st = converge(g, cv2, prop, corr, prior, mirrored, band=band.get(rid))
-        status.append(st)
-        if st == "confirmed":
-            idx.append(i); labels.append(uv); rounds.append(r)
+                                band=band[rid])
+        for w0 in range(0, len(rows), WINDOW):
+            win_rows = rows[w0:w0 + WINDOW]
+            if len(win_rows) < 8:
+                continue
+            # B: one estimate per window — the canthus is stationary within a seating, so a
+            # per-window answer is the natural granularity for a motion-based estimator.
+            # Eye centre = MEDIAN pupil across the window. Averaging over gaze gives the centre
+            # of the eye rather than wherever the pupil happened to be in one frame.
+            pts = []
+            for j in win_rows[::3]:
+                rj = _trk.detect(F[j])
+                if getattr(rj, "ok", False):
+                    pts.append(rj.pupil)
+            pu = tuple(np.median(np.array(pts), axis=0)) if len(pts) >= 3 else None
+            b = face_fixed_point(F[win_rows], cv2, band[rid], mmask, pu)
+            if b is None:
+                for i in win_rows:
+                    status.append("no-motion-estimate")
+                continue
+            pB = (b[0], b[1])
+            for i in win_rows:
+                g = F[i]
+                closed, _ = looks_closed(g, ref_open.get(rid, 0.02), _trk)
+                if closed:
+                    near = [j for j in (i - 1, i + 1) if 0 <= j < len(F) and int(R[j]) == rid]
+                    if sum(1 for j in near
+                           if looks_closed(F[j], ref_open.get(rid, 0.02), _trk)[0]) >= 1:
+                        status.append("closed")
+                        continue
+                pA, peak = prop(g, cv2)                      # A, independent of B
+                if pA is None:
+                    status.append("no-proposal")
+                    continue
+                sep = float(np.hypot(pA[0] - pB[0], pA[1] - pB[1]))
+                if sep > AGREE_TOL:                          # the proximity gate
+                    status.append("disagree")
+                    continue
+                uv = ((pA[0] + pB[0]) / 2.0, (pA[1] + pB[1]) / 2.0)
+                # C: the third check — geometry, which neither estimator can talk into agreeing
+                if not in_prior(uv, prior, mirrored, band=band[rid]):
+                    status.append("off-prior")
+                    continue
+                rp = _trk.detect(g)
+                if getattr(rp, "ok", False):
+                    if np.hypot(uv[0] - rp.pupil[0], uv[1] - rp.pupil[1]) < 0.05:
+                        status.append("on-pupil")            # a canthus is never ON the pupil
+                        continue
+                idx.append(i); labels.append(uv); rounds.append(int(sep * 1000))
+                status.append("confirmed")
 
     idx = np.array(idx, np.int32)
     if len(idx):
@@ -483,13 +589,15 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
         c = Counter(status)
         print("== automated labelling ==")
         print("  frames            %d" % len(F))
-        print("  confirmed         %d (%.0f%%)  median %d rounds"
+        print("  confirmed         %d (%.0f%%)  median A-B separation %.3f"
               % (c["confirmed"], 100.0 * c["confirmed"] / len(F),
-                 int(np.median(rounds)) if rounds else 0))
+                 (np.median(rounds) / 1000.0) if rounds else 0))
         print("  skipped: closed   %d" % c["closed"])
+        print("  rejected: A/B disagree %d" % c["disagree"])
         print("  rejected: off-prior    %d" % c["off-prior"])
-        print("  rejected: no-consensus %d" % c["no-consensus"])
+        print("  rejected: on-pupil     %d" % c["on-pupil"])
         print("  rejected: no-proposal  %d" % c["no-proposal"])
+        print("  rejected: no-motion    %d" % c["no-motion-estimate"])
         if len(idx):
             print("  saved %s" % out)
         else:
