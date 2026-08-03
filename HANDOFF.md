@@ -135,6 +135,21 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > - In the calibration loop: **ENTER** approve · **U** undo last · **Z** cancel nudge · **Q** quit.
 >   Expect ~20-40 corrections across the field before the error means anything.
 >
+> ## THE MOUNT OCCLUDES THE TOP THIRD OF THE EYE CAM — and the sim does not know
+> Measured 2026-08-02: the nose-bridge support covers the top **34-36%** of every eye-cam frame
+> (`eyeL` floor v=0.340, `eyeR` v=0.365). `rig.py`'s prior places the inner canthus at v ≤ 0.620,
+> median 0.362 — **inside that hardware**. `optics.py` has no occlusion model for the carrier, so
+> every framing prediction, including the settled *"inner canthus 100% in-frame"*, overstates the
+> usable frame. Do not trust a framing number until that is modelled.
+> - **Consequence:** any appearance-based search over the simulated box locks onto the mount
+>   rather than the eye. That is exactly what the first auto-labelling runs did.
+> - **The technique that fixes it, and reuse it elsewhere:** the mount is bolted to the camera, so
+>   it lands on the same pixels in every frame whatever the face does — a built-in fiducial. Find
+>   it by intersecting **dark** with **temporally static** across frames (measured 4.4x/3.6x more
+>   static than the rest of the image), then derive the search band *below* its floor. See
+>   `canthus_auto.find_mount` / `search_band`. Keep `rig.py`'s HORIZONTAL prior — u was always
+>   consistent with hardware (0.809/0.886 measured vs prior [0.778, 0.891]); only v disagreed.
+>
 > ## Open bugs (neither blocks calibration)
 > - **`WorldTracker` built 0 map points** across a 45 s hardware run — no usable stereo
 >   correspondences on real frames. Calibration does **not** touch the mesh (it uses
