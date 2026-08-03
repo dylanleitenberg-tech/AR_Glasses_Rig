@@ -101,16 +101,51 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True):
     # spread across the corpus and let the human's ENTER/C calls define both classes — which is
     # the whole point of a seed set.
     #
-    # Balance the two cameras so neither is under-represented.
+    # SELECT FOR GAZE DIVERSITY, not at random.
+    #
+    # Dylan on hardware: "when i look off screen, guess goes to my eye ball." That is the model
+    # having learned a SHORTCUT -- with few training frames the iris sat in a near-constant
+    # position relative to the canthus, so "offset from the big dark circle" fitted the data as
+    # well as the real landmark did. At extreme gaze the shortcut breaks and the prediction
+    # follows the eyeball. It is the same pupil-anchoring trap that broke the classical pipeline.
+    #
+    # The cure is data where iris position and canthus position DECORRELATE: frames spanning the
+    # whole gaze range. So pick by farthest-point sampling in PUPIL space, which spreads the seed
+    # across gaze directions instead of over-sampling whatever the eye did most often. The pupil
+    # detector is reliable here (96-100% on real frames) and is used only to CHOOSE frames -- it
+    # never touches the label, which stays entirely the human's.
     picks = []
-    for rid in (0, 1):
-        rows = np.where(R == rid)[0]
-        if len(rows) == 0:
-            continue
-        sel = sample_order(len(rows), n_want // 2 + 1)
-        picks += [int(rows[j]) for j in sel]
+    try:
+        from pupil_tracker import PupilTracker
+        trk = PupilTracker()
+        for rid in (0, 1):
+            rows = np.where(R == rid)[0]
+            if len(rows) == 0:
+                continue
+            cand, pts = [], []
+            for i in rows[::max(1, len(rows) // 260)]:
+                r = trk.detect(F[i])
+                if getattr(r, "ok", False):
+                    cand.append(int(i)); pts.append(r.pupil)
+            want = n_want // 2
+            if len(cand) <= want:
+                picks += cand
+                continue
+            pts = np.array(pts)
+            chosen = [0]                                    # farthest-point sampling
+            dist = np.linalg.norm(pts - pts[0], axis=1)
+            while len(chosen) < want:
+                k = int(np.argmax(dist))
+                chosen.append(k)
+                dist = np.minimum(dist, np.linalg.norm(pts - pts[k], axis=1))
+            picks += [cand[k] for k in chosen]
+    except Exception:
+        picks = []
     if not picks:
-        picks = list(sample_order(len(F), n_want))
+        for rid in (0, 1):
+            rows = np.where(R == rid)[0]
+            if len(rows):
+                picks += [int(rows[j]) for j in sample_order(len(rows), n_want // 2 + 1)]
 
     prev = {}
     if os.path.exists(out):
