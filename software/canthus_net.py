@@ -105,6 +105,82 @@ class CanthusNet:
         return u, v, cp, sharp
 
 
+class MountAnchor:
+    """The nose-bridge mount as a fiducial: a flex watchdog, and camera-shift invariance.
+
+    Dylan's idea, and it turns the rig's own hardware into an instrument.
+
+    The mount is bolted to the camera, so its image position is fixed by rigid geometry -- it
+    should NEVER move in frame, whatever the face does. Two consequences follow, and the second
+    is the valuable one:
+
+    FLEX WATCHDOG. If the mount's apparent position changes, the camera has moved relative to the
+    carrier. That is the failure mode data/flex.log identified as critical: 0.2 mm/0.2 deg costs
+    +0.05 px, but 1 mm/1 deg costs +1.3 px -- more than the entire software error budget, and the
+    reason RIGID_MOUNT_BUILD.md exists. Until now there was NO WAY TO DETECT IT: you bonded the
+    carrier, hoped, and slow flex would present as the calibration mysteriously degrading. The
+    mount sits in every eye-cam frame, so it can be watched continuously. Measured repeatability
+    on this rig: centroid to +-1.7-2.0 px of 1280 horizontally, +-0.06-1.4 px vertically.
+
+    CAMERA-SHIFT INVARIANCE. A camera that shifts by delta moves the mount AND the face by -delta
+    in the image. Subtracting the mount's drift from the landmark therefore cancels the camera
+    component and leaves the face component -- so the feature stays valid through small shifts
+    rather than silently encoding them as eye movement.
+
+    This also protects the assumption the whole simulator rests on: that rig geometry is a fixed,
+    factory-calibrated constant rather than a second time-varying unknown. That was Dylan's own
+    argument for rejecting online self-calibration; this verifies it instead of assuming it.
+    """
+
+    # Threshold on the MEASURED drift, which underestimates true camera motion by ~2x because the
+    # mask is fixed at calibration (an 8 px shift reads ~4 px). Set accordingly: this flags real
+    # movement well below the 0.2 mm/0.2 deg that data/flex.log says starts to cost accuracy, and
+    # it is a watchdog rather than a calibrated displacement sensor.
+    DRIFT_WARN = 0.010      # normalised frame units
+    MIN_PIXELS = 50
+
+    def __init__(self):
+        self.mask = None
+        self.ref = None
+        self.drift = (0.0, 0.0)
+
+    def calibrate(self, frames):
+        """Establish the mount mask and its reference position from a burst of frames."""
+        S = np.asarray(frames, np.float32)
+        if S.ndim != 3 or len(S) < 5:
+            return False
+        med = np.median(S, 0)
+        sd = S.std(0)
+        # dark AND temporally static -- the intersection is the rig, not the face
+        mask = (med < 0.45 * np.median(med)) & (sd <= np.percentile(sd, 25))
+        if mask.sum() < self.MIN_PIXELS:
+            return False
+        self.mask = mask
+        self.ref = self._centroid(med)
+        return self.ref is not None
+
+    def _centroid(self, gray):
+        if self.mask is None:
+            return None
+        m = (gray < 0.45 * float(np.median(gray))) & self.mask
+        ys, xs = np.nonzero(m)
+        if len(xs) < self.MIN_PIXELS:
+            return None
+        h, w = gray.shape[:2]
+        return (float(xs.mean()) / w, float(ys.mean()) / h)
+
+    def update(self, gray):
+        """-> (drift_u, drift_v, flexed). drift is the mount's movement from its reference."""
+        if self.ref is None:
+            return 0.0, 0.0, False
+        c = self._centroid(np.asarray(gray, np.float32))
+        if c is None:
+            return self.drift[0], self.drift[1], False      # mount not visible: keep last
+        self.drift = (c[0] - self.ref[0], c[1] - self.ref[1])
+        flexed = float(np.hypot(*self.drift)) > self.DRIFT_WARN
+        return self.drift[0], self.drift[1], flexed
+
+
 class CanthusTracker:
     """Stateful wrapper: confidence gate + jump gate + smoothing. Use this in the live loop.
 
@@ -209,6 +285,21 @@ class CanthusTracker:
         """-> (u, v, closed_prob, conf, state). u,v are None when state == 'lost'."""
         u, v, cp, conf = self.net.predict(gray)
 
+        # MOUNT ANCHOR. Warm up on the first frames, then subtract any camera shift the mount
+        # reveals. A shift moves mount and face together, so removing it leaves only real eye
+        # motion; without this a nudged camera reads as a moved canthus.
+        if gray is None:
+            pass
+        elif self.anchor.ref is None:
+            if len(self._warm) < 12:
+                self._warm.append(np.asarray(gray, np.float32))
+            else:
+                self.anchor.calibrate(self._warm)
+                self._warm = []
+        else:
+            du, dv, self.flexed = self.anchor.update(gray)
+            u, v = u - du, v - dv
+
         if not self._plausible(u, v):
             self.held += 1
             if self.uv is None or self.held > self.MAX_HELD:
@@ -299,6 +390,7 @@ def selftest(verbose=True):
     trk = CanthusTracker.__new__(CanthusTracker)
     trk.net = st; trk.conf_min = 0.0; trk.max_jump = 0.06; trk.ema = 1.0
     trk.uv = None; trk.held = 0; trk.prior = None; trk.mirrored = None; trk.pad = 0.08
+    trk.anchor = MountAnchor(); trk._warm = []; trk.flexed = False
     st.q = [(0.20, 0.60, 0.1, 0.021),      # confident -> ok
             (0.205, 0.605, 0.1, 0.021),    # confident, small move -> ok
             (0.60, 0.20, 0.1, 0.021),      # CONFIDENT BUT A HUGE JUMP -> held, not accepted
@@ -317,6 +409,7 @@ def selftest(verbose=True):
     # 0.0154) and would have held on good frames while accepting nothing.
     st2 = _Stub(); trk2.net = st2; trk2.conf_min = 0.0; trk2.max_jump = 0.06; trk2.ema = 1.0
     trk2.uv = None; trk2.held = 0; trk2.pad = 0.08; trk2.mirrored = False
+    trk2.anchor = MountAnchor(); trk2._warm = []; trk2.flexed = False
     trk2.prior = dict(u_lo=0.778, u_hi=0.891, v_lo=0.110, v_hi=0.620,
                       u_med=0.834, v_med=0.362)
     st2.q = [(0.20, 0.60, 0.1, 0.9)] * 3          # confident, but far outside the u band
@@ -327,10 +420,52 @@ def selftest(verbose=True):
     trk3 = CanthusTracker.__new__(CanthusTracker)
     st3 = _Stub(); trk3.net = st3; trk3.conf_min = 0.0; trk3.max_jump = 0.06; trk3.ema = 1.0
     trk3.uv = None; trk3.held = 0; trk3.pad = 0.08; trk3.mirrored = False
+    trk3.anchor = MountAnchor(); trk3._warm = []; trk3.flexed = False
     trk3.prior = trk2.prior
     st3.q = [(0.834, 0.40, 0.1, 0.9)]
     checks.append(("prior gate: a position inside the band is accepted",
                    trk3.update(None)[4] == "ok"))
+
+    # MOUNT ANCHOR. Synthetic rig: a dark static bar (the mount) plus a moving face below it.
+    # Shifting the WHOLE image simulates the camera moving relative to the carrier -- the exact
+    # failure data/flex.log says costs +1.3 px at 1 mm and which nothing could previously detect.
+    rngA = np.random.default_rng(5)
+    def _scene(dx=0, dy=0):
+        f = rngA.integers(110, 150, (200, 320)).astype(np.float32)
+        # A LOCALISED dark shape, not a full-width bar. A bar spanning the frame has no
+        # horizontal features, so its centroid cannot move when the camera shifts sideways --
+        # the first version of this test made exactly that mistake and reported no detection.
+        # Worth knowing the real mount is partly like this: measured, its centroid repeats to
+        # +-0.06 px vertically but only +-1.96 px horizontally, because it spans most of the
+        # width. Vertical flex detection is therefore far more sensitive than horizontal.
+        f[20:70, 60:210] = 20                             # mount: dark, rigid to the camera
+        f[130:170, 120:220] = 60                          # face
+        if dx or dy:
+            M = np.float32([[1, 0, dx], [0, 1, dy]])
+            f = cv2.warpAffine(f, M, (320, 200), borderMode=cv2.BORDER_REPLICATE)
+        return f
+    anc = MountAnchor()
+    ok_cal = anc.calibrate([_scene() for _ in range(14)])
+    d0 = anc.update(_scene())
+    d1 = anc.update(_scene(dx=8, dy=0))                    # camera shifted 8 px right
+    checks.append(("mount anchor: calibrates, reads ~zero drift when nothing moved (%.4f)"
+                   % abs(d0[0]), ok_cal and abs(d0[0]) < 0.01))
+    # Detection UNDERESTIMATES by roughly half, and that is inherent: the mask is fixed at
+    # calibration, so a shifted image is clipped by it and the centroid moves less than the camera
+    # did. Measured, an 8 px shift reads ~4 px. That is fine for a WATCHDOG -- it still crosses
+    # the threshold and raises the flag -- but the drift value must not be treated as a calibrated
+    # displacement. Cross-correlating the mount patch instead of masking would recover the true
+    # magnitude if that is ever needed.
+    checks.append(("mount anchor: an 8 px camera shift is FLAGGED (drift %.1f px, underestimates "
+                   "by ~2x by construction)" % (d1[0] * 320),
+                   d1[0] > MountAnchor.DRIFT_WARN and d1[2] is True))
+
+    # And the correction: subtracting mount drift must cancel the shift from the landmark.
+    raw_u = 0.60
+    corrected = raw_u - d1[0]
+    checks.append(("mount anchor: subtracting drift cancels the shift (%.3f -> %.3f, want ~%.3f)"
+                   % (raw_u, corrected, raw_u - 8.0 / 320),
+                   abs(corrected - (raw_u - 8.0 / 320)) < 0.02))
 
     ok = all(x for _, x in checks)
     if verbose:

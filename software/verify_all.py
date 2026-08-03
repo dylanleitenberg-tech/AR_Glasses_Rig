@@ -89,6 +89,8 @@ def main(fast=False):
          "CALIB PREFLIGHT OK"),
         ("canthus corpus gate (margin, not score)", "python3 canthus_data.py --selftest",
          "CANTHUS DATA OK"),
+        ("canthus model runtime + mount anchor", "python3 canthus_net.py --selftest",
+         "CANTHUS NET OK"),
         ("canthus auto-label (agreement never accepts alone)",
          "python3 canthus_auto.py --selftest", "CANTHUS AUTO OK"),
         ("canthus label tool (sampling spreads, deterministic)",
