@@ -162,7 +162,44 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   argument for making the band **mount-relative** (the mount is bolted to the camera, so it
 >   cancels seating) rather than sim-derived. Dylan's own `12d2c13` fiducial, one step further.
 >
-> **>>> NEXT ACTION: label the new corpus.** `data/canthus_corpus.npz` = **3000 frames, 1500/eye,
+> **>>> RETRAINED 2026-08-03 — THE MODEL IS FIXED OFFLINE. Confirm it on hardware next.**
+> Dylan labelled 87 positioned + 35 closed on the new worn corpus; retrained and exported.
+> Measured against his 87 ground-truth clicks:
+>
+> | model | eyeL median | eyeR median |
+> |-------|-------------|-------------|
+> | OLD (pre-2026-08-03) | 0.175 (**224 px** of 1280) | 0.159 (**203 px**) |
+> | NEW (trained today)  | 0.018 (**23 px**)          | 0.021 (**27 px**)  |
+>
+> The old model's 0.17 offline miss matches the ~0.12-0.13 live miss measured on hardware earlier
+> the same day — the same failure quantified two independent ways, which is what makes this a
+> diagnosis rather than a story.
+> - **HONEST CAVEAT:** that A/B is partly **in-sample** (the new model trained on those labels).
+>   The fair generalisation figure is the **held-out median 0.0194/0.0197 (~25 px)**. That is NOT
+>   comparable to the old model's 14.1 px held-out either: the old number came from a
+>   low-diversity corpus whose held-out frames were near-duplicates of its training frames. The new
+>   corpus is gaze-diverse and genuinely harder, so a larger held-out error is not a regression.
+> - **Gate status, which predicts whether the tracker locks:** band [0.698, 0.971] — `eyeL` median
+>   **0.826, 100% in band, margin +0.128**; `eyeR` median **0.741, 100% in band, margin +0.043**.
+>   `eyeR`'s margin nearly doubled (+0.023) and is still the thinner one, which is *correct* — see
+>   the asymmetry below.
+> - **>>> NOT YET CONFIRMED ON HARDWARE.** Every number is offline against saved frames. Next
+>   action: wear the rig, `python3 eye_check.py`, expect the lock rate to jump from `eyeL` 0% /
+>   `eyeR` 48%. Only then re-run `calib_preflight` and go for the calibration.
+>
+> **>>> THE 0.09 EYE ASYMMETRY IS REAL GEOMETRY — old open item 2 is CLOSED.** Two independent
+> labelling passes, different corpora, different seatings, fresh clicks:
+> `OLD seed eyeL 0.810 / eyeR 0.707` (gap **0.102**) vs `NEW seed eyeL 0.812 / eyeR 0.728` (gap
+> **0.084**). Reproducing to within 0.02 rules out Dylan's clicking, which is how the previous
+> handoff framed it. **`rig.py`'s SYMMETRIC prior does not describe this rig**, and that is also
+> why `eyeR` has been chronically marginal: the band assumes both eyes land in the same place.
+>
+> **`data/*.npz` is GITIGNORED** — models, corpora and seeds live only on disk, so the `.bak` files
+> are their only version history. Do not delete them: `canthus_net_pre20260803.npz.bak`,
+> `canthus_models_pre20260803.pt.bak`, `canthus_corpus_20260802.npz`,
+> `canthus_seed_MIXED_20260803.npz.bak`.
+>
+> **>>> (done) label the new corpus.** `data/canthus_corpus.npz` = **3000 frames, 1500/eye,
 > 1280x800, confirmed worn across all three thirds of the run**, captured with the new `--guided`
 > phase prompts. Diversity vs the ungTuided first attempt: `eyeL` u sd 0.008 -> **0.015**, range
 > 0.048 -> **0.069**, closed 2% -> **15%**; `eyeR` closed 42% -> **13%**. Then:
