@@ -11,6 +11,45 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > **built and working**; this session is **TESTING**, and the goal is a **first real calibration
 > run on hardware**.
 >
+> **END GOAL, stated by Dylan 2026-08-03:** overlay content on **people and cars that are far
+> away**. That matters for design decisions — see the far-field note below, because it changes
+> which errors are worth chasing.
+>
+> ## WHAT HAPPENED 2026-08-02/03 — READ THIS FIRST
+> The hand-drawn eye-corner template was replaced with a **learned canthus model**. Dylan's
+> reason, verbatim: *"i cant box every time."* Template capture was a manual per-session step, and
+> a slightly-wrong box produced a template that scored ~1.0 on flat skin and localised nowhere.
+>
+> **The model works.** Trained on 98 human-clicked seed points; held-out error **14.1 px of 1280**;
+> correlation with pupil position **+0.19**, down from **+0.99** for the classical tracker — i.e.
+> the landmark is now gaze-independent, which a face-fixed point must be. Runs in **pure numpy**
+> (13 ms/frame), so the live loop needs no torch. Use it with `main.py --use-model`.
+>
+> **The calibration preflight reached `READY TO CALIBRATE ✅` (6/6).** A run launched and the loop
+> executed, but **no usable samples were stored yet** — see OPEN below.
+>
+> New modules, all selftested and in `verify_all`: `canthus_data` (collect corpus),
+> `canthus_label` (hand-label seed + `--closed-pass`), `canthus_train` (two-model ensemble, torch,
+> runs in `.venv-train`), `canthus_auto` (automated propose/correct/confirm), `canthus_net`
+> (numpy runtime + tracker + mount anchor), `rig_view` (live 4-up camera view).
+>
+> ## THE PATTERN THAT COST THE MOST TIME — internalise this
+> Roughly **eight times** across those two days, a check went green for reasons unrelated to what
+> it claimed to measure. Every single one was caught by looking at the underlying distribution or
+> the actual image, never by the summary number:
+> - `bank_bringup` printed "BANK UP ✅" with two cameras at 100% misses
+> - `dot_geometry` took `abs()` of disparity, hiding a fully reversed stereo pair
+> - `corner lock` scored a featureless template at 0.99 (rivals 0.005 away)
+> - `dark_mass()` used a percentile threshold, so it returned ~12% for every image
+> - a "corrector" was a constant function and "confirmed" 89% of frames with label std 0.002
+> - two independent estimators agreed at 0.029 — on the eyelid, not the tear duct
+> - heatmap sharpness worked as a confidence signal on one model and **inverted** on the next
+> - the seed-frame selector ranked by an openness metric that did not separate open from closed
+>
+> **So: when adding a check, write the failing case first. Validate by spread/distribution and by
+> LOOKING at images, never by a pass rate.** Several selftests now deliberately pin a known-bad
+> input so the property cannot silently regress.
+>
 > ## RULE ZERO — SAVE EVERYTHING TO THE DOC, AS YOU GO
 > **Dylan's standing instruction, verbatim: "from now on, save everything to the doc. if work is
 > done without being saved to the doc, it needs to be done again in the next session."**
@@ -150,6 +189,36 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   `canthus_auto.find_mount` / `search_band`. Keep `rig.py`'s HORIZONTAL prior — u was always
 >   consistent with hardware (0.809/0.886 measured vs prior [0.778, 0.891]); only v disagreed.
 >
+> ## >>> OPEN — what to do next, in order
+> 1. **No calibration samples yet.** The loop runs but the **WASD nudge keys were not
+>    registering**. The HUD now prints the raw `cv2.waitKey` code: **blank = focus problem**
+>    (click the overlay window), **`119 (w)` = the key arrives and the mapping is at fault**. That
+>    one line settles it; nobody has read it yet.
+> 2. **`eyeR` is the weak eye.** Dylan's `eyeR` seed clicks sit ~0.06 BELOW `rig.py`'s prior band
+>    (he labels u≈0.714; band is [0.778, 0.891]), consistently (±0.014). The model faithfully
+>    learned that, so the plausibility gate now rejects its own model's output and `eyeR` reports
+>    "no plausible landmark". Either his `eyeR` clicks are on a different point than `eyeL`'s, or
+>    the sim's geometry for that camera is wrong — as it already was about mount occlusion.
+>    Resolve by re-labelling ~20 `eyeR` seeds, or by widening that camera's band.
+> 3. **Model is label-limited, not architecture-limited.** Its error (0.030) sits at Dylan's own
+>    click scatter (±0.021). More/《better seeds beat any training change. Weakest coverage:
+>    extreme gaze and eyes-held-wide (it drifts there), and the closed head (22 examples).
+> 4. **Pupil head — free win, no labelling.** Add a third head to the canthus net for pupil
+>    centre/ellipse, auto-labelled by `pupil_tracker` (96-100% reliable on real frames, unlike the
+>    template). Literature says the big gain is presence/absence detection: 92.8% → 99.6%
+>    (EyeNet), which is exactly the weak closed-eye head. Dylan's own `eyetracker.py` study says
+>    do NOT expect better registration from it (corner-only 9.9 px vs +pupil 10.1 px) — the payoff
+>    is geometry ID (`ep_dist` 81→54%, `globe_r` 87→50%, IPD 57→16%) and blink rejection.
+>
+> ## FAR-FIELD: the arithmetic that shapes priorities
+> Stereo depth dies with distance on a 67 mm baseline — disparity 30.6 px at 2 m, 3.1 px at 20 m,
+> 0.6 px at 100 m (unusable). **But you barely need depth out there:** the world cam sits ~34 mm
+> from the eye, which at 20 m subtends **0.096°, about 2 display pixels**. At 0.5 m the same
+> offset subtends ~3.9°, i.e. 80+ px. **Near is the hard case; far is direction-dominated and
+> comparatively easy.** The real far-field risk is calibrating at ONE distance: `kappa.py`
+> measured ~13 px of cross-distance error, dropping to 2.4 px with multi-distance calibration. So
+> vary target distance during the run.
+>
 > ## Open bugs (neither blocks calibration)
 > - **`WorldTracker` built 0 map points** across a 45 s hardware run — no usable stereo
 >   correspondences on real frames. Calibration does **not** touch the mesh (it uses
@@ -160,6 +229,13 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   Fixing the order takes peak inliers **0 → 6** and track ids **1 → 39** — but map points
 >   **stay 0**. So the swap was *a* cause, not *the* cause. Next place to look is
 >   `WorldMesh.ingest`, not the correspondence filter, which is now known-good.
+> - **`WorldTracker` 0 map points is a GEOMETRY problem, not a bug** (researched 2026-08-03).
+>   The SLAM literature names this exact configuration: stereo VI-SLAM initialisation degrades
+>   badly under **pure/intense rotation** (head motion in glasses is rotation-dominant, almost no
+>   translation), and scale observability collapses when **landmarks are far relative to the
+>   baseline** — 67 mm against a room, let alone a street. Reversing the world pair took peak
+>   inliers 0→6 and track ids 1→39 but map points stayed 0. An IMU is the standard fix for both,
+>   and the CAD already has the mount. Stop hunting for a coding bug here.
 > - **`eyeL` framing is marginal** (2026-08-02, worn): the frame is mostly nose and cheek with
 >   the eye jammed into the bottom-left corner. Both eyes sit near **v≈0.75-0.85**, far below the
 >   settled prediction of **v≈0.414**. `EC_AIM_DOWN=6` is printed and cannot change, so the brow
