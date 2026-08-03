@@ -110,6 +110,83 @@ class CanthusNet:
         return u, v, cp, sharp
 
 
+class CanthusTracker:
+    """Stateful wrapper: confidence gate + jump gate + smoothing. Use this in the live loop.
+
+    WHY, from Dylan on hardware: the prediction "moved off when I open my eyes super wide or look
+    outside glasses frame". Both are OUT OF DISTRIBUTION — the seed set was normal-gaze frames, so
+    the model has never seen an eye held wide or rotated to an extreme. The real fix is seed points
+    covering those poses; this makes the failure SAFE in the meantime, which matters because a
+    silently wrong landmark is worse than an admitted gap.
+
+    Three defences, cheapest first:
+
+    CONFIDENCE GATE. The heatmap peak says how sure the model is, and out-of-distribution frames
+    flatten it. Measured on eyeL: confident frames (including all 30 seeds) sit at 0.018-0.022,
+    the whole-corpus 5th percentile is 0.0152, and a blank frame bottoms out at 0.0084. Below
+    ~0.017 the model does not know, and the honest move is to say so rather than emit a number.
+    Template matching had no equivalent — it scored ~1.0 on featureless skin.
+
+    JUMP GATE. The inner canthus is FACE-fixed: it does not move when gaze moves, and it cannot
+    teleport between frames. A large inter-frame jump is therefore a detection error by
+    construction, whatever the confidence says. This is the same reasoning that separates the
+    canthus from the pupil in the first place.
+
+    SMOOTHING. An EMA over accepted frames. Live jitter measured ±0.074 in u on this camera, well
+    above the ±0.021 the labels support, so most of that is estimator noise worth averaging out.
+
+    `state` is 'ok' | 'held' | 'lost'. HELD means the last good position is being reused; LOST
+    means there is no trustworthy estimate at all. The calibration loop should refuse to record a
+    sample unless state == 'ok' — recording during a blink or an off-distribution pose is exactly
+    the bad sample rig.py's blink-dropout model exists to describe.
+    """
+
+    CONF_MIN = 0.017        # below the seed-frame minimum of 0.0182, above the 0.0084 blank floor
+    MAX_JUMP = 0.06         # normalised frame units between consecutive accepted frames
+    EMA = 0.35              # weight on the new observation
+    MAX_HELD = 15           # frames to coast before declaring LOST
+
+    def __init__(self, net=None, conf_min=None, max_jump=None, ema=None):
+        self.net = net or CanthusNet()
+        self.conf_min = self.CONF_MIN if conf_min is None else conf_min
+        self.max_jump = self.MAX_JUMP if max_jump is None else max_jump
+        self.ema = self.EMA if ema is None else ema
+        self.uv = None
+        self.held = 0
+
+    def reset(self):
+        self.uv = None
+        self.held = 0
+
+    def update(self, gray):
+        """-> (u, v, closed_prob, conf, state). u,v are None when state == 'lost'."""
+        u, v, cp, conf = self.net.predict(gray)
+
+        if conf < self.conf_min:
+            self.held += 1
+            if self.uv is None or self.held > self.MAX_HELD:
+                return None, None, cp, conf, "lost"
+            return self.uv[0], self.uv[1], cp, conf, "held"
+
+        if self.uv is not None:
+            if np.hypot(u - self.uv[0], v - self.uv[1]) > self.max_jump:
+                # Confident but implausible. Trust the physics over the model: a face-fixed point
+                # does not jump. Coasting here is what stops a wide-open eye yanking the estimate
+                # across the frame.
+                self.held += 1
+                if self.held > self.MAX_HELD:
+                    self.uv = (u, v)          # sustained disagreement -> the world really moved
+                    self.held = 0
+                    return u, v, cp, conf, "ok"
+                return self.uv[0], self.uv[1], cp, conf, "held"
+            a = self.ema
+            self.uv = (self.uv[0] * (1 - a) + u * a, self.uv[1] * (1 - a) + v * a)
+        else:
+            self.uv = (u, v)
+        self.held = 0
+        return self.uv[0], self.uv[1], cp, conf, "ok"
+
+
 def selftest(verbose=True):
     if verbose:
         print("== canthus_net self-test (numpy runtime) ==")
@@ -159,6 +236,33 @@ def selftest(verbose=True):
         checks.append(("blank frame is LESS peaked than a real one (%.4f vs %.4f)"
                        % (sh_blank, real_sh), sh_blank <= real_sh * 1.5))
 
+    # 4) The tracker's gates, with a stub net so the logic is tested rather than the weights.
+    class _Stub:
+        def __init__(self): self.q = []
+        def predict(self, g): return self.q.pop(0)
+    st = _Stub()
+    trk = CanthusTracker.__new__(CanthusTracker)
+    trk.net = st; trk.conf_min = 0.017; trk.max_jump = 0.06; trk.ema = 1.0
+    trk.uv = None; trk.held = 0
+    st.q = [(0.20, 0.60, 0.1, 0.021),      # confident -> ok
+            (0.205, 0.605, 0.1, 0.021),    # confident, small move -> ok
+            (0.60, 0.20, 0.1, 0.021),      # CONFIDENT BUT A HUGE JUMP -> held, not accepted
+            (0.21, 0.61, 0.1, 0.010)]      # low confidence -> held
+    r = [trk.update(None) for _ in range(4)]
+    checks.append(("tracker: confident+plausible -> ok, ok",
+                   r[0][4] == "ok" and r[1][4] == "ok"))
+    checks.append(("tracker: CONFIDENT but implausible jump -> held (physics beats the model)",
+                   r[2][4] == "held" and abs(r[2][0] - 0.205) < 1e-6))
+    checks.append(("tracker: low confidence -> held, never a silent wrong answer",
+                   r[3][4] == "held"))
+
+    trk2 = CanthusTracker.__new__(CanthusTracker)
+    st2 = _Stub(); trk2.net = st2; trk2.conf_min = 0.017; trk2.max_jump = 0.06; trk2.ema = 1.0
+    trk2.uv = None; trk2.held = 0
+    st2.q = [(0.2, 0.6, 0.1, 0.005)] * 3
+    checks.append(("tracker: no confident frame ever seen -> 'lost', not a guess",
+                   trk2.update(None)[4] == "lost" and trk2.update(None)[0] is None))
+
     ok = all(x for _, x in checks)
     if verbose:
         for name, x in checks:
@@ -171,7 +275,7 @@ def live(cam=0, seconds=None):
     """Run the model on a live camera and draw where it thinks the canthus is."""
     import cv2
     import time
-    net = CanthusNet()
+    trk = CanthusTracker()
     cap = cv2.VideoCapture(cam, getattr(cv2, "CAP_AVFOUNDATION", 0))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)
@@ -184,16 +288,20 @@ def live(cam=0, seconds=None):
             break
         g = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) if f.ndim == 3 else f
         t = time.time()
-        u, v, cp, sh = net.predict(g)
+        u, v, cp, sh, state = trk.update(g)
         tot += time.time() - t
         n += 1
         vis = cv2.cvtColor(g, cv2.COLOR_GRAY2BGR)
         H, W = g.shape
-        col = (0, 0, 255) if cp < 0.5 else (0, 200, 255)
-        cv2.drawMarker(vis, (int(u * W), int(v * H)), col, cv2.MARKER_CROSS, 40, 3)
-        cv2.putText(vis, "u %.3f v %.3f  closed %.2f  peak %.3f  %.0f ms" %
-                    (u, v, cp, sh, 1000 * tot / max(n, 1)),
-                    (12, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2, cv2.LINE_AA)
+        col = {"ok": (0, 255, 0), "held": (0, 200, 255), "lost": (0, 0, 255)}[state]
+        if u is not None:
+            cv2.drawMarker(vis, (int(u * W), int(v * H)), col, cv2.MARKER_CROSS, 40, 3)
+        cv2.putText(vis, "%s  u %s v %s  closed %.2f  conf %.4f  %.0f ms" %
+                    (state.upper(),
+                     ("%.3f" % u) if u is not None else "--",
+                     ("%.3f" % v) if v is not None else "--",
+                     cp, sh, 1000 * tot / max(n, 1)),
+                    (12, 34), cv2.FONT_HERSHEY_SIMPLEX, 0.9, col, 2, cv2.LINE_AA)
         cv2.imshow(win, vis)
         if (cv2.waitKey(1) & 0xFF) in (ord("q"), 27):
             break
