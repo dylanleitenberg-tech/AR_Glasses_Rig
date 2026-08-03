@@ -132,6 +132,10 @@ def _load_pairs(with_pseudo):
     s = np.load(SEED)
     idx, xy = s["index"], s["labels"]
     cl = s["closed"].astype(np.float32) if "closed" in s.files else np.zeros(len(idx), np.float32)
+    # Frames marked CLOSED with no point carry (-1,-1). They are valid EYE-STATE examples but have
+    # no landmark, so they must be masked out of the position loss -- training on (-1,-1) as a
+    # coordinate would drag the heatmap toward a corner that means nothing.
+    pos_valid = (xy[:, 0] >= 0).astype(np.float32)
     if with_pseudo and os.path.exists(PSEUDO):
         p = np.load(PSEUDO)
         idx = np.concatenate([idx, p["index"]])
@@ -139,21 +143,22 @@ def _load_pairs(with_pseudo):
         # Pseudo-labels carry no eye-state truth; mark them -1 so the closed head IGNORES them
         # rather than learning "everything the ensemble agreed on was open".
         cl = np.concatenate([cl, -np.ones(len(p["index"]), np.float32)])
+        pos_valid = np.concatenate([pos_valid, np.ones(len(p["index"]), np.float32)])
         print("  training on %d seed + %d ensemble-agreed pseudo-labels"
               % (len(s["index"]), len(p["index"])))
-    return F, R, idx, xy, cl
+    return F, R, idx, xy, cl, pos_valid
 
 
 def train(with_pseudo=False, epochs=60, verbose=True):
     import torch
     import torch.nn as nn
     import cv2
-    F, R, idx, xy, cl = _load_pairs(with_pseudo)
+    F, R, idx, xy, cl, pv = _load_pairs(with_pseudo)
 
     # Held-out split BY FRAME INDEX so near-duplicate neighbours cannot straddle the split and
     # flatter the validation number.
     order = np.argsort(idx)
-    idx, xy, cl = idx[order], xy[order], cl[order]
+    idx, xy, cl, pv = idx[order], xy[order], cl[order], pv[order]
     n_val = max(20, len(idx) // 5)
     rng0 = np.random.default_rng(7)
     perm = rng0.permutation(len(idx))
@@ -180,7 +185,12 @@ def train(with_pseudo=False, epochs=60, verbose=True):
                 x = torch.tensor(np.array(ims), dtype=torch.float32).unsqueeze(1)
                 y = torch.tensor(np.array(tgt), dtype=torch.float32)
                 heat, closed_logit = net(x)
-                loss = nn.functional.smooth_l1_loss(soft_argmax(torch, heat), y, beta=0.02)
+                pvb = torch.tensor(pv[batch], dtype=torch.float32)
+                pred = soft_argmax(torch, heat)
+                if float(pvb.sum()) > 0:
+                    loss = nn.functional.smooth_l1_loss(pred[pvb > 0], y[pvb > 0], beta=0.02)
+                else:
+                    loss = pred.sum() * 0.0
                 # Eye-state head: supervise ONLY on frames a human actually judged (cl >= 0).
                 # Pseudo-labelled frames carry cl = -1 and are masked out, so the head never
                 # learns "the ensemble agreed, therefore open".
@@ -198,9 +208,10 @@ def train(with_pseudo=False, epochs=60, verbose=True):
                        for j in val_sel]
                 x = torch.tensor(np.array(ims), dtype=torch.float32).unsqueeze(1)
                 heat, _ = net(x)
-                pv = soft_argmax(torch, heat).numpy()
-                err = np.linalg.norm(pv - xy[val_sel], axis=1)
-                med = float(np.median(err))
+                pred_v = soft_argmax(torch, heat).numpy()
+                vmask = pv[val_sel] > 0
+                err = np.linalg.norm(pred_v[vmask] - xy[val_sel][vmask], axis=1)
+                med = float(np.median(err)) if len(err) else float("nan")
             if med < best:
                 best, best_state = med, {k: v.clone() for k, v in net.state_dict().items()}
             if verbose and (ep % 10 == 0 or ep == epochs - 1):

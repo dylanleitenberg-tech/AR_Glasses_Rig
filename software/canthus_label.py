@@ -48,6 +48,190 @@ def sample_order(n_total, n_want, seed=20260802):
     return idx[:min(n_want, n_total)]
 
 
+def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True):
+    """Place the TEAR DUCT on ~30 frames. This is the ground truth the whole system lacks.
+
+    WHY THIS EXISTS AND WHY IT IS SHORT
+        The template's centre sits on the eyelid, not the tear duct, and the template is the only
+        thing in the pipeline that encodes what a canthus IS. So every estimator faithfully
+        reproduces that error, and two independent estimators simply agree on the lid (measured:
+        A/B separation 0.029, both on the lid margin). No amount of estimator independence repairs
+        a wrong definition — something has to show the system the actual landmark once.
+
+        Thirty is enough to define it. The model generalises from there and the existing machinery
+        (mount band, anatomical prior, A/B agreement, closed-eye skip) filters its pseudo-labels
+        across the remaining ~1470 frames.
+
+    FULL FRAME, NEVER CROPPED — Dylan's requirement. A crop hides the surrounding anatomy that
+    tells you which corner is which, and the whole failure here was mistaking one part of the eye
+    for another. You see the entire frame, scaled up; the marker goes exactly where you click.
+
+        CLICK   place / move the marker      ENTER  accept, eye OPEN
+        C       accept, eye CLOSED                   U      undo the previous
+        N       skip this frame              Q      save and quit
+
+    CLOSED FRAMES STILL GET A POSITION. The inner canthus is where the lids MEET, so it stays
+    visible through a blink — closed-ness is a separate property of the frame, not a reason to
+    discard the landmark. That is why the model has two heads rather than a filter, and it is why
+    the seed must contain BOTH states: a head cannot learn a class it has never seen.
+    """
+    import cv2
+    if not os.path.exists(corpus):
+        print("!! no corpus at %s" % corpus)
+        return 1
+    d = np.load(corpus)
+    F, R = d["frames"], d["roles"]
+    # Target ~2560 px wide, not 1280.
+    #
+    # Click precision depends on how big the landmark is ON SCREEN, not on the stored resolution.
+    # Showing a native 1280x800 frame at 1:1 makes the eye HALF the on-screen size of the old
+    # 640x400 corpus displayed at 2x -- and the labels measured it: archived 640 clicks had
+    # u std 0.007, native-at-1:1 clicks 0.022, a 3x regression from the "higher resolution" corpus.
+    # Dylan's screen is 3072x1920, so 2x of native (2560x1600) fits with room to spare and gives
+    # both the full uncropped frame and a large target.
+    if zoom is None:
+        zoom = max(1, int(round(2560.0 / F.shape[2])))
+
+    # NO openness pre-filter, deliberately.
+    #
+    # eye_openness (pupil ellipse area) does NOT reliably separate open from closed on real
+    # frames: a selection ranked "most open" came back about half closed by Dylan's eye. Ranking
+    # the seed by a broken metric would skew which frames the model ever sees AND teach the
+    # eye-state head from a label source we know is wrong. So take an unbiased deterministic
+    # spread across the corpus and let the human's ENTER/C calls define both classes — which is
+    # the whole point of a seed set.
+    #
+    # Balance the two cameras so neither is under-represented.
+    picks = []
+    for rid in (0, 1):
+        rows = np.where(R == rid)[0]
+        if len(rows) == 0:
+            continue
+        sel = sample_order(len(rows), n_want // 2 + 1)
+        picks += [int(rows[j]) for j in sel]
+    if not picks:
+        picks = list(sample_order(len(F), n_want))
+
+    prev = {}
+    if os.path.exists(out):
+        s = np.load(out)
+        prev = {int(i): (float(u), float(v)) for i, (u, v) in zip(s["index"], s["labels"])}
+        if verbose:
+            print("resuming — %d already placed" % len(prev))
+    todo = [i for i in picks if i not in prev][:n_want]
+    if not todo:
+        print("nothing left (%d done)" % len(prev))
+        return 0
+
+    results = dict(prev)
+    closed = {}
+    if os.path.exists(out):
+        _s = np.load(out)
+        if "closed" in _s.files:
+            closed = {int(i): int(c) for i, c in zip(_s["index"], _s["closed"])}
+    win = "CLICK the tear duct  |  ENTER=open  ·  C=closed  ·  N skip  ·  U undo  ·  Q save"
+    # AUTOSIZE, not NORMAL. A NORMAL window scales the image to fit whatever size it opens at, so
+    # a native 1280x800 frame gets resampled and looks soft — which is exactly what it did, and
+    # the resulting scatter showed up as 3x worse label consistency (u std 0.024 vs 0.007).
+    # AUTOSIZE pins the window to the image so every pixel shown is a pixel the sensor measured.
+    cv2.namedWindow(win, cv2.WINDOW_AUTOSIZE)
+    click = {"xy": None}
+
+    def on_mouse(ev, x, y, flags, param):
+        if ev == cv2.EVENT_LBUTTONDOWN:
+            click["xy"] = (x / float(zoom * F.shape[2]), y / float(zoom * F.shape[1]))
+    cv2.setMouseCallback(win, on_mouse)
+
+    hist, k = [], 0
+    while k < len(todo):
+        fi = todo[k]
+        # DISPLAY-ONLY enhancement. Stored frames and label coordinates are untouched; the model
+        # trains on raw data.
+        #
+        # A hard 1-99 percentile stretch was WRONG here and Dylan spotted it immediately: these
+        # frames are dark (mean ~53-66, the price of eliminating 19% clipping), so aggressively
+        # rescaling them multiplies the sensor grain along with the signal. The result looked
+        # NOISIER than cam_view's raw feed and read as "not max res" when the resolution was
+        # in fact native. Detail was never the problem; amplified noise was.
+        #
+        # So: a gentle lift, then an edge-preserving denoise. Bilateral keeps the lid margin and
+        # lash edges — the things being clicked — while flattening the grain between them.
+        g = F[fi]
+        lo, hi = np.percentile(g, 2), np.percentile(g, 98)
+        lift = np.clip((g.astype(np.float32) - lo) * 235.0 / max(hi - lo, 1e-6) + 10, 0, 255)
+        lift = lift.astype(np.uint8)
+        lift = cv2.bilateralFilter(lift, 5, 40, 5)
+        base = cv2.cvtColor(lift, cv2.COLOR_GRAY2BGR)
+        if zoom != 1:
+            # NEAREST, not LINEAR: at 2x this keeps real pixel boundaries visible instead of
+            # smearing them into an interpolated blur that only looks higher-resolution.
+            base = cv2.resize(base, (F.shape[2] * zoom, F.shape[1] * zoom),
+                              interpolation=cv2.INTER_NEAREST)
+        H, W = base.shape[:2]
+        click["xy"] = None
+        role = "eyeL" if R[fi] == 0 else "eyeR"
+        while True:
+            shown = base.copy()
+            if click["xy"]:
+                p = (int(click["xy"][0] * W), int(click["xy"][1] * H))
+                cv2.drawMarker(shown, p, (0, 0, 255), cv2.MARKER_CROSS, 30, 2)
+                cv2.circle(shown, p, 20, (0, 0, 255), 1)
+            cv2.putText(shown, "%s   %d/%d placed   %s" %
+                        (role, len(results), n_want,
+                         "ENTER=open   C=closed" if click["xy"]
+                         else "click the tear duct   (or C alone = closed, no point)"),
+                        (12, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
+            cv2.imshow(win, shown)
+            key = cv2.waitKey(20) & 0xFF
+            if key in (13, 32) and click["xy"]:
+                results[fi] = click["xy"]; closed[fi] = 0
+                hist.append(fi); k += 1; break
+            if key in (ord("c"), ord("C")):
+                # C works WITH OR WITHOUT a click. Requiring a point first meant that on a blink
+                # where the tear duct is hard to place, C silently did nothing -- which is exactly
+                # when it is most needed. If no point was placed, the frame is still recorded as a
+                # closed EXAMPLE with an invalid position (-1,-1); the eye-state head learns from
+                # it and the landmark head masks it out.
+                results[fi] = click["xy"] if click["xy"] else (-1.0, -1.0)
+                closed[fi] = 1
+                hist.append(fi); k += 1; break
+            if key in (ord("n"), ord("N")):
+                hist.append(None); k += 1; break
+            if key in (ord("u"), ord("U")):
+                if hist:
+                    last = hist.pop()
+                    if last is not None:
+                        results.pop(last, None)
+                    k = max(0, k - 1)
+                break
+            if key in (ord("q"), 27):
+                k = len(todo); break
+    cv2.destroyAllWindows()
+
+    if not results:
+        print("nothing placed")
+        return 1
+    idx = np.array(sorted(results), np.int32)
+    xy = np.array([results[int(i)] for i in idx], np.float32)
+    fl = np.array([closed.get(int(i), 0) for i in idx], np.uint8)
+    np.savez_compressed(out, index=idx, labels=xy, closed=fl)
+    if verbose:
+        print("\n== seed ==")
+        print("  placed %d points -> %s" % (len(idx), out))
+        print("  eye state: %d open / %d closed" % (int((fl == 0).sum()), int(fl.sum())))
+        if fl.sum() < 5:
+            print("  NOTE: fewer than 5 closed examples — the closed head will be weak.")
+        valid = xy[:, 0] >= 0
+        if valid.any():
+            agree = np.linalg.norm(xy[valid] - d["labels"][idx][valid], axis=1)
+            print("  median distance from the template's answer: %.3f frame units"
+                  % np.median(agree))
+        print("  positioned %d | closed-without-point %d (eye-state only)"
+              % (int(valid.sum()), int((~valid).sum())))
+        print("  (large is EXPECTED and is the point — the template was on the lid)")
+    return 0
+
+
 def closed_pass(corpus=CORPUS, seed=SEED, verbose=True):
     """Second pass: mark each labelled frame EYE OPEN or EYE CLOSED. One key per frame.
 
@@ -244,15 +428,19 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="hand-label the canthus seed set")
     ap.add_argument("--label", action="store_true")
+    ap.add_argument("--seed", action="store_true",
+                    help="place the TEAR DUCT on ~30 full frames (never cropped)")
     ap.add_argument("--closed-pass", action="store_true",
                     help="second pass: mark each labelled frame eye-open or eye-closed")
     ap.add_argument("--selftest", action="store_true")
-    ap.add_argument("--n", type=int, default=300, help="how many frames to label")
+    ap.add_argument("--n", type=int, default=30, help="how many frames to label")
     a = ap.parse_args()
     if a.selftest:
         sys.exit(selftest())
     if a.label:
         sys.exit(label(n_want=a.n))
+    if a.seed:
+        sys.exit(seed_pass(n_want=a.n))
     if a.closed_pass:
         sys.exit(closed_pass())
     ap.print_help()

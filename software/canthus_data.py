@@ -57,9 +57,25 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(os.path.dirname(HERE), "data")
 CORPUS = os.path.join(DATA, "canthus_corpus.npz")
 
-# Stored frame size. Small enough that thousands fit in RAM and train fast on CPU, large enough
-# that the canthus is still several pixels across: 1280x800 -> 320x200 keeps the 16:10 aspect.
-STORE_W, STORE_H = 320, 200
+# Stored frame size. 1280x800 -> 640x400 keeps the 16:10 aspect at HALF scale.
+#
+# WAS 320x200, and that was too small. A 4x downscale keeps only 6.2% of the captured pixels,
+# which (a) makes every stored frame look blurry when the LENS IS ACTUALLY SHARP -- at full
+# resolution these cameras resolve individual eyelash strands -- and (b) caps label precision at
+# ~4 native pixels, which is hopeless for a landmark task the rig needs to sub-pixel. Dylan spotted
+# the blur by eye and asked whether the cameras needed refocusing; they did not, this did.
+#
+# NOW FULL NATIVE 1280x800 -- no downscale at all. Dylan asked for max resolution after finding
+# 640x400 still looked soft, and he was right for a reason beyond storage: the labelling tool
+# displays at ~1280 px wide, so a 640-wide frame is UPSCALED 2x on screen and the human clicks on
+# interpolated pixels. At native size the display is 1:1 and every pixel shown is a pixel the
+# sensor actually measured.
+#
+# Label precision is the binding constraint right now, not disk. Storing native means a click is
+# accurate to a real sensor pixel instead of ~2. Cost is ~1 GB per 1000 frames, against 848 GB
+# free. The model still trains on downscaled crops (canthus_train.IN_W/IN_H), but the LABELS keep
+# full precision, and higher-resolution training stays available without re-collecting.
+STORE_W, STORE_H = 1280, 800
 
 MIN_MARGIN = 0.15      # above calib_preflight's 0.08 usability bar — labels must be BETTER
 MIN_PEAK = 0.55        # a weak absolute match is unreliable even when it is unique
@@ -98,8 +114,17 @@ def match_with_margin(gray, tmpl, cv2):
     return float(peak), (u, v), float(peak) - rival
 
 
-def collect(eye_cams, target=1500, min_margin=MIN_MARGIN, seconds=None, view=True, verbose=True):
-    """Stream both eye cams, keep every frame where the template locks UNAMBIGUOUSLY."""
+def collect(eye_cams, target=1500, min_margin=MIN_MARGIN, seconds=None, view=True,
+            raw=False, verbose=True):
+    """Stream both eye cams and store frames.
+
+    `raw=True` stores EVERY frame with no template gate, and that is what a training corpus wants.
+    Gating on template margin biases the sample toward frames where the (lid-centred) template
+    happened to match well — the corpus then over-represents exactly the configurations that
+    mislead the model, and under-represents the hard ones it most needs to see. Labels now come
+    from human clicks, so the template has no business deciding which frames exist.
+
+    The gated path is kept for diagnostics only."""
     import cv2
     from cameras import Camera
 
@@ -132,8 +157,12 @@ def collect(eye_cams, target=1500, min_margin=MIN_MARGIN, seconds=None, view=Tru
                     continue
                 g = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) if f.ndim == 3 else f
                 seen[role] += 1
-                peak, (u, v), margin = match_with_margin(g, tmpl[role], cv2)
-                good = margin >= min_margin and peak >= MIN_PEAK
+                if raw:
+                    peak, (u, v), margin = 0.0, (0.5, 0.5), 0.0
+                    good = True
+                else:
+                    peak, (u, v), margin = match_with_margin(g, tmpl[role], cv2)
+                    good = margin >= min_margin and peak >= MIN_PEAK
                 if good:
                     small = cv2.resize(g, (STORE_W, STORE_H), interpolation=cv2.INTER_AREA)
                     frames.append(small)
@@ -235,11 +264,13 @@ if __name__ == "__main__":
     ap.add_argument("--seconds", type=float, default=None)
     ap.add_argument("--min-margin", type=float, default=MIN_MARGIN)
     ap.add_argument("--no-view", action="store_true")
+    ap.add_argument("--raw", action="store_true",
+                    help="store every frame, no template gate (what a training corpus wants)")
     a = ap.parse_args()
     if a.selftest:
         sys.exit(selftest())
     if a.collect:
         sys.exit(collect({"eyeL": a.eye_cam_left, "eyeR": a.eye_cam_right},
                          target=a.target, min_margin=a.min_margin,
-                         seconds=a.seconds, view=not a.no_view))
+                         seconds=a.seconds, view=not a.no_view, raw=a.raw))
     ap.print_help()
