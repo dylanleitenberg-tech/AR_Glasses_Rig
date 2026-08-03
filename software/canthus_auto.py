@@ -19,14 +19,20 @@ WHY A THIRD JUDGE THAT IS NOT LEARNED
     So every proposal is also checked against the ANATOMICAL PRIOR — where rig.py's optics say an
     inner canthus can physically land, given the population face model swept over the whole glasses
     pose grid. That judge is physics, not data; it cannot be argued into a consensus. Measured
-    prior (300 faces x 18 poses, real 16:10 sensor crop):
+    prior (300 faces x 18 poses), converted to REAL SENSOR coordinates:
 
         u  median 0.834   1-99% [0.778, 0.891]
-        v  median 0.414   1-99% [0.256, 0.575]
+        v  median 0.362   1-99% [0.110, 0.620]
 
     It is a tight box, and it is decisive: the blank-skin locks that ruined the first corpus sat
-    at u~0.15 against a prior floor of 0.761. No confidence threshold caught those. The prior
+    at u~0.15 against a prior floor of 0.778. No confidence threshold caught those. The prior
     rejects them outright.
+
+    MIND THE UNITS — this cost two false alarms. optics.PinholeCamera normalises u AND v by the
+    same focal, i.e. a SQUARE frame, while a measured label is normalised over the real 800-px
+    height. Raw prior v is [0.256, 0.575]; converted it is [0.110, 0.620]. Comparing the raw
+    figure against measurements made the rig look like it disagreed with the simulator when
+    nothing was wrong with either. build_prior() does the conversion; do not undo it.
 
 CLOSED EYES SKIP, AND THAT ALSO NEEDS CONFIRMING
     A frame judged closing/closed is skipped rather than labelled — but a single opinion is not
@@ -57,7 +63,7 @@ PRIOR = os.path.join(DATA, "canthus_prior.npz")
 CONFIRM_N = 2          # consecutive confirmations required, as pixel_sweep does
 MAX_ROUNDS = 8         # give up rather than loop forever on an ambiguous frame
 CONFIRM_TOL = 0.012    # a correction smaller than this counts as "the corrector agrees"
-CLOSED_DARK_FRAC = 0.5 # iris/pupil dark mass below this fraction of median -> eye likely shut
+CLOSED_AREA_FRAC = 0.35  # pupil area below this fraction of the session's OPEN median -> closing/closed
 
 
 # ----------------------------------------------------------------------------------
@@ -84,9 +90,29 @@ def build_prior(n_faces=300, seed=31, cache=True, verbose=False):
             if p is not None:
                 uv.append(p)
     uv = np.array(uv)
+
+    # SQUARE-FRAME -> REAL SENSOR coordinates. optics.PinholeCamera normalises u AND v by the
+    # same focal ("half-size 0.5 spans half-FOV"), i.e. it models a SQUARE image. The OV9281 is
+    # 1280x800, so the real sensor covers the full width but only the middle 800/1280 = 62.5%
+    # vertically: v_square in [0.1875, 0.8125]. A measured label, by contrast, is normalised over
+    # the ACTUAL 800-px image height, so it spans [0,1].
+    #
+    # Comparing the two directly is meaningless, and doing so is what produced the phantom
+    # "vertical discrepancy" I chased twice: raw prior v [0.256,0.575] vs measured v ~0.61-0.75
+    # looked like the rig disagreeing with the simulator, when it was a units error in this
+    # function. u was never affected because the square's width IS the sensor width — which is
+    # exactly why u agreed (0.809 vs 0.834) while v did not. Same conversion landmark_test.framing
+    # already applies.
+    lo = 0.5 - 0.5 * (800 / 1280.0)          # 0.1875
+    hi = 0.5 + 0.5 * (800 / 1280.0)          # 0.8125
+    on_sensor = (uv[:, 1] >= lo) & (uv[:, 1] <= hi) & (uv[:, 0] >= 0) & (uv[:, 0] <= 1)
+    uv = uv[on_sensor]                        # a canthus off the sensor cannot be detected anyway
+    uv[:, 1] = (uv[:, 1] - lo) / (hi - lo)    # -> [0,1] over the real 800-px height
+
     out = dict(u_lo=float(np.percentile(uv[:, 0], 1)), u_hi=float(np.percentile(uv[:, 0], 99)),
                v_lo=float(np.percentile(uv[:, 1], 1)), v_hi=float(np.percentile(uv[:, 1], 99)),
-               u_med=float(np.median(uv[:, 0])), v_med=float(np.median(uv[:, 1])))
+               u_med=float(np.median(uv[:, 0])), v_med=float(np.median(uv[:, 1])),
+               on_sensor=float(on_sensor.mean()))
     if cache:
         os.makedirs(DATA, exist_ok=True)
         np.savez(PRIOR, **out)
@@ -109,25 +135,50 @@ def in_prior(uv, prior, mirrored, pad=0.06):
 #  Eye state — closing/closed frames are skipped, but the verdict must be confirmed too
 # ----------------------------------------------------------------------------------
 def dark_mass(gray):
-    """Fraction of the frame that is iris/pupil-dark. Collapses when the lid closes over the eye,
-    which is the cheapest reliable closing signal on these low-contrast images.
+    """Fraction of the frame darker than 0.55x its own median. Kept for diagnostics only.
 
-    The threshold is a FRACTION OF THE FRAME'S OWN MEDIAN, deliberately not a percentile. A
-    percentile threshold is self-defeating: `gray <= percentile(gray, 12)` selects ~12% of pixels
-    by definition, whatever the image contains, so it reports the same number for an open eye and
-    a shut one. (Written that way first; the selftest caught it.) Scaling off the median keeps the
-    measure exposure-robust — which matters here, since these ambient-lit cameras swing hard
-    between seatings — while still responding to actual dark content."""
+    TWO REJECTED VERSIONS, recorded so neither gets rebuilt:
+
+      1. A PERCENTILE threshold (`gray <= percentile(gray, 12)`) selects ~12% of pixels by
+         definition, whatever the image holds — identical for an open eye and a shut one. It
+         measured nothing. The selftest caught it.
+      2. Even median-scaled, whole-frame darkness does NOT detect a closed eye here. Measured
+         across the real corpus it spans only 0.097-0.16, p95/p5 = 1.3-1.5x, with ZERO frames
+         below any sane threshold — because frame darkness is dominated by the glasses frame and
+         shadows, not by the iris. Use eye_openness() instead.
+    """
     med = float(np.median(gray))
     thr = 0.55 * med
     return float((gray <= thr).mean()), thr
 
 
-def looks_closed(gray, ref_dark):
-    """Closing/closed relative to this session's OPEN baseline. Relative, not absolute: exposure
-    swings between seatings make any fixed threshold meaningless on these cameras."""
-    frac, _ = dark_mass(gray)
-    return frac < CLOSED_DARK_FRAC * ref_dark, frac
+def eye_openness(gray, tracker=None):
+    """Pupil ellipse AREA — the signal that actually separates open from closed.
+
+    The iris/pupil is the one large, unambiguous dark structure in these frames, and it is the
+    thing a closing lid removes. Measured across the real corpus it separates cleanly where
+    whole-frame darkness does not: median area 0.020 (eyeL) / 0.033 (eyeR) against a 5th
+    percentile of EXACTLY ZERO — i.e. a real population of frames with no detectable pupil at all.
+    That is the closed set.
+
+    Area, not merely `ok`: a half-closed lid still yields a fit, just a much smaller one, so area
+    catches CLOSING as well as closed — which is what Dylan asked for, since a mid-blink frame is
+    as unusable as a shut one."""
+    from pupil_tracker import PupilTracker
+    trk = tracker or PupilTracker()
+    r = trk.detect(gray)
+    if not getattr(r, "ok", False):
+        return 0.0
+    return float(r.axes[0] * r.axes[1])
+
+
+def looks_closed(gray, ref_open, tracker=None):
+    """Closing/closed relative to this session's OPEN baseline.
+
+    Relative, never absolute: exposure and seating swing hard between sessions on these
+    ambient-lit cameras, so a fixed area threshold would mean something different every run."""
+    a = eye_openness(gray, tracker)
+    return a < CLOSED_AREA_FRAC * ref_open, a
 
 
 # ----------------------------------------------------------------------------------
@@ -240,11 +291,22 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
         sc = F.shape[2] / 1280.0
         tmpl[role] = cv2.resize(t, (max(8, int(t.shape[1] * sc)), max(8, int(t.shape[0] * sc))))
 
-    ref_dark = {}
+    # Session OPEN baseline = median pupil area for that eye. Computed once, over a sample.
+    from pupil_tracker import PupilTracker
+    _trk = PupilTracker()
+    ref_open = {}
     for rid in (0, 1):
         m = R == rid
         if m.any():
-            ref_dark[rid] = float(np.median([dark_mass(F[i])[0] for i in np.where(m)[0][:200]]))
+            sample = np.where(m)[0][:250]
+            ref_open[rid] = float(np.median([eye_openness(F[i], _trk) for i in sample]))
+    if verbose:
+        print("== eye-open baseline (median pupil area) ==")
+        for rid, name in ((0, "eyeL"), (1, "eyeR")):
+            if rid in ref_open:
+                print("  %s: %.5f  -> closing/closed below %.5f"
+                      % (name, ref_open[rid], CLOSED_AREA_FRAC * ref_open[rid]))
+        print()
 
     # ---- PASS 1: learn the canthus-to-pupil offset, per role ----------------------------
     # The corrector has to be a function OF THE IMAGE. It reads the pupil (reliable: found in
@@ -287,11 +349,12 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
         g = F[i]
         rid = int(R[i])
         mirrored = (rid == 0)
-        closed, _ = looks_closed(g, ref_dark.get(rid, 0.12))
+        closed, _ = looks_closed(g, ref_open.get(rid, 0.02), _trk)
         if closed:
             # A closed verdict is a PROPOSAL too: confirm it against neighbours before discarding.
             near = [j for j in (i - 1, i + 1) if 0 <= j < len(F) and int(R[j]) == rid]
-            votes = sum(1 for j in near if looks_closed(F[j], ref_dark.get(rid, 0.12))[0])
+            votes = sum(1 for j in near
+                        if looks_closed(F[j], ref_open.get(rid, 0.02), _trk)[0])
             if votes >= 1:
                 n_closed += 1
                 status.append("closed")
@@ -377,14 +440,29 @@ def selftest(verbose=True):
     checks.append(("two estimators AGREEING on an impossible spot -> 'off-prior', not accepted",
                    st3 == "off-prior" and uv3 is None))
 
-    # Closed detection is relative to an open baseline, not an absolute threshold.
-    rng = np.random.default_rng(3)
-    open_eye = rng.integers(90, 140, (200, 320)).astype(np.uint8)
-    open_eye[80:130, 120:200] = 15                      # iris/pupil mass
-    shut = rng.integers(90, 140, (200, 320)).astype(np.uint8)
-    ref = dark_mass(open_eye)[0]
-    checks.append(("closed detected relative to the open baseline (open %.3f)" % ref,
-                   not looks_closed(open_eye, ref)[0] and looks_closed(shut, ref)[0]))
+    # Closed detection, on synthetic eyes from pupil_tracker's own generator. Openness is PUPIL
+    # AREA, not frame darkness: measured on the real corpus, whole-frame darkness spans only
+    # 0.097-0.16 (p95/p5 = 1.3-1.5x) and flags nothing, because frame darkness is dominated by the
+    # glasses frame and shadows. Pupil area separates cleanly — median 0.020-0.033 against a 5th
+    # percentile of exactly zero.
+    from pupil_tracker import synth_eye
+    open_eye = synth_eye(W=320, H=200, pupil=(0.5, 0.5), pupil_r=0.11)
+    if open_eye.ndim == 3:
+        open_eye = open_eye[:, :, 0]
+    shut = np.full((200, 320), 120, np.uint8)           # lid closed: no dark pupil at all
+    ref = eye_openness(open_eye)
+    a_shut = eye_openness(shut)
+    checks.append(("openness is pupil AREA: open %.4f vs shut %.4f, shut flagged closed"
+                   % (ref, a_shut),
+                   ref > 0.0 and a_shut < CLOSED_AREA_FRAC * ref
+                   and not looks_closed(open_eye, ref)[0] and looks_closed(shut, ref)[0]))
+
+    # The dead detector must stay dead: whole-frame darkness must NOT be used as the signal.
+    # Recorded as a check because it looked reasonable and measured nothing.
+    dm_open, _ = dark_mass(open_eye)
+    dm_shut, _ = dark_mass(shut)
+    checks.append(("whole-frame darkness does NOT separate open from shut (%.3f vs %.3f)"
+                   % (dm_open, dm_shut), abs(dm_open - dm_shut) < 0.30))
 
     ok = all(x for _, x in checks)
     if verbose:
