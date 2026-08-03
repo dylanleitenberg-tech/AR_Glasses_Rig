@@ -314,6 +314,25 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   settled prediction of **v≈0.414**. `EC_AIM_DOWN=6` is printed and cannot change, so the brow
 >   clamp is the only lever. Unresolved — a template cut against a frame edge is what makes the
 >   tracker lose lock mid-session, so fix framing BEFORE capturing templates.
+>   **>>> CONFIRMED WORN 2026-08-03 AND THIS IS NOW THE BLOCKER. It is SEATING, not the model.**
+>   Ruled out by measurement, in this order, so nobody repeats it:
+>   - **Exposure is FINE**: 1.7% / 1.1% saturated worn (worn reference 5.3/3.3, desk 40.9/20.2) —
+>     better than reference. Light was never the problem; stop chasing daylight.
+>   - **Focus is FINE**: lashes and iris texture resolve clearly in both frames. (Laplacian read
+>     14/13, which is exactly why that metric is useless here — it calls a sharp eye blurry.)
+>   - **The model lands OUTSIDE the band on BOTH eyes**: gate-convention u **0.675** (`eyeL`) and
+>     **0.665** (`eyeR`) against a band of **[0.698, 0.971]**. In band **0% / 1%** of frames;
+>     tracker reached `ok` on only **22% / 6%**.
+>   - **Drawing the prediction on the frame shows it is not on a tear duct** — it sits on the lower
+>     lid / cheek (`eyeL`) and the upper lid crease (`eyeR`).
+>   - **`eyeL`'s eye is CUT OFF at the left frame edge** — the iris is clipped by the border, so
+>     the inner canthus is at or past the edge. There is nothing there for a model to find.
+>   - **The rig is seated differently than when the 98-frame corpus was captured**, and
+>     asymmetrically: `eyeL` reads v 0.788 now vs 0.635 labelled (0.15 LOWER); `eyeR` 0.587 vs
+>     0.666 (0.08 HIGHER). That gap, not model quality, is what the band rejects.
+>   **Do NOT retrain and do NOT widen the band until seating is fixed** — either would bake this
+>   session's bad seating into the model permanently. The brow clamp is the lever; the eye needs to
+>   come UP and toward frame centre. Re-measure after each adjustment with `python3 eye_check.py`.
 > - **The accuracy corpus is STALE.** `data/mega_prior*`, `calibration_db.npz`, `meta.db` and the
 >   1.88 px `accuracy_map` figure were all generated at `EYE_FOV=90` tracking the **outer**
 >   canthus. They no longer describe this rig — regenerate before quoting any accuracy number.

@@ -77,6 +77,8 @@ def main(fast=False):
         ("feature contract + device bridge", "python3 main.py --contract-test", "DEVICE BRIDGE OK"),
         ("calib-loop input plumbing (keys survive a not-live frame)",
          "python3 main.py --input-test", "INPUT PLUMBING OK"),
+        ("worn-eye diagnostic verdicts (desk vs worn signature)",
+         "python3 eye_check.py --selftest", "EYE CHECK OK"),
         ("capture/blink/fallback", "python3 main.py --capture-test", "PROVEN"),
         ("imu filter selftest", "python3 imu.py", "IMU FILTER OK"),
         ("imu serial + gyro integrator", "python3 imu_serial.py --selftest", "GYRO INTEGRATOR OK ✅"),
