@@ -48,7 +48,7 @@ def sample_order(n_total, n_want, seed=20260802):
     return idx[:min(n_want, n_total)]
 
 
-def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True):
+def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, closed_frac=0.30):
     """Place the TEAR DUCT on ~30 frames. This is the ground truth the whole system lacks.
 
     WHY THIS EXISTS AND WHY IT IS SHORT
@@ -146,6 +146,40 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True):
             rows = np.where(R == rid)[0]
             if len(rows):
                 picks += [int(rows[j]) for j in sample_order(len(rows), n_want // 2 + 1)]
+
+    # RESERVE A QUOTA FOR CLOSED EYES — the farthest-point picker cannot find them on its own.
+    #
+    # The gaze-diverse selection above samples in PUPIL space, so a frame only becomes a candidate
+    # if the pupil detector fires on it. That silently biases the seed toward open eyes: the
+    # closed-eye head is the model's weakest (22 examples in the previous seed, and only 2 of
+    # Dylan's first 27 labels this session), yet the selector that builds the seed is structurally
+    # least able to offer it closed frames. A head cannot learn a class it is never shown, and here
+    # the sampling method was quietly deciding it never would be.
+    #
+    # So rank by the model's closed probability and take the top slice per eye. Treating a WEAK
+    # head as a SELECTOR is legitimate where treating it as a label would not be: it only has to
+    # beat random at ranking, and the human's ENTER/C keypress remains the ground truth for the
+    # class. If the head is badly wrong the worst case is an ordinary open frame in the seed, which
+    # costs one click and no correctness.
+    if closed_frac > 0:
+        try:
+            from canthus_net import CanthusNet
+            net = CanthusNet()
+            want_closed = max(2, int(round(n_want * closed_frac)) // 2)
+            for rid in (0, 1):
+                rows = [int(i) for i in np.where(R == rid)[0]]
+                step = max(1, len(rows) // 300)          # cap the scan; 300 frames is plenty
+                scan = rows[::step]
+                cps = [(float(net.predict(F[i])[2]), i) for i in scan]
+                cps.sort(reverse=True)
+                picks += [i for _, i in cps[:want_closed]]
+            if verbose:
+                print("closed-eye quota: up to %d per eye added to the selection" % want_closed)
+        except Exception as e:
+            if verbose:
+                print("closed-eye quota skipped (%s)" % e)
+    seen_pick = set()
+    picks = [i for i in picks if not (i in seen_pick or seen_pick.add(i))]
 
     prev = {}
     if os.path.exists(out):
