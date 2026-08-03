@@ -150,9 +150,37 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True):
     prev = {}
     if os.path.exists(out):
         s = np.load(out)
+        # A SEED LABEL IS ONLY MEANINGFUL AGAINST THE CORPUS IT WAS PLACED ON.
+        #
+        # Labels are stored as (corpus_index, u, v) -- the index is a POSITION IN THE ARRAY, not
+        # an identity. Re-capture the corpus and every stored index silently resolves to a
+        # different photograph. On 2026-08-03 this happened for real: 98 labels from the previous
+        # session were "resumed" onto a freshly captured 3000-frame corpus, so 98 of 125 labels
+        # (78%) pointed at unrelated images, and nothing in the output looked wrong -- it printed
+        # "resuming - 98 already placed" and carried on. Training on that would have been strictly
+        # worse than training on the 27 good labels alone, which is this project's oldest lesson:
+        # a wrong label beats a missing one only in the sense that it does more damage.
+        #
+        # The fix is to make the seed file remember WHICH corpus it belongs to. n_frames is a
+        # weak fingerprint but it catches the case that actually occurs (re-capture changes the
+        # count); the mtime check catches a same-size re-capture.
+        stamp = (int(F.shape[0]), int(os.path.getmtime(CORPUS)))
+        old_stamp = tuple(int(x) for x in s["corpus"]) if "corpus" in s.files else None
+        if old_stamp is not None and old_stamp != stamp:
+            print("!! REFUSING TO RESUME — %s holds %d labels placed against a DIFFERENT corpus\n"
+                  "   (was %d frames / mtime %d, now %d / %d). Those indices point at other\n"
+                  "   images now. Move it aside and start a fresh seed set:\n"
+                  "     mv %s %s.stale"
+                  % (out, len(s["index"]), old_stamp[0], old_stamp[1], stamp[0], stamp[1],
+                     out, out))
+            return 1
+        if old_stamp is None and len(s["index"]):
+            print("!! %s has %d labels but NO corpus stamp (written before this check existed).\n"
+                  "   Cannot prove they match the current corpus. Verify or move aside." % (out, len(s["index"])))
+            return 1
         prev = {int(i): (float(u), float(v)) for i, (u, v) in zip(s["index"], s["labels"])}
         if verbose:
-            print("resuming — %d already placed" % len(prev))
+            print("resuming — %d already placed (corpus stamp matches)" % len(prev))
     todo = [i for i in picks if i not in prev][:n_want]
     if not todo:
         print("nothing left (%d done)" % len(prev))
@@ -249,7 +277,10 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True):
     idx = np.array(sorted(results), np.int32)
     xy = np.array([results[int(i)] for i in idx], np.float32)
     fl = np.array([closed.get(int(i), 0) for i in idx], np.uint8)
-    np.savez_compressed(out, index=idx, labels=xy, closed=fl)
+    # Stamp the corpus this seed set belongs to, so a later --seed cannot silently resume these
+    # labels onto a re-captured corpus. See the refusal in the resume block above.
+    np.savez_compressed(out, index=idx, labels=xy, closed=fl,
+                        corpus=np.array([int(F.shape[0]), int(os.path.getmtime(CORPUS))], np.int64))
     if verbose:
         print("\n== seed ==")
         print("  placed %d points -> %s" % (len(idx), out))
