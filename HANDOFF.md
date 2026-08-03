@@ -140,8 +140,12 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > cameras.** Measured this session — the pre-fix suite was run deliberately to see it. A full green
 > release gate is not evidence the rig works. Only running the rig is.
 >
-> **Nothing here has been run on the rig** — the fixes are proven against the code paths and by
-> negative controls, not against cameras. The next session should go straight to the run block.
+> **The anchor fix IS verified on real hardware** (2026-08-03): all four cameras enumerate, and
+> `CanthusTracker(mirrored=...).track()` ran 20 live frames from each eye cam at ~26 ms/frame with
+> no `AttributeError`. That is the crash reproduced-then-cleared on the actual rig, not in sim.
+> **Everything else here is still code-path + negative-control only, and no calibration has run.**
+> Scan of this session (indices WILL move): `worldL=2 worldR=3 eyeL=0 eyeR=1`, plus the built-in
+> FaceTime cam at 4 and an iPhone at 5 — the extras are why `--scan` needs checking, not trusting.
 >
 > ## >>> THIS SESSION: GET A REAL CALIBRATION RUN <<<
 > ```bash
@@ -259,6 +263,16 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >    0.09 in mirrored-u** (0.815 vs 0.721) when the carrier is symmetric? Either Dylan clicks a
 >    different point on `eyeR`, or the sim's geometry for that camera is wrong — as it already was
 >    about mount occlusion. Widening the band hides it; measuring it does not.
+>
+>    **Weak corroboration, and read the caveat first.** With the rig **ON THE DESK** (so per the
+>    settled rule these numbers are meaningless as anatomy — the cams stare at a room and the M12
+>    lenses are set for ~3 cm), 15 live frames per eye gave: `eyeL` raw u 0.392 → mirrored 0.608 →
+>    **0% in band, all frames `lost`**; `eyeR` raw u 0.769 → **100% in band, all frames `ok`**.
+>    The interesting half is the second one: **the gate ACCEPTED a garbage landmark off a picture
+>    of a room for `eyeR`, and correctly refused one for `eyeL`.** That is what a band sitting too
+>    loose around `eyeR` looks like, and it is the same weakness the seed-frame margin shows
+>    (+0.023 vs +0.117) seen from the other side. It is one desk measurement, not proof — but if
+>    you re-measure the band, this says the fix is likely to *tighten* `eyeR`, not widen it.
 > 3. **Model is label-limited, not architecture-limited.** Its error (0.030) sits at Dylan's own
 >    click scatter (±0.021). More/《better seeds beat any training change. Weakest coverage:
 >    extreme gaze and eyes-held-wide (it drifts there), and the closed head (22 examples).
