@@ -14,12 +14,23 @@ import numpy as np
 
 class Overlay:
     def __init__(self, width: int, height: int, window: str = "AR-overlay",
-                 fullscreen: bool = False, dot_radius: int = 8):
+                 fullscreen: bool = False, dot_radius: int = 8, win_x=None):
         self.w = width
         self.h = height
         self.window = window
         self.dot_radius = dot_radius
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+        # MOVE TO THE AR DISPLAY BEFORE GOING FULLSCREEN.
+        #
+        # setWindowProperty(FULLSCREEN) fills whatever monitor the window currently occupies, and
+        # a fresh window opens on the PRIMARY one -- so without this the overlay went fullscreen on
+        # the laptop screen and nothing reached the glasses. The canvas is black, which a birdbath
+        # display renders as transparent, so see-through was never the problem: the overlay simply
+        # was not on the AR display.
+        #
+        # win_x is the desktop x-coordinate of the AR monitor (its left edge in the arrangement).
+        if win_x is not None:
+            cv2.moveWindow(window, int(win_x), 0)
         if fullscreen:
             cv2.setWindowProperty(window, cv2.WND_PROP_FULLSCREEN,
                                   cv2.WINDOW_FULLSCREEN)

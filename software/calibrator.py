@@ -140,9 +140,41 @@ class Calibrator:
     def predict(self, x) -> np.ndarray:
         """Predict a normalized display pixel for one feature vector (d,)."""
         if self.W is None:
-            return self._fallback.copy()
+            return self.geometric_bootstrap(x)
         y = self.y_mean + (self._design(np.asarray(x, float)) @ self.W)[0]
         return np.clip(y, 0.0, 1.0)
+
+    # Display and world-camera fields of view, used only by the untrained bootstrap below.
+    # Kept as plain numbers rather than importing rig, so calibrator.py stays dependency-free.
+    _WORLD_FOV = 70.0        # rig.WORLD_FOV, horizontal
+    _DISPLAY_FOV = 50.0      # rig display fov_deg, horizontal (57 deg diagonal on 16:9)
+
+    def geometric_bootstrap(self, x) -> np.ndarray:
+        """Where the dot should appear, from world-camera direction alone. No training needed.
+
+        WHY THIS EXISTS. Before the first sample the model has no weights, and predict() used to
+        return a FIXED fallback point. Dylan caught what that means on hardware: "when i move my
+        head up, the dot should move down to counteract and stay on the dot. dot is just staying in
+        position." Exactly so -- a constant cannot track anything, so the very first corrections
+        were made against a marker that ignored the world entirely.
+
+        The world cameras already measure the dot's DIRECTION, and direction is most of the answer:
+        a display pixel is essentially an angle. So map the dot's angular offset from the world
+        cams' optical axis into display coordinates by the ratio of their fields of view
+        (70 deg world vs 50 deg display). That is a first-order estimate -- it ignores eye position,
+        parallax and distortion, which is precisely what the learned model exists to add -- but it
+        MOVES CORRECTLY with head motion from the first frame, so the human is nudging a marker
+        that already tracks rather than one nailed to the screen.
+
+        Uses the mean of the two world cams, which averages out per-camera noise and is stable even
+        when stereo disparity is small (distant targets)."""
+        x = np.asarray(x, float).ravel()
+        if x.size < 4:
+            return self._fallback.copy()
+        u = 0.5 * (x[0] + x[2])          # worldL_x, worldR_x
+        v = 0.5 * (x[1] + x[3])          # worldL_y, worldR_y
+        k = self._WORLD_FOV / self._DISPLAY_FOV
+        return np.clip(np.array([0.5 + (u - 0.5) * k, 0.5 + (v - 0.5) * k]), 0.0, 1.0)
 
     def predict_raw(self, x) -> np.ndarray:
         """Unclipped prediction (for residual/warm-start models on top of a prior).

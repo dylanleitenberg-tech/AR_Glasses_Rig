@@ -277,13 +277,15 @@ def run_loop(cfg: Config, simulate: bool) -> int:
     ds = Dataset(cfg.db_path, cfg.feature_names)
     cal = build_calibrator(cfg, ds)
     overlay = Overlay(cfg.display_w, cfg.display_h, cfg.overlay_window,
-                      cfg.fullscreen, cfg.dot_radius_px)
+                      cfg.fullscreen, cfg.dot_radius_px,
+                      win_x=getattr(cfg, "overlay_x", None))
     inp = InputController(cfg.nudge_gain, cfg.deadzone, cfg.approve_button,
                           cfg.quit_button)
 
     nudge = np.zeros(2)
     last_features = np.full(cfg.n_features, 0.5)
     smooth_feat = None             # EMA of live eye features (real mode)
+    _last_key = [None]             # most recent raw cv2 keycode, surfaced on the HUD
     pred_s = None                  # EMA of the predicted pixel (reduces jitter)
     conf = 1.0
     n_saved = 0
@@ -320,7 +322,20 @@ def run_loop(cfg: Config, simulate: bool) -> int:
             shown = np.clip(pred_s + nudge, 0.0, 1.0)
 
             hud = make_hud(ds.count(), cal, simulate, shown, green, conf)
+            # SHOW THE RAW KEY CODE. "WASD isn't working" has several possible causes -- the
+            # window not holding focus, a platform keycode difference, another process eating the
+            # event -- and they are indistinguishable from the outside. Displaying what
+            # cv2.waitKey actually returned separates "no key arrived" from "key arrived and was
+            # ignored" in one glance, which is the difference between a focus problem and a code
+            # problem.
+            hud += ("\nkeys: WASD nudge (shift=coarse) | ENTER approve | Z cancel | U undo | Q quit"
+                    "\nlast key: %s" % ("none yet" if _last_key[0] is None
+                                        else "%d (%s)" % (_last_key[0],
+                                                          chr(_last_key[0])
+                                                          if 32 <= _last_key[0] < 127 else "?")))
             key = overlay.render(tuple(shown), green, hud)
+            if key != -1 and key != 255:
+                _last_key[0] = key
             act = inp.poll(key)
 
             if act.quit:
@@ -484,6 +499,10 @@ def main(argv=None) -> int:
     p.add_argument("--eye-cam-right", type=int)
     p.add_argument("--fullscreen", action="store_true",
                    help="push the overlay onto your AR monitor fullscreen")
+    p.add_argument("--overlay-x", type=int, default=None,
+                   help="desktop x-coordinate of the AR display's left edge; the overlay window "
+                        "is moved there BEFORE going fullscreen (without it, fullscreen fills the "
+                        "primary monitor and nothing reaches the glasses)")
     p.add_argument("--db", type=str, help="override sample DB path")
     p.add_argument("--reset-db", action="store_true",
                    help="RESET fallback: wipe all stored calibration samples (start clean) "
@@ -734,6 +753,7 @@ def main(argv=None) -> int:
     if args.list_cams:
         return run_list_cams()
     cfg.use_model = bool(getattr(args, "use_model", False))
+    cfg.overlay_x = getattr(args, "overlay_x", None)
     if args.calibrate_corners:
         return run_calibrate_corners(cfg, only=args.eye)
     return run_loop(cfg, simulate=args.simulate)
