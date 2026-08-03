@@ -48,6 +48,78 @@ def sample_order(n_total, n_want, seed=20260802):
     return idx[:min(n_want, n_total)]
 
 
+def closed_pass(corpus=CORPUS, seed=SEED, verbose=True):
+    """Second pass: mark each labelled frame EYE OPEN or EYE CLOSED. One key per frame.
+
+    WHY IT IS WORTH A SEPARATE HEAD
+        rig.py already models blink dropouts, but nothing in the live loop DETECTS one. A sample
+        recorded mid-blink is bad twice over: the gaze is not fixated, and the lid deforms the
+        soft tissue around the canthus — the exact tissue a 200 px template patch is full of. So
+        the model should say "eye is closed, do not trust this frame", and the calibration loop
+        should skip it.
+
+        Note the landmark itself does NOT vanish during a blink: the inner canthus is where the
+        lids MEET, so it stays visible and stays labellable. Closed-ness is a separate property of
+        the frame, not a reason to drop the position label — which is why this is a second head
+        rather than a filter.
+
+    Kept separate from the position pass on purpose: binary judgements go at a completely
+    different speed from precise clicking, and mixing them slows both.
+
+        O / ENTER  eye open      C  eye closed      U  undo      Q  save+quit
+    """
+    import cv2
+    if not os.path.exists(seed):
+        print("!! label positions first: python3 canthus_label.py --label")
+        return 1
+    d = np.load(corpus)
+    F = d["frames"]
+    s = np.load(seed)
+    idx, xy = s["index"], s["labels"]
+    closed = {int(i): int(c) for i, c in zip(s["index"], s["closed"])} \
+        if "closed" in s.files else {}
+
+    todo = [int(i) for i in idx if int(i) not in closed]
+    if not todo:
+        print("all %d frames already marked open/closed" % len(idx))
+        return 0
+    win = "eye state  |  O open  ·  C closed  ·  U undo  ·  Q save+quit"
+    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+    hist, i = [], 0
+    while i < len(todo):
+        fi = todo[i]
+        img = cv2.cvtColor(F[fi], cv2.COLOR_GRAY2BGR)
+        img = cv2.resize(img, (F.shape[2] * ZOOM, F.shape[1] * ZOOM),
+                         interpolation=cv2.INTER_NEAREST)
+        H, W = img.shape[:2]
+        k_at = np.where(idx == fi)[0][0]
+        p = (int(xy[k_at][0] * W), int(xy[k_at][1] * H))
+        cv2.drawMarker(img, p, (0, 255, 0), cv2.MARKER_CROSS, 22, 2)
+        cv2.putText(img, "OPEN or CLOSED?   %d / %d" % (len(closed), len(idx)),
+                    (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.imshow(win, img)
+        k = cv2.waitKey(20) & 0xFF
+        if k in (ord("o"), ord("O"), 13, 32):
+            closed[fi] = 0; hist.append(fi); i += 1
+        elif k in (ord("c"), ord("C")):
+            closed[fi] = 1; hist.append(fi); i += 1
+        elif k in (ord("u"), ord("U")) and hist:
+            closed.pop(hist.pop(), None); i = max(0, i - 1)
+        elif k in (ord("q"), 27):
+            break
+    cv2.destroyAllWindows()
+    flags = np.array([closed.get(int(i), 0) for i in idx], np.uint8)
+    np.savez_compressed(seed, index=idx, labels=xy, closed=flags)
+    if verbose:
+        print("\n== eye state ==")
+        print("  marked %d of %d | closed %d (%.0f%%)"
+              % (len(closed), len(idx), int(flags.sum()), 100.0 * flags.mean()))
+        if flags.sum() < 15:
+            print("  NOTE: few closed examples — the closed-eye head will be weak. Blink more")
+            print("        during the next collection run if you want it reliable.")
+    return 0
+
+
 def label(n_want=300, corpus=CORPUS, out=SEED, verbose=True):
     import cv2
     if not os.path.exists(corpus):
@@ -172,6 +244,8 @@ if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser(description="hand-label the canthus seed set")
     ap.add_argument("--label", action="store_true")
+    ap.add_argument("--closed-pass", action="store_true",
+                    help="second pass: mark each labelled frame eye-open or eye-closed")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("--n", type=int, default=300, help="how many frames to label")
     a = ap.parse_args()
@@ -179,4 +253,6 @@ if __name__ == "__main__":
         sys.exit(selftest())
     if a.label:
         sys.exit(label(n_want=a.n))
+    if a.closed_pass:
+        sys.exit(closed_pass())
     ap.print_help()

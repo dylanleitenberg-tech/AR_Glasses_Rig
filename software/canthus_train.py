@@ -51,16 +51,44 @@ AGREE_PX = 0.02                # ensemble agreement threshold, normalised frame 
 #  Model — deliberately small. This is a single-landmark task on a fixed camera geometry,
 #  not ImageNet; a big net would overfit a few hundred frames and cost frame time later.
 # ----------------------------------------------------------------------------------
+class CanthusNet:
+    """Shared trunk, two heads: a landmark heatmap and an eye-open/closed logit.
+
+    The heads share the trunk deliberately. Whether the eye is closed and where the corner sits
+    are read from the SAME evidence — lid margins, lash line, whether the iris is visible — so one
+    set of features serves both, and the closed head costs a single extra 1x1 conv rather than a
+    second network. It also regularises: the trunk cannot cheat on position by ignoring lid shape
+    if it must also report lid state.
+
+    The landmark is NOT dropped when the eye closes. The inner canthus is where the lids MEET, so
+    it stays visible through a blink and stays labellable; closed-ness is a separate property of
+    the frame. That matters because rig.py models blink dropouts but nothing in the live loop
+    detects one, and a sample recorded mid-blink is bad twice over — gaze is not fixated, and the
+    lid deforms exactly the soft tissue the landmark sits in.
+    """
+
+
 def build_net(torch, nn, seed):
     torch.manual_seed(seed)
-    return nn.Sequential(
-        nn.Conv2d(1, 16, 5, stride=2, padding=2), nn.BatchNorm2d(16), nn.ReLU(),   # /2
-        nn.Conv2d(16, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(),
-        nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.BatchNorm2d(32), nn.ReLU(),  # /4
-        nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
-        nn.Conv2d(64, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
-        nn.Conv2d(64, 1, 1),                                                       # -> heatmap
-    )
+
+    class Net(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.trunk = nn.Sequential(
+                nn.Conv2d(1, 16, 5, stride=2, padding=2), nn.BatchNorm2d(16), nn.ReLU(),   # /2
+                nn.Conv2d(16, 32, 3, padding=1), nn.BatchNorm2d(32), nn.ReLU(),
+                nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.BatchNorm2d(32), nn.ReLU(),  # /4
+                nn.Conv2d(32, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
+                nn.Conv2d(64, 64, 3, padding=1), nn.BatchNorm2d(64), nn.ReLU(),
+            )
+            self.heat = nn.Conv2d(64, 1, 1)          # landmark heatmap
+            self.closed = nn.Conv2d(64, 1, 1)        # eye-state logit (global-pooled)
+
+        def forward(self, x):
+            f = self.trunk(x)
+            return self.heat(f), self.closed(f).mean((1, 2, 3))
+
+    return Net()
 
 
 def soft_argmax(torch, heat):
@@ -103,25 +131,29 @@ def _load_pairs(with_pseudo):
     F, R = d["frames"], d["roles"]
     s = np.load(SEED)
     idx, xy = s["index"], s["labels"]
+    cl = s["closed"].astype(np.float32) if "closed" in s.files else np.zeros(len(idx), np.float32)
     if with_pseudo and os.path.exists(PSEUDO):
         p = np.load(PSEUDO)
         idx = np.concatenate([idx, p["index"]])
         xy = np.concatenate([xy, p["labels"]])
+        # Pseudo-labels carry no eye-state truth; mark them -1 so the closed head IGNORES them
+        # rather than learning "everything the ensemble agreed on was open".
+        cl = np.concatenate([cl, -np.ones(len(p["index"]), np.float32)])
         print("  training on %d seed + %d ensemble-agreed pseudo-labels"
               % (len(s["index"]), len(p["index"])))
-    return F, R, idx, xy
+    return F, R, idx, xy, cl
 
 
 def train(with_pseudo=False, epochs=60, verbose=True):
     import torch
     import torch.nn as nn
     import cv2
-    F, R, idx, xy = _load_pairs(with_pseudo)
+    F, R, idx, xy, cl = _load_pairs(with_pseudo)
 
     # Held-out split BY FRAME INDEX so near-duplicate neighbours cannot straddle the split and
     # flatter the validation number.
     order = np.argsort(idx)
-    idx, xy = idx[order], xy[order]
+    idx, xy, cl = idx[order], xy[order], cl[order]
     n_val = max(20, len(idx) // 5)
     rng0 = np.random.default_rng(7)
     perm = rng0.permutation(len(idx))
@@ -147,8 +179,16 @@ def train(with_pseudo=False, epochs=60, verbose=True):
                     tgt.append(uv)
                 x = torch.tensor(np.array(ims), dtype=torch.float32).unsqueeze(1)
                 y = torch.tensor(np.array(tgt), dtype=torch.float32)
-                pred = soft_argmax(torch, net(x))
-                loss = nn.functional.smooth_l1_loss(pred, y, beta=0.02)
+                heat, closed_logit = net(x)
+                loss = nn.functional.smooth_l1_loss(soft_argmax(torch, heat), y, beta=0.02)
+                # Eye-state head: supervise ONLY on frames a human actually judged (cl >= 0).
+                # Pseudo-labelled frames carry cl = -1 and are masked out, so the head never
+                # learns "the ensemble agreed, therefore open".
+                cy = torch.tensor(cl[batch], dtype=torch.float32)
+                m = cy >= 0
+                if bool(m.any()):
+                    loss = loss + 0.2 * nn.functional.binary_cross_entropy_with_logits(
+                        closed_logit[m], cy[m])
                 opt.zero_grad(); loss.backward(); opt.step()
                 tot += float(loss) * len(batch)
             sched.step()
@@ -157,7 +197,8 @@ def train(with_pseudo=False, epochs=60, verbose=True):
                 ims = [cv2.resize(F[idx[j]].astype(np.float32), (IN_W, IN_H)) / 255.0
                        for j in val_sel]
                 x = torch.tensor(np.array(ims), dtype=torch.float32).unsqueeze(1)
-                pv = soft_argmax(torch, net(x)).numpy()
+                heat, _ = net(x)
+                pv = soft_argmax(torch, heat).numpy()
                 err = np.linalg.norm(pv - xy[val_sel], axis=1)
                 med = float(np.median(err))
             if med < best:
@@ -204,7 +245,11 @@ def pseudo(verbose=True):
             batch = todo[k0:k0 + 64]
             ims = [cv2.resize(F[i].astype(np.float32), (IN_W, IN_H)) / 255.0 for i in batch]
             x = torch.tensor(np.array(ims), dtype=torch.float32).unsqueeze(1)
-            preds.append(np.stack([soft_argmax(torch, n(x)).numpy() for n in nets], 0))
+            outs = []
+            for n in nets:
+                heat, _ = n(x)
+                outs.append(soft_argmax(torch, heat).numpy())
+            preds.append(np.stack(outs, 0))
     P = np.concatenate(preds, 1)                     # (2, N, 2)
     disagree = np.linalg.norm(P[0] - P[1], axis=1)
     keep = disagree < AGREE_PX
@@ -230,7 +275,8 @@ def export(verbose=True):
     net = build_net(torch, nn, 11)
     net.load_state_dict(ck["m0"]); net.eval()
     out = {}
-    for i, layer in enumerate(net):
+    layers = list(net.trunk) + [net.heat, net.closed]
+    for i, layer in enumerate(layers):
         if isinstance(layer, nn.Conv2d):
             out["c%d_w" % i] = layer.weight.detach().numpy()
             out["c%d_b" % i] = layer.bias.detach().numpy()
