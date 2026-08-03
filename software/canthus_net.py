@@ -243,6 +243,15 @@ class CanthusTracker:
                 self.prior = None
         self.uv = None
         self.held = 0
+        # MOUNT-ANCHOR STATE MUST BE BORN HERE, NOT INJECTED BY A TEST.
+        # These three lived only in the selftest, which built the tracker by hand and set them
+        # afterwards -- so every selftest passed while the production path
+        # (`CanthusTracker(mirrored=...)` in main.py and live()) raised AttributeError on its very
+        # first frame. That is what stopped the 2026-08-03 calibration run: `--use-model` died on
+        # frame one of both eye cameras. Nothing about the model or the gate was wrong.
+        self.anchor = MountAnchor()
+        self._warm = []
+        self.flexed = False
 
     def track(self, frame):
         """Drop-in for eye_tracker.EyeCornerTracker.track: returns ((u, v), score) or (None, 0).
@@ -386,11 +395,15 @@ def selftest(verbose=True):
     class _Stub:
         def __init__(self): self.q = []
         def predict(self, g): return self.q.pop(0)
+    # BUILD THROUGH __init__, NEVER __new__.
+    # These three trackers used to be built with `CanthusTracker.__new__(...)` and have every
+    # attribute assigned by hand. That is why the missing `self.anchor` in __init__ survived a
+    # green selftest: the test constructed a tracker that production could not. Only the stub NET
+    # is injected now -- all other state must come from the real constructor, so anything __init__
+    # forgets fails here instead of on the rig.
     st = _Stub()
-    trk = CanthusTracker.__new__(CanthusTracker)
-    trk.net = st; trk.conf_min = 0.0; trk.max_jump = 0.06; trk.ema = 1.0
-    trk.uv = None; trk.held = 0; trk.prior = None; trk.mirrored = None; trk.pad = 0.08
-    trk.anchor = MountAnchor(); trk._warm = []; trk.flexed = False
+    trk = CanthusTracker(net=st, conf_min=0.0, max_jump=0.06, ema=1.0,
+                         mirrored=None, prior=None, pad=0.08)
     st.q = [(0.20, 0.60, 0.1, 0.021),      # confident -> ok
             (0.205, 0.605, 0.1, 0.021),    # confident, small move -> ok
             (0.60, 0.20, 0.1, 0.021),      # CONFIDENT BUT A HUGE JUMP -> held, not accepted
@@ -403,25 +416,22 @@ def selftest(verbose=True):
     # (the old "low confidence -> held" check is gone with the sharpness gate; the prior and jump
     #  gates below are what refuse a bad frame now, and neither depends on model internals)
 
-    trk2 = CanthusTracker.__new__(CanthusTracker)
     # PRIOR GATE: an anatomically impossible position is refused even when the model is sure.
     # This replaces the sharpness gate, which INVERTED between models (blank 0.0202 vs real
     # 0.0154) and would have held on good frames while accepting nothing.
-    st2 = _Stub(); trk2.net = st2; trk2.conf_min = 0.0; trk2.max_jump = 0.06; trk2.ema = 1.0
-    trk2.uv = None; trk2.held = 0; trk2.pad = 0.08; trk2.mirrored = False
-    trk2.anchor = MountAnchor(); trk2._warm = []; trk2.flexed = False
-    trk2.prior = dict(u_lo=0.778, u_hi=0.891, v_lo=0.110, v_hi=0.620,
-                      u_med=0.834, v_med=0.362)
+    st2 = _Stub()
+    trk2 = CanthusTracker(net=st2, conf_min=0.0, max_jump=0.06, ema=1.0,
+                          mirrored=False, pad=0.08,
+                          prior=dict(u_lo=0.778, u_hi=0.891, v_lo=0.110, v_hi=0.620,
+                                     u_med=0.834, v_med=0.362))
     st2.q = [(0.20, 0.60, 0.1, 0.9)] * 3          # confident, but far outside the u band
     r2 = [trk2.update(None) for _ in range(3)]
     checks.append(("prior gate: anatomically impossible u=0.20 refused despite high confidence",
                    r2[0][4] == "lost" and r2[0][0] is None))
 
-    trk3 = CanthusTracker.__new__(CanthusTracker)
-    st3 = _Stub(); trk3.net = st3; trk3.conf_min = 0.0; trk3.max_jump = 0.06; trk3.ema = 1.0
-    trk3.uv = None; trk3.held = 0; trk3.pad = 0.08; trk3.mirrored = False
-    trk3.anchor = MountAnchor(); trk3._warm = []; trk3.flexed = False
-    trk3.prior = trk2.prior
+    st3 = _Stub()
+    trk3 = CanthusTracker(net=st3, conf_min=0.0, max_jump=0.06, ema=1.0,
+                          mirrored=False, pad=0.08, prior=trk2.prior)
     st3.q = [(0.834, 0.40, 0.1, 0.9)]
     checks.append(("prior gate: a position inside the band is accepted",
                    trk3.update(None)[4] == "ok"))
@@ -466,6 +476,24 @@ def selftest(verbose=True):
     checks.append(("mount anchor: subtracting drift cancels the shift (%.3f -> %.3f, want ~%.3f)"
                    % (raw_u, corrected, raw_u - 8.0 / 320),
                    abs(corrected - (raw_u - 8.0 / 320)) < 0.02))
+
+    # PRODUCTION-PATH SMOKE TEST. Everything above injects a stub net; this builds the tracker the
+    # way main.py --use-model and live() do -- real weights, real frame, no attribute injection --
+    # and pushes frames through track(). It is deliberately dumb: it does not check WHERE the
+    # landmark lands, only that the call a rig session actually makes does not raise. The bug it
+    # exists to catch (self.anchor never initialised in __init__) made every real session die on
+    # frame one while all fifteen checks above stayed green.
+    prod_ok, prod_detail = True, ""
+    try:
+        for mir in (True, False):
+            t = CanthusTracker(mirrored=mir)
+            for _ in range(15):          # >12, so the anchor warm-up path runs and calibrates
+                t.track(np.zeros((400, 640), np.uint8))
+    except Exception as e:
+        prod_ok = False
+        prod_detail = "%s: %s" % (type(e).__name__, e)
+    checks.append(("PRODUCTION PATH: CanthusTracker(mirrored=...).track() survives 15 frames%s"
+                   % ("  — " + prod_detail if prod_detail else ""), prod_ok))
 
     ok = all(x for _, x in checks)
     if verbose:

@@ -295,26 +295,25 @@ def run_loop(cfg: Config, simulate: bool) -> int:
     try:
         while True:
             green = None
+            live = True                # are this frame's features real? (gates APPROVE only)
+            why = ""
             if simulate:
                 features, conf = sim_features, 1.0
                 green = tuple(sim_truth)
             else:
-                features, conf, ok = read_real_features(
+                features, conf, ok, why = read_real_features(
                     world_L, world_R, eyeL_cam, eyeR_cam, detector, trk_L, trk_R,
                     last_features)
                 if not ok:
-                    key = overlay.render(tuple(np.clip(
-                        cal.predict(last_features) + nudge, 0, 1)),
-                        hud="searching for dot / eye corners...")
-                    if inp.poll(key).quit:
-                        break
-                    continue
-                # EMA-smooth the live eye features to steady the prediction
-                smooth_feat = (features if smooth_feat is None else
-                               cfg.feat_smooth * features +
-                               (1 - cfg.feat_smooth) * smooth_feat)
-                features = smooth_feat
-                last_features = features
+                    live = False
+                    features = last_features
+                else:
+                    # EMA-smooth the live eye features to steady the prediction
+                    smooth_feat = (features if smooth_feat is None else
+                                   cfg.feat_smooth * features +
+                                   (1 - cfg.feat_smooth) * smooth_feat)
+                    features = smooth_feat
+                    last_features = features
 
             predicted = cal.predict(features)
             pred_s = predicted if pred_s is None else (
@@ -333,6 +332,11 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                                         else "%d (%s)" % (_last_key[0],
                                                           chr(_last_key[0])
                                                           if 32 <= _last_key[0] < 127 else "?")))
+            if not live:
+                # Approve is NOT hard-blocked here: it re-reads the cameras via snapshot_features,
+                # so it can still succeed if the frame recovers in between. It prints its own
+                # reason when it doesn't.
+                hud += "\nNOT LIVE -- %s  (nudge/undo/quit still work)" % why
             key = overlay.render(tuple(shown), green, hud)
             if key != -1 and key != 255:
                 _last_key[0] = key
@@ -362,13 +366,18 @@ def run_loop(cfg: Config, simulate: bool) -> int:
             nudge = np.clip(nudge + np.array([act.dx, act.dy]), -1, 1)
 
             if act.approve:
+                snap_why = ""
                 if simulate:
                     snap_features, snap_conf = features, 1.0
                 else:
-                    snap_features, snap_conf = snapshot_features(
+                    snap_features, snap_conf, snap_why = snapshot_features(
                         world_L, world_R, eyeL_cam, eyeR_cam, detector,
                         trk_L, trk_R, last_features)
-                if snap_conf < cfg.eye_conf_min:
+                if snap_why:
+                    # Say WHICH input is missing. A silent no-op here is what made the loop look
+                    # like it was ignoring ENTER.
+                    print("  not stored — %s" % snap_why)
+                elif snap_conf < cfg.eye_conf_min:
                     print("  eye confidence %.2f < %.2f — hold steady, not stored"
                           % (snap_conf, cfg.eye_conf_min))
                 else:
@@ -426,37 +435,151 @@ def _gate_dot(d, side):
 
 
 def _features_from(wlf, wrf, lf, rf, detector, trk_L, trk_R, last):
-    """Assemble 8 features from the four camera frames. (features, conf, ok)."""
-    if wlf is None or wrf is None or lf is None or rf is None:
-        return last, 0.0, False
+    """Assemble 8 features from the four camera frames. (features, conf, ok, why).
+
+    `why` NAMES EVERY FAILING INPUT, and that is the point of it. This used to return a bare
+    False, and the loop rendered one string -- "searching for dot / eye corners..." -- for five
+    genuinely different faults: a dead camera, either world dot missing, either eye landmark
+    missing. On 2026-08-03 the rig sat in this state for a whole session and the message was read
+    as "the dot is hard to find", when `eyeR`'s plausibility gate was rejecting every frame (see
+    HANDOFF open item 2). One summary string covering several distinct failures is the same
+    lumping mistake as a pass rate covering several distinct inputs.
+    """
+    missing = [n for n, f in (("worldL", wlf), ("worldR", wrf),
+                              ("eyeL", lf), ("eyeR", rf)) if f is None]
+    if missing:
+        return last, 0.0, False, "no frame from: " + ", ".join(missing)
     dL, _ = detector.detect(wlf)
     dR, _ = detector.detect(wrf)
     dL = _gate_dot(dL, "L")
     dR = _gate_dot(dR, "R")
-    if dL is None or dR is None:
-        return last, 0.0, False
+    nodot = [n for n, d in (("worldL", dL), ("worldR", dR)) if d is None]
+    if nodot:
+        return last, 0.0, False, "no world dot in: " + ", ".join(nodot)
     lc, sl = trk_L.track(lf)
     rc, sr = trk_R.track(rf)
-    if lc is None or rc is None:
-        return last, 0.0, False
+    noeye = [n for n, c in (("eyeL", lc), ("eyeR", rc)) if c is None]
+    if noeye:
+        return last, 0.0, False, "no eye landmark in: " + ", ".join(noeye)
     feats = np.array([dL[0], dL[1], dR[0], dR[1], lc[0], lc[1], rc[0], rc[1]])
-    return feats, float(min(sl, sr)), True
+    return feats, float(min(sl, sr)), True, ""
+
+
+def selftest_input() -> int:
+    """Pin the two failures that cost the 2026-08-03 session.
+
+    BOTH are written as the failing case first, per the project rule: a check that goes green for
+    a reason unrelated to what it claims to measure is worse than no check.
+
+    1. A not-live frame must still process nudge/quit keys. The loop used to `continue` out of the
+       frame when any input was missing, polling the InputController only for `.quit` -- so every
+       WASD press and every ENTER was consumed and dropped. With eyeR's plausibility gate rejecting
+       every frame (HANDOFF open item 2) the rig sat in that branch permanently, which is why the
+       symptom read as "WASD isn't working" and "no samples stored" at the same time. The raw
+       keycode HUD added to diagnose it was itself only in the live branch, so it showed "none yet"
+       forever and pointed at a focus problem that did not exist.
+    2. The not-live reason must NAME the failing input. One string for five faults sent a whole
+       session hunting the world dot while the actual failure was eyeR.
+    """
+    ok_all = True
+
+    def check(name, cond, detail=""):
+        nonlocal ok_all
+        ok_all = ok_all and bool(cond)
+        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name,
+                               ("  — " + detail) if detail else ""))
+
+    frame = np.zeros((8, 8), dtype=np.uint8)
+
+    class _Det:
+        def __init__(self, hit=True):
+            self.hit = hit
+
+        def detect(self, f):
+            return ((0.5, 0.5), 1.0) if self.hit else (None, 0.0)
+
+    class _Trk:
+        def __init__(self, hit=True):
+            self.hit = hit
+
+        def track(self, f):
+            return ((0.5, 0.5), 0.9) if self.hit else (None, 0.0)
+
+    last = np.full(8, 0.5)
+
+    # -- 2. the reason names the failing input, and ONLY the failing input --
+    _dot_prev["L"] = _dot_prev["R"] = None
+    _, _, ok, why = _features_from(frame, frame, frame, frame,
+                                   _Det(), _Trk(), _Trk(False), last)
+    check("eyeR-only failure is named", (not ok) and "eyeR" in why, why)
+    check("eyeR-only failure does NOT blame eyeL", "eyeL" not in why, why)
+    check("eyeR-only failure does NOT blame the world dot",
+          "world dot" not in why, why)
+
+    _dot_prev["L"] = _dot_prev["R"] = None
+    _, _, ok, why = _features_from(frame, None, frame, frame,
+                                   _Det(), _Trk(), _Trk(), last)
+    check("dead camera is named", (not ok) and "worldR" in why, why)
+
+    _dot_prev["L"] = _dot_prev["R"] = None
+    _, _, ok, why = _features_from(frame, frame, frame, frame,
+                                   _Det(False), _Trk(), _Trk(), last)
+    check("missing world dot is named", (not ok) and "world dot" in why, why)
+
+    _dot_prev["L"] = _dot_prev["R"] = None
+    feats, conf, ok, why = _features_from(frame, frame, frame, frame,
+                                          _Det(), _Trk(), _Trk(), last)
+    check("all-good frame is live with no reason", ok and why == "" and conf > 0,
+          "conf %.2f" % conf)
+    check("all-good frame yields 8 features", ok and feats.shape == (8,))
+
+    # -- 1. keys survive when nothing is being tracked --
+    # The InputController is stateless w.r.t. liveness, so the property to pin is that the loop's
+    # key handling is reachable at all: poll() must map every documented key, and must ignore the
+    # two "no key" sentinels rather than treating them as a keypress.
+    from input_ctl import InputController
+    inp = InputController(use_joystick=False)
+    check("'w' nudges up", inp.poll(ord('w')).dy < 0)
+    check("'s' nudges down", inp.poll(ord('s')).dy > 0)
+    check("'a' nudges left", inp.poll(ord('a')).dx < 0)
+    check("'d' nudges right", inp.poll(ord('d')).dx > 0)
+    check("shift = coarse", abs(inp.poll(ord('W')).dy) > abs(inp.poll(ord('w')).dy))
+    check("ENTER approves (13 and 10)",
+          inp.poll(13).approve and inp.poll(10).approve)
+    check("'u' undoes", inp.poll(ord('u')).undo)
+    check("'z' resets", inp.poll(ord('z')).reset)
+    check("'q'/ESC quit", inp.poll(ord('q')).quit and inp.poll(27).quit)
+    # 255 is what `cv2.waitKey(1) & 0xFF` returns for "no key" (-1 & 0xFF). Treating it as a
+    # keypress would make the dot drift on its own every frame.
+    #
+    # HONESTY NOTE: this pair is currently satisfied for a reason other than the guard it names --
+    # chr(255) is 'ÿ' and chr(-1) is not a letter, so neither would hit the WASD branch even with
+    # the `key != 255` guard deleted. It is a regression pin (it would catch someone mapping a
+    # default/fallthrough action), NOT evidence the guard works. Do not read it as the latter.
+    for sentinel in (-1, 255):
+        a = inp.poll(sentinel)
+        check("sentinel %d is not a keypress" % sentinel,
+              a.dx == 0 and a.dy == 0 and not a.approve and not a.quit)
+    inp.close()
+
+    print("INPUT PLUMBING OK ✅" if ok_all else "INPUT PLUMBING FAILED ❌")
+    return 0 if ok_all else 1
 
 
 def read_real_features(world_L, world_R, eyeL_cam, eyeR_cam, detector,
                        trk_L, trk_R, last):
-    """Live read of all four cameras -> (features, confidence, ok)."""
+    """Live read of all four cameras -> (features, confidence, ok, why)."""
     return _features_from(world_L.read(), world_R.read(), eyeL_cam.read(),
                           eyeR_cam.read(), detector, trk_L, trk_R, last)
 
 
 def snapshot_features(world_L, world_R, eyeL_cam, eyeR_cam, detector,
                       trk_L, trk_R, last):
-    """High-speed capture at approval: freshest frames, no blur. (features, conf)."""
-    feats, conf, ok = _features_from(
+    """High-speed capture at approval: freshest frames, no blur. (features, conf, why)."""
+    feats, conf, ok, why = _features_from(
         world_L.snapshot(), world_R.snapshot(), eyeL_cam.snapshot(),
         eyeR_cam.snapshot(), detector, trk_L, trk_R, last)
-    return (feats, conf) if ok else (last, 0.0)
+    return (feats, conf, "") if ok else (last, 0.0, why)
 
 
 def _sim_next(world, subject, dev):
@@ -625,6 +748,9 @@ def main(argv=None) -> int:
     p.add_argument("--contract-test", action="store_true",
                    help="Phase-0 foundations: feature-order parity (live vector == "
                         "Config.feature_names) + device-calibration round-trip selftests")
+    p.add_argument("--input-test", action="store_true",
+                   help="calibration-loop input plumbing: keys reach the loop when nothing is "
+                        "being tracked, and the not-live reason names the failing camera")
     p.add_argument("--capture-test", action="store_true",
                    help="Phase-1 capture: blink-detector + live capture pipeline selftests "
                         "(--simulate mirror: blink discounting, stereo->mono fallback, both-cams-valid)")
@@ -734,6 +860,8 @@ def main(argv=None) -> int:
         import stereo_test
         stereo_test.evaluate()
         return 0
+    if args.input_test:
+        return selftest_input()
     if args.contract_test:
         import live_features
         import device

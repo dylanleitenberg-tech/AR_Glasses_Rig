@@ -45,10 +45,20 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > - two independent estimators agreed at 0.029 — on the eyelid, not the tear duct
 > - heatmap sharpness worked as a confidence signal on one model and **inverted** on the next
 > - the seed-frame selector ranked by an openness metric that did not separate open from closed
+> - **(9th, 2026-08-03)** three brand-new mount-anchor selftests passed against a tracker that
+>   **could not be constructed at all** — they built it with `__new__` and injected the very
+>   attribute `__init__` was missing. **A test that constructs its subject differently from
+>   production is not testing production.** Inject the *stub collaborator* you need to control;
+>   never hand-assemble the object under test.
 >
 > **So: when adding a check, write the failing case first. Validate by spread/distribution and by
 > LOOKING at images, never by a pass rate.** Several selftests now deliberately pin a known-bad
 > input so the property cannot silently regress.
+>
+> **And add the corollary the 9th cost a session to learn: every module whose object runs on the
+> rig needs one dumb PRODUCTION-PATH check** that builds it the way the rig does, with real
+> weights and a real frame, and asserts only that it does not raise. `canthus_net` has one now.
+> It is the cheapest check in the repo and it is the one that would have caught this.
 >
 > ## RULE ZERO — SAVE EVERYTHING TO THE DOC, AS YOU GO
 > **Dylan's standing instruction, verbatim: "from now on, save everything to the doc. if work is
@@ -120,6 +130,19 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > - Full-load profile measured 2026-08-01: track 45.7 ms / sync 19.6 ms / overlay 8.8 ms,
 >   73.6 ms per frame, **CPU only 9% of 16 cores**. The loop is **I/O-bound, not CPU-bound**.
 >
+> ## STATE AS OF 2026-08-03 SESSION 2 (bugfix session, no hardware touched)
+> Both things that stopped the last run are fixed and covered by checks; `verify_all --fast` is
+> green at **38 checks, 0 failures** (37 + the new `calib-loop input plumbing`). Note the previous
+> handoff's "33 checks" was stale — count it, don't quote it.
+>
+> **AND THE MOST IMPORTANT LINE IN THIS FILE:** that same 38-check release gate printed
+> **`ALL CHECKS PASS ✅` against code where `main.py --use-model` crashed on frame one of both eye
+> cameras.** Measured this session — the pre-fix suite was run deliberately to see it. A full green
+> release gate is not evidence the rig works. Only running the rig is.
+>
+> **Nothing here has been run on the rig** — the fixes are proven against the code paths and by
+> negative controls, not against cameras. The next session should go straight to the run block.
+>
 > ## >>> THIS SESSION: GET A REAL CALIBRATION RUN <<<
 > ```bash
 > cd ~/ar-eye-calibration/software && source .venv/bin/activate
@@ -190,16 +213,52 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   consistent with hardware (0.809/0.886 measured vs prior [0.778, 0.891]); only v disagreed.
 >
 > ## >>> OPEN — what to do next, in order
-> 1. **No calibration samples yet.** The loop runs but the **WASD nudge keys were not
->    registering**. The HUD now prints the raw `cv2.waitKey` code: **blank = focus problem**
->    (click the overlay window), **`119 (w)` = the key arrives and the mapping is at fault**. That
->    one line settles it; nobody has read it yet.
-> 2. **`eyeR` is the weak eye.** Dylan's `eyeR` seed clicks sit ~0.06 BELOW `rig.py`'s prior band
->    (he labels u≈0.714; band is [0.778, 0.891]), consistently (±0.014). The model faithfully
->    learned that, so the plausibility gate now rejects its own model's output and `eyeR` reports
->    "no plausible landmark". Either his `eyeR` clicks are on a different point than `eyeL`'s, or
->    the sim's geometry for that camera is wrong — as it already was about mount occlusion.
->    Resolve by re-labelling ~20 `eyeR` seeds, or by widening that camera's band.
+> 1. ~~**No calibration samples yet / WASD not registering.**~~ **SOLVED 2026-08-03 (session 2),
+>    two independent bugs, neither of them focus and neither of them the key mapping.** Do not
+>    re-investigate; do go and run the rig.
+>    - **(a) THE BLOCKER: `CanthusTracker.__init__` never created `self.anchor`.** The mount-anchor
+>      commit `12d2c13` (07:41) added `self.anchor` / `self._warm` / `self.flexed` to `update()`
+>      and set them **only inside the selftest**, which built the tracker with
+>      `CanthusTracker.__new__(...)` and assigned every attribute by hand. `git log -S` confirms
+>      the line `self.anchor = MountAnchor()` had **never existed in any commit**. So
+>      `main.py --use-model` raised `AttributeError` on **frame one of both eye cameras**, while
+>      all of `canthus_net`'s checks — including the three new anchor ones — stayed green.
+>      Fixed in `__init__`; the selftests now build through `__init__` and only the stub *net* is
+>      injected; a new **PRODUCTION PATH** check constructs the tracker exactly as `main.py` does
+>      and pushes 15 real frames through `track()`. Verified to go red against the old code.
+>    - **(b) The loop threw every keypress away when nothing was tracked.** On a frame where any
+>      input was missing, `main.py` polled the InputController **for `.quit` only** and then
+>      `continue`d — before the nudge accumulator and before the approve branch. So WASD *and*
+>      ENTER were consumed and dropped, which is exactly "keys don't work" plus "no samples
+>      stored". Worse, **the raw-keycode HUD added to diagnose it was only in the live branch**,
+>      so it read `none yet` forever and pointed at a focus problem that did not exist. The loop
+>      now has a single input path with a `live` flag: nudge/undo/reset/quit always work, only
+>      APPROVE is gated, and the HUD says `NOT LIVE -- <reason>`.
+>    - **THE TIMELINE MATTERS:** `12d2c13` landed at **07:41** and the handoff was written at
+>      **07:42**. Every observation in the previous handoff — the `6/6 READY TO CALIBRATE ✅`, the
+>      `eyeR` "no plausible landmark" — was made **before** that commit. The rig had been broken
+>      for one minute when the notes describing it were written, and nobody ran it again.
+> 2. **`eyeR` is the weak eye — but the previous handoff overstated it. MEASURED 2026-08-03.**
+>    It is **not** being rejected. Running the real exported model over all 98 seed frames:
+>
+>    | eye | model u as the gate sees it | gate pass rate | margin above lower cutoff |
+>    |-----|-----------------------------|----------------|---------------------------|
+>    | eyeL (mirrored) | med 0.815, sd 0.023 | **49/49 = 100%** | **+0.117** |
+>    | eyeR | med 0.721, sd 0.028 | **49/49 = 100%** | **+0.023** |
+>
+>    The gate is `[u_lo - pad, u_hi + pad]` = **[0.698, 0.971]** (`pad=0.08`), so `eyeR`'s median
+>    clears it — but by **0.023, against a model sd of 0.028 and a held-out error of ~0.030**.
+>    `eyeR` is **marginal, not broken**: it sits under one sigma from the cliff, so it will start
+>    dropping frames on live data that is even slightly off-distribution, intermittently, in a way
+>    that looks like flakiness rather than a gate. `eyeL` has 5x the headroom.
+>    **Do NOT re-label 20 seeds on the strength of the old note** — the "no plausible landmark"
+>    report came from `calib_preflight`, and note that with the anchor bug that same code path
+>    returns `"model failed on <role>: ..."`, not `"no plausible landmark"`, so that observation is
+>    from the pre-`12d2c13` code and describes a real but *different* condition.
+>    The open question is unchanged and still worth answering: **why do the two eyes differ by
+>    0.09 in mirrored-u** (0.815 vs 0.721) when the carrier is symmetric? Either Dylan clicks a
+>    different point on `eyeR`, or the sim's geometry for that camera is wrong — as it already was
+>    about mount occlusion. Widening the band hides it; measuring it does not.
 > 3. **Model is label-limited, not architecture-limited.** Its error (0.030) sits at Dylan's own
 >    click scatter (±0.021). More/《better seeds beat any training change. Weakest coverage:
 >    extreme gaze and eyes-held-wide (it drifts there), and the closed head (22 examples).
@@ -259,13 +318,20 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   time (this rig is I/O-bound, so degrading quality mostly costs without helping).
 > - `cam_view.py` — live single-camera view with a **FOCUS meter + peak-hold** for setting M12
 >   lenses (`r` resets the peak).
+> - `main.py --input-test` — calibration-loop input plumbing. Pins that the not-live reason NAMES
+>   the failing camera (one lumped string for five faults is what sent a session hunting the world
+>   dot when the fault was `eyeR`), and that every documented key maps. Both assertions were run
+>   against the old code and confirmed to fail.
 >
 > ## Guardrails (do NOT break)
 > - `software/rig.py` is the single source of truth for camera geometry; `cad/xreal_one_mount.scad`
 >   mirrors it (parity checked to 0.0003 mm). Don't reorder `config.feature_names`.
 > - Every new module needs a `--selftest` hooked into `verify_all.py`. **`python3 verify_all.py
->   --fast` must end "ALL CHECKS PASS"** (currently 33 checks). Run it after touching shared
+>   --fast` must end "ALL CHECKS PASS"** (currently 34 checks). Run it after touching shared
 >   capture/geometry code — and note it takes ~10 min, so run it in the background.
+> - **Build the object under test through its real constructor.** See the 9th pattern entry above:
+>   `__new__` + hand-assigned attributes is how a tracker that could not be constructed at all
+>   passed every check. Stub the *collaborator*, never the object itself.
 > - **Persist settled decisions** — see **RULE ZERO** at the top of this file, which is the one
 >   guardrail that outranks the rest: code (a named constant others default to) + the memory
 >   file's settled-facts block + a commit, written as each thing lands. Never leave a decision

@@ -75,6 +75,8 @@ def main(fast=False):
     for name, cmd, needle in [
         ("pixel_sweep oracle selftest", "python3 pixel_sweep.py --selftest", "SIM VALID"),
         ("feature contract + device bridge", "python3 main.py --contract-test", "DEVICE BRIDGE OK"),
+        ("calib-loop input plumbing (keys survive a not-live frame)",
+         "python3 main.py --input-test", "INPUT PLUMBING OK"),
         ("capture/blink/fallback", "python3 main.py --capture-test", "PROVEN"),
         ("imu filter selftest", "python3 imu.py", "IMU FILTER OK"),
         ("imu serial + gyro integrator", "python3 imu_serial.py --selftest", "GYRO INTEGRATOR OK ✅"),
