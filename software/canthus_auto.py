@@ -122,13 +122,72 @@ def build_prior(n_faces=300, seed=31, cache=True, verbose=False):
     return out
 
 
-def in_prior(uv, prior, mirrored, pad=0.06):
+def in_prior(uv, prior, mirrored, pad=0.06, band=None):
     """Is this position anatomically possible? `mirrored` handles the left camera, whose image is
     the mirror of the geometry the prior was computed in. `pad` allows for the prior being a
     POPULATION sweep — one real face sits somewhere inside it, not at its centre."""
     u = (1.0 - uv[0]) if mirrored else uv[0]
-    return (prior["u_lo"] - pad <= u <= prior["u_hi"] + pad
-            and prior["v_lo"] - pad <= uv[1] <= prior["v_hi"] + pad)
+    if not (prior["u_lo"] - pad <= u <= prior["u_hi"] + pad):
+        return False
+    if band is not None:                  # mount-derived vertical band (measured, not simulated)
+        return band[0] <= uv[1] <= band[1]
+    return prior["v_lo"] - pad <= uv[1] <= prior["v_hi"] + pad
+
+
+# ----------------------------------------------------------------------------------
+#  The MOUNT as a fiducial — a known object, rigidly fixed to the camera
+# ----------------------------------------------------------------------------------
+def find_mount(frames, dark_frac=0.45, static_pct=25):
+    """Locate the nose-bridge support: the one object in frame whose position we already know.
+
+    Dylan's point, and it is the right one — do not hunt for the landmark by appearance alone when
+    a KNOWN object is in shot. The mount is bolted to the camera, so it projects to the same pixels
+    in every frame no matter how the glasses sit on the face. That makes it a built-in fiducial:
+    the face moves relative to it, it never moves relative to the sensor.
+
+    Found by intersecting DARK with TEMPORALLY STATIC across the corpus. Measured on the real data
+    the separation is unambiguous — temporal std 3.2-3.6 inside the mask against 12.5-13.4
+    everywhere else, i.e. 4x more static than the rest of the image.
+
+    WHY THIS MATTERS BEYOND MASKING: the mount occupies the top ~35% of the frame (measured
+    v [0.000, 0.335] eyeL, [0.000, 0.365] eyeR), and rig.py's prior places the canthus at
+    v <= 0.620 with median 0.362 — i.e. INSIDE hardware. The simulator does not model the mount
+    occluding the sensor, so it predicts the landmark into a region that is physically blocked,
+    and any search over that box finds the mount instead of the eye. That is the whole reason the
+    eyeR labels were landing on the frame.
+
+    Returns dict with the mask, its bbox and `v_floor` — the bottom of the mount, below which the
+    face actually is.
+    """
+    S = np.asarray(frames, np.float32)
+    med = np.median(S, 0)
+    sd = S.std(0)
+    dark = med < dark_frac * np.median(med)
+    # `<=`, not `<`. If a large share of the frame is PERFECTLY static, percentile(sd, 25) is
+    # exactly 0 and a strict `<` matches nothing at all — find_mount returns None precisely when
+    # the fiducial is at its most rigid. Real frames have sensor noise everywhere so it never
+    # surfaced there; the synthetic selftest hit it immediately.
+    static = sd <= np.percentile(sd, static_pct)
+    mask = dark & static
+    H, W = med.shape
+    ys, xs = np.nonzero(mask)
+    if len(ys) < 50:
+        return None
+    return dict(mask=mask, v_floor=float(ys.max()) / H,
+                u_c=float(xs.mean()) / W, v_c=float(ys.mean()) / H,
+                frac=float(mask.mean()),
+                static_ratio=float(sd[~mask].mean() / max(sd[mask].mean(), 1e-6)))
+
+
+def search_band(mount, margin=0.04):
+    """Vertical band the canthus can occupy: BELOW the mount, derived from the rig itself.
+
+    Deliberately data-driven rather than taken from rig.py. The simulator's absolute vertical
+    placement does not describe this hardware — it puts the landmark inside the mount — while the
+    mount's own footprint is measured directly off these frames and cannot be wrong about itself.
+    The horizontal prior from rig.py is kept, because u was always consistent with the data
+    (0.809/0.886 measured against a prior band of [0.778, 0.891]); it is only v that disagreed."""
+    return (min(0.95, mount["v_floor"] + margin), 1.0)
 
 
 # ----------------------------------------------------------------------------------
@@ -188,8 +247,9 @@ class TemplateProposer:
     """Proposes by template match, but ONLY inside the prior box. Restricting the search is what
     makes correlation usable: unconstrained, it wanders onto blank skin with high confidence."""
 
-    def __init__(self, tmpl, prior, mirrored):
+    def __init__(self, tmpl, prior, mirrored, band=None):
         self.t, self.prior, self.mirrored = tmpl, prior, mirrored
+        self.band = band                 # (v0, v1) from the mount; overrides the sim's v prior
 
     def __call__(self, gray, cv2, hint=None):
         H, W = gray.shape[:2]
@@ -198,7 +258,10 @@ class TemplateProposer:
             u0, u1 = 1.0 - self.prior["u_hi"] - 0.06, 1.0 - self.prior["u_lo"] + 0.06
         else:
             u0, u1 = self.prior["u_lo"] - 0.06, self.prior["u_hi"] + 0.06
-        v0, v1 = self.prior["v_lo"] - 0.06, self.prior["v_hi"] + 0.06
+        if self.band is not None:
+            v0, v1 = self.band
+        else:
+            v0, v1 = self.prior["v_lo"] - 0.06, self.prior["v_hi"] + 0.06
         x0, x1 = max(0, int(u0 * W) - tw // 2), min(W, int(u1 * W) + tw // 2)
         y0, y1 = max(0, int(v0 * H) - th // 2), min(H, int(v1 * H) + th // 2)
         if x1 - x0 < tw + 2 or y1 - y0 < th + 2:
@@ -243,7 +306,7 @@ class PupilCorrector:
 #  The loop
 # ----------------------------------------------------------------------------------
 def converge(gray, cv2, proposer, corrector, prior, mirrored,
-             confirm_n=CONFIRM_N, max_rounds=MAX_ROUNDS, tol=CONFIRM_TOL):
+             confirm_n=CONFIRM_N, max_rounds=MAX_ROUNDS, tol=CONFIRM_TOL, band=None):
     """propose -> correct -> ... until the corrector confirms `confirm_n` times running.
 
     Returns (uv, rounds, status) where status is 'confirmed' | 'no-consensus' | 'off-prior' |
@@ -262,7 +325,7 @@ def converge(gray, cv2, proposer, corrector, prior, mirrored,
         if d <= tol:
             hits += 1
             if hits >= confirm_n:
-                if not in_prior(uv, prior, mirrored):
+                if not in_prior(uv, prior, mirrored, band=band):
                     return None, r, "off-prior"
                 return uv, r, "confirmed"
         else:
@@ -308,6 +371,30 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
                       % (name, ref_open[rid], CLOSED_AREA_FRAC * ref_open[rid]))
         print()
 
+    # ---- PASS 0: locate the MOUNT and derive the vertical band from it -------------------
+    mount, band = {}, {}
+    for rid in (0, 1):
+        m = R == rid
+        if not m.any():
+            continue
+        mo = find_mount(F[m][:400])
+        if mo is None:
+            continue
+        mount[rid] = mo
+        band[rid] = search_band(mo)
+    if verbose:
+        print("== pass 0: mount fiducial (known object, rigid to the camera) ==")
+        for rid, name in ((0, "eyeL"), (1, "eyeR")):
+            if rid in mount:
+                mo = mount[rid]
+                print("  %s: mount covers %.1f%% of frame, floor v=%.3f, %.1fx more static "
+                      "than the rest -> canthus band v [%.3f, %.3f]"
+                      % (name, 100 * mo["frac"], mo["v_floor"], mo["static_ratio"],
+                         band[rid][0], band[rid][1]))
+            else:
+                print("  %s: mount NOT found — falling back to the simulated v prior" % name)
+        print()
+
     # ---- PASS 1: learn the canthus-to-pupil offset, per role ----------------------------
     # The corrector has to be a function OF THE IMAGE. It reads the pupil (reliable: found in
     # 96-100% of real frames) and adds a fixed offset to reach the canthus. That offset is not
@@ -319,9 +406,10 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
     for i in range(len(F)):
         rid = int(R[i])
         mirrored = (rid == 0)
-        prop = TemplateProposer(tmpl["eyeL" if rid == 0 else "eyeR"], prior, mirrored)
+        prop = TemplateProposer(tmpl["eyeL" if rid == 0 else "eyeR"], prior, mirrored,
+                                band=band.get(rid))
         uv, _ = prop(F[i], cv2)
-        if uv is None or not in_prior(uv, prior, mirrored):
+        if uv is None or not in_prior(uv, prior, mirrored, band=band.get(rid)):
             continue
         res = trk.detect(F[i])
         if not getattr(res, "ok", False):
@@ -359,9 +447,10 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
                 n_closed += 1
                 status.append("closed")
                 continue
-        prop = TemplateProposer(tmpl["eyeL" if rid == 0 else "eyeR"], prior, mirrored)
+        prop = TemplateProposer(tmpl["eyeL" if rid == 0 else "eyeR"], prior, mirrored,
+                                band=band.get(rid))
         corr = PupilCorrector(prior, mirrored, offset=offset.get(rid))
-        uv, r, st = converge(g, cv2, prop, corr, prior, mirrored)
+        uv, r, st = converge(g, cv2, prop, corr, prior, mirrored, band=band.get(rid))
         status.append(st)
         if st == "confirmed":
             idx.append(i); labels.append(uv); rounds.append(r)
@@ -463,6 +552,30 @@ def selftest(verbose=True):
     dm_shut, _ = dark_mass(shut)
     checks.append(("whole-frame darkness does NOT separate open from shut (%.3f vs %.3f)"
                    % (dm_open, dm_shut), abs(dm_open - dm_shut) < 0.30))
+
+    # The mount fiducial: a dark STATIC bar at the top plus a moving face below it. find_mount
+    # must recover the bar and nothing else, and the derived band must sit strictly below it --
+    # this is the constraint that stops the proposer matching the rig's own hardware.
+    rngm = np.random.default_rng(11)
+    stack = []
+    for k in range(40):
+        fr = rngm.integers(110, 150, (200, 320)).astype(np.float32)
+        fr[0:60, :] = 20                                     # mount: dark, never moves
+        y = 120 + int(10 * np.sin(k))                        # face: moves frame to frame
+        fr[y:y + 40, 100:220] = 60
+        stack.append(fr)
+    mo = find_mount(np.array(stack))
+    bd = search_band(mo) if mo else None
+    checks.append(("find_mount recovers the static bar (floor v=%.3f) and NOT the moving face"
+                   % (mo["v_floor"] if mo else -1),
+                   mo is not None and 0.25 <= mo["v_floor"] <= 0.35
+                   and mo["static_ratio"] > 2.0))
+    checks.append(("derived band sits strictly BELOW the mount (%s)"
+                   % (("[%.3f, %.3f]" % bd) if bd else "none"),
+                   bd is not None and bd[0] > mo["v_floor"] and bd[1] <= 1.0))
+    checks.append(("a proposal inside the mount is rejected by the band",
+                   not in_prior((0.834, 0.10), prior, False, band=bd)
+                   and in_prior((0.834, 0.80), prior, False, band=bd)))
 
     ok = all(x for _, x in checks)
     if verbose:
