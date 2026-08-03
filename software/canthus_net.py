@@ -136,18 +136,70 @@ class CanthusTracker:
     the bad sample rig.py's blink-dropout model exists to describe.
     """
 
-    CONF_MIN = 0.017        # below the seed-frame minimum of 0.0182, above the 0.0084 blank floor
+    # NO SHARPNESS GATE. It worked on the first model and INVERTED on the second: measured on the
+    # 98-seed model, a blank frame peaks at 0.0202 while real frames median 0.0154 -- the model is
+    # "more confident" about nothing than about an eye. A gate on that would hold on good frames
+    # and accept garbage. Heatmap peak is an artefact of how a particular model spreads its
+    # softmax, not a property of the task, so it cannot be trusted across retrainings.
+    #
+    # The gate is now the ANATOMICAL PRIOR plus the jump test: where a canthus can physically be,
+    # and how fast it can physically move. Both are properties of the rig and the face, so neither
+    # can silently invert when the model is retrained.
+    CONF_MIN = 0.0           # retained for the API; sharpness is no longer gated on
     MAX_JUMP = 0.06         # normalised frame units between consecutive accepted frames
     EMA = 0.35              # weight on the new observation
     MAX_HELD = 15           # frames to coast before declaring LOST
 
-    def __init__(self, net=None, conf_min=None, max_jump=None, ema=None):
+    def __init__(self, net=None, conf_min=None, max_jump=None, ema=None,
+                 mirrored=None, prior=None, pad=0.08):
         self.net = net or CanthusNet()
         self.conf_min = self.CONF_MIN if conf_min is None else conf_min
         self.max_jump = self.MAX_JUMP if max_jump is None else max_jump
         self.ema = self.EMA if ema is None else ema
+        self.mirrored = mirrored
+        self.pad = pad
+        self.prior = prior
+        if self.prior is None and mirrored is not None:
+            try:
+                from canthus_auto import build_prior
+                self.prior = build_prior()
+            except Exception:
+                self.prior = None
         self.uv = None
         self.held = 0
+
+    def track(self, frame):
+        """Drop-in for eye_tracker.EyeCornerTracker.track: returns ((u, v), score) or (None, 0).
+
+        The score maps the tracker STATE onto the confidence the calibration loop already gates on
+        (config.eye_conf_min), so a sample recorded mid-blink or off-distribution is refused by
+        machinery that already exists rather than by a new special case:
+
+            ok    1.0   confident and physically plausible -- record it
+            held  0.3   coasting on the last good position -- show it, do not record it
+            lost  0.0   no trustworthy estimate at all
+
+        Accepts colour or grayscale, matching EyeCornerTracker."""
+        import cv2
+        if frame is None:
+            return None, 0.0
+        g = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if frame.ndim == 3 else frame
+        u, v, cp, conf, state = self.update(g)
+        if u is None:
+            return None, 0.0
+        return (u, v), {"ok": 1.0, "held": 0.3}.get(state, 0.0)
+
+    @property
+    def ready(self):
+        """EyeCornerTracker exposes this; the model is always ready once weights load."""
+        return True
+
+    def _plausible(self, u, v):
+        """Physics gate: is this where a canthus can be? Independent of the model entirely."""
+        if self.prior is None or self.mirrored is None:
+            return True
+        uu = (1.0 - u) if self.mirrored else u
+        return (self.prior["u_lo"] - self.pad <= uu <= self.prior["u_hi"] + self.pad)
 
     def reset(self):
         self.uv = None
@@ -157,7 +209,7 @@ class CanthusTracker:
         """-> (u, v, closed_prob, conf, state). u,v are None when state == 'lost'."""
         u, v, cp, conf = self.net.predict(gray)
 
-        if conf < self.conf_min:
+        if not self._plausible(u, v):
             self.held += 1
             if self.uv is None or self.held > self.MAX_HELD:
                 return None, None, cp, conf, "lost"
@@ -228,8 +280,16 @@ def selftest(verbose=True):
     if os.path.exists(corpus):
         _, _, _, real_sh = net.predict(np.load(corpus)["frames"][0])
     if real_sh is not None:
-        checks.append(("blank frame is LESS peaked than a real one (%.4f vs %.4f)"
-                       % (sh_blank, real_sh), sh_blank <= real_sh * 1.5))
+        # PIN THE INVERSION. On the first model a blank frame was measurably flatter than a real
+        # one, so heatmap peak looked like a usable confidence signal. On the 98-seed model it
+        # REVERSED -- blank 0.0202 against real 0.0148 -- i.e. the model is "more certain" about
+        # nothing than about an eye. Peak is an artefact of how a given model spreads its softmax,
+        # not a property of the task, so it must NOT be gated on. This check records the fact
+        # rather than asserting a direction, so a future retraining cannot quietly restore a
+        # gate that inverts.
+        checks.append(("sharpness is NOT a usable confidence signal: blank %.4f vs real %.4f "
+                       "(gating on this would invert)" % (sh_blank, real_sh),
+                       sh_blank > 0 and real_sh > 0))
 
     # 4) The tracker's gates, with a stub net so the logic is tested rather than the weights.
     class _Stub:
@@ -237,8 +297,8 @@ def selftest(verbose=True):
         def predict(self, g): return self.q.pop(0)
     st = _Stub()
     trk = CanthusTracker.__new__(CanthusTracker)
-    trk.net = st; trk.conf_min = 0.017; trk.max_jump = 0.06; trk.ema = 1.0
-    trk.uv = None; trk.held = 0
+    trk.net = st; trk.conf_min = 0.0; trk.max_jump = 0.06; trk.ema = 1.0
+    trk.uv = None; trk.held = 0; trk.prior = None; trk.mirrored = None; trk.pad = 0.08
     st.q = [(0.20, 0.60, 0.1, 0.021),      # confident -> ok
             (0.205, 0.605, 0.1, 0.021),    # confident, small move -> ok
             (0.60, 0.20, 0.1, 0.021),      # CONFIDENT BUT A HUGE JUMP -> held, not accepted
@@ -248,15 +308,29 @@ def selftest(verbose=True):
                    r[0][4] == "ok" and r[1][4] == "ok"))
     checks.append(("tracker: CONFIDENT but implausible jump -> held (physics beats the model)",
                    r[2][4] == "held" and abs(r[2][0] - 0.205) < 1e-6))
-    checks.append(("tracker: low confidence -> held, never a silent wrong answer",
-                   r[3][4] == "held"))
+    # (the old "low confidence -> held" check is gone with the sharpness gate; the prior and jump
+    #  gates below are what refuse a bad frame now, and neither depends on model internals)
 
     trk2 = CanthusTracker.__new__(CanthusTracker)
-    st2 = _Stub(); trk2.net = st2; trk2.conf_min = 0.017; trk2.max_jump = 0.06; trk2.ema = 1.0
-    trk2.uv = None; trk2.held = 0
-    st2.q = [(0.2, 0.6, 0.1, 0.005)] * 3
-    checks.append(("tracker: no confident frame ever seen -> 'lost', not a guess",
-                   trk2.update(None)[4] == "lost" and trk2.update(None)[0] is None))
+    # PRIOR GATE: an anatomically impossible position is refused even when the model is sure.
+    # This replaces the sharpness gate, which INVERTED between models (blank 0.0202 vs real
+    # 0.0154) and would have held on good frames while accepting nothing.
+    st2 = _Stub(); trk2.net = st2; trk2.conf_min = 0.0; trk2.max_jump = 0.06; trk2.ema = 1.0
+    trk2.uv = None; trk2.held = 0; trk2.pad = 0.08; trk2.mirrored = False
+    trk2.prior = dict(u_lo=0.778, u_hi=0.891, v_lo=0.110, v_hi=0.620,
+                      u_med=0.834, v_med=0.362)
+    st2.q = [(0.20, 0.60, 0.1, 0.9)] * 3          # confident, but far outside the u band
+    r2 = [trk2.update(None) for _ in range(3)]
+    checks.append(("prior gate: anatomically impossible u=0.20 refused despite high confidence",
+                   r2[0][4] == "lost" and r2[0][0] is None))
+
+    trk3 = CanthusTracker.__new__(CanthusTracker)
+    st3 = _Stub(); trk3.net = st3; trk3.conf_min = 0.0; trk3.max_jump = 0.06; trk3.ema = 1.0
+    trk3.uv = None; trk3.held = 0; trk3.pad = 0.08; trk3.mirrored = False
+    trk3.prior = trk2.prior
+    st3.q = [(0.834, 0.40, 0.1, 0.9)]
+    checks.append(("prior gate: a position inside the band is accepted",
+                   trk3.update(None)[4] == "ok"))
 
     ok = all(x for _, x in checks)
     if verbose:
@@ -270,7 +344,8 @@ def live(cam=0, seconds=None):
     """Run the model on a live camera and draw where it thinks the canthus is."""
     import cv2
     import time
-    trk = CanthusTracker()
+    # mirrored=True for eyeL (index 0), whose image is the mirror of the prior's convention
+    trk = CanthusTracker(mirrored=(cam == 0))
     cap = cv2.VideoCapture(cam, getattr(cv2, "CAP_AVFOUNDATION", 0))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)

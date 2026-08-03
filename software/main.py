@@ -250,11 +250,21 @@ def run_loop(cfg: Config, simulate: bool) -> int:
         eyeR_cam = Camera(cfg.eye_cam_right, cfg.cam_width, cfg.cam_height, name="eyeR")
         cams = [world_L, world_R, eyeL_cam, eyeR_cam]
         detector = DotDetector()
-        trk_L = EyeCornerTracker("%s/eyeL.png" % cfg.template_dir, cfg.search_margin)
-        trk_R = EyeCornerTracker("%s/eyeR.png" % cfg.template_dir, cfg.search_margin)
-        if not (trk_L.ready and trk_R.ready):
-            print("Eye-corner templates missing. Run --calibrate-corners first.")
-            return 1
+        if getattr(cfg, "use_model", False):
+            # LEARNED landmark instead of a hand-drawn template. The template had to be
+            # re-captured every session and localised whatever matched rather than a canthus;
+            # the model is trained once from human seed points and carries its own plausibility
+            # gates (anatomical prior + jump test). eyeL is the MIRRORED camera.
+            from canthus_net import CanthusTracker
+            trk_L = CanthusTracker(mirrored=True)
+            trk_R = CanthusTracker(mirrored=False)
+            print("eye tracking: LEARNED canthus model (data/canthus_net.npz)")
+        else:
+            trk_L = EyeCornerTracker("%s/eyeL.png" % cfg.template_dir, cfg.search_margin)
+            trk_R = EyeCornerTracker("%s/eyeR.png" % cfg.template_dir, cfg.search_margin)
+            if not (trk_L.ready and trk_R.ready):
+                print("Eye-corner templates missing. Run --calibrate-corners first.")
+                return 1
     else:
         world = autosim.Simulator(int(time.time()) % 10000)
         sim_subject = world.new_subject()
@@ -462,6 +472,9 @@ def main(argv=None) -> int:
                    help="headless convergence test (numpy only, no GUI/hardware)")
     p.add_argument("--list-cams", action="store_true")
     p.add_argument("--calibrate-corners", action="store_true")
+    p.add_argument("--use-model", action="store_true",
+                   help="track the canthus with the trained model instead of hand-drawn "
+                        "templates (needs data/canthus_net.npz)")
     p.add_argument("--eye", choices=("L", "R", "l", "r"), default=None,
                    help="with --calibrate-corners: re-do ONE eye only (L or R), leaving the "
                         "other template untouched")
@@ -720,6 +733,7 @@ def main(argv=None) -> int:
         return run_selftest(cfg, args.iterations)
     if args.list_cams:
         return run_list_cams()
+    cfg.use_model = bool(getattr(args, "use_model", False))
     if args.calibrate_corners:
         return run_calibrate_corners(cfg, only=args.eye)
     return run_loop(cfg, simulate=args.simulate)
