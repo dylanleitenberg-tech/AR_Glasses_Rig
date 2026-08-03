@@ -46,6 +46,25 @@ BOOTSTRAP
     detector — the iris is big, dark and unambiguous). Once models exist they slot into the same
     interfaces and the loop is unchanged.
 
+VERIFIED OUTCOME (2026-08-02): THE BOOTSTRAP CANNOT FIND THE CANTHUS ON ITS OWN.
+    With the mount fiducial, prior box, confirm loop and closed-eye skip all working, this module
+    confirms ~58% of frames with tight, consistent labels (eyeR u std 0.006, v std 0.021) that sit
+    ON THE EYE. Zoomed in, they sit on the UPPER LID and brow skin -- not the tear duct.
+
+    The reason is structural, not a tuning miss. Nothing in the classical chain IDENTIFIES a
+    canthus. The mount constrains WHERE to look, the template reports WHAT matched, and the pupil
+    offset was fitted from those same template hits. Every link is anchored to something that is
+    not the landmark, so the system is self-consistent and wrong -- the same failure as the
+    original template auto-labelling, one level up. Aggregate metrics look excellent throughout.
+
+    So a small HUMAN seed is unavoidable: a model can find the canthus once shown one, but no
+    combination of brightness, staticness and pupil geometry defines "tear duct". Use
+    canthus_label.py (~150-200 clicks, once, ever), train, then let the model label the rest.
+
+    Everything here remains useful as FILTERS on the model's pseudo-labels -- the mount band, the
+    prior, the confirm loop and the closed-eye skip are all sound. They just cannot originate the
+    landmark.
+
     python3 canthus_auto.py --run          # label the corpus automatically
     python3 canthus_auto.py --selftest
 """
