@@ -149,6 +149,76 @@ def run(idx_l, idx_r, seconds=10.0, delay=0.0, save_dir="."):
     return results
 
 
+def live(idx_l, idx_r):
+    """Live seating aid: adjust the brow clamp while WATCHING the lock, instead of iterating blind.
+
+    WHY LIVE AND NOT A SIGN IN A DOC. The direction the carrier must move to bring the eye up in
+    frame depends on a coordinate convention this project has got backwards before -- the reversed
+    world pair and the mirrored-u gate were both sign errors that looked identical to a real
+    effect from the outside. Rather than assert a sign, this shows the number moving as you move
+    the clamp: loosen the M3 thumbscrews, shift the carrier a hair, watch LOCK%. If it drops, go
+    the other way. Two runs settles what a paragraph of geometry might get wrong.
+
+    Draws, per eye: the model's landmark (RED), the allowed band (GREEN), and a rolling lock rate.
+    Target is the whole band, but aim for the MIDDLE of it -- the edge is where eyeR already sits
+    and why it drops frames intermittently.
+    """
+    import cv2
+    from canthus_net import CanthusTracker, CanthusNet
+    from canthus_auto import build_prior
+    net, prior, pad = CanthusNet(), build_prior(), 0.08
+    lo, hi = prior["u_lo"] - pad, prior["u_hi"] + pad
+    caps, trks, hist = {}, {}, {}
+    for idx, role, mir in ((idx_l, "eyeL", True), (idx_r, "eyeR", False)):
+        c = cv2.VideoCapture(idx, getattr(cv2, "CAP_AVFOUNDATION", 0))
+        c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        if not c.isOpened():
+            print("%s: could not open index %d — is rig_view or preflight still running? "
+                  "On macOS only ONE process may hold a camera." % (role, idx))
+            return 1
+        caps[role], trks[role], hist[role] = c, CanthusTracker(mirrored=mir), []
+    win = "seat the rig — adjust the brow clamp until both read LOCK.  q quits"
+    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+    print("Adjust the brow clamp and watch LOCK%. q quits.")
+    while True:
+        tiles = []
+        for role, mir in (("eyeL", True), ("eyeR", False)):
+            ok, f = caps[role].read()
+            if not ok or f is None:
+                continue
+            g = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) if f.ndim == 3 else f
+            u, v, cp, sh = net.predict(g)
+            uu = (1.0 - u) if mir else u
+            uv, score = trks[role].track(f)
+            st = "LOST" if uv is None else ("LOCK" if score >= 1.0 else "held")
+            h = hist[role]
+            h.append(st == "LOCK")
+            if len(h) > 60:
+                h.pop(0)
+            rate = 100.0 * sum(h) / len(h)
+            vis = cv2.cvtColor(g, cv2.COLOR_GRAY2BGR)
+            H, W = vis.shape[:2]
+            bl, bh = ((1 - hi), (1 - lo)) if mir else (lo, hi)
+            cv2.rectangle(vis, (int(bl * W), 0), (int(bh * W), H), (0, 220, 0), 3)
+            col = (0, 255, 0) if st == "LOCK" else ((0, 200, 255) if st == "held" else (0, 0, 255))
+            cv2.drawMarker(vis, (int(u * W), int(v * H)), col, cv2.MARKER_CROSS, 60, 3)
+            cv2.circle(vis, (int(u * W), int(v * H)), 30, col, 2)
+            cv2.putText(vis, "%s  %s  lock %3.0f%%" % (role, st, rate), (10, 34),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, col, 2)
+            cv2.putText(vis, "u %.3f (gate %.3f)  v %.3f" % (u, uu, v), (10, H - 14),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (220, 220, 220), 2)
+            tiles.append(cv2.resize(vis, (640, 480)))
+        if tiles:
+            cv2.imshow(win, np.hstack(tiles) if len(tiles) == 2 else tiles[0])
+        if (cv2.waitKey(1) & 0xFF) in (ord('q'), 27):
+            break
+    for c in caps.values():
+        c.release()
+    cv2.destroyAllWindows()
+    return 0
+
+
 def selftest():
     """Pin the verdict logic against the two signatures it exists to tell apart."""
     ok = True
@@ -185,6 +255,12 @@ if __name__ == "__main__":
     p.add_argument("--delay", type=float, default=0.0)
     p.add_argument("--save-dir", default=".")
     p.add_argument("--selftest", action="store_true")
+    p.add_argument("--live", action="store_true",
+                   help="live seating aid: adjust the brow clamp while watching the lock rate")
     a = p.parse_args()
-    sys.exit(selftest() if a.selftest else (run(a.eyeL, a.eyeR, a.seconds, a.delay,
-                                                a.save_dir) and 0))
+    if a.selftest:
+        sys.exit(selftest())
+    if a.live:
+        sys.exit(live(a.eyeL, a.eyeR))
+    run(a.eyeL, a.eyeR, a.seconds, a.delay, a.save_dir)
+    sys.exit(0)
