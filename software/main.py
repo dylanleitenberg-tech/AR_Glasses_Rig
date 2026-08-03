@@ -398,12 +398,41 @@ def run_loop(cfg: Config, simulate: bool) -> int:
     return 0
 
 
+# Largest plausible frame-to-frame move of the world dot, in normalised units.
+#
+# A dot on a page is a physical object: it cannot teleport, and neither can your head within one
+# frame. Measured on this rig, dot_detector reported 0.136, then 0.202, then 0.417 for worldR on a
+# STATIONARY target -- it was jumping between the dot, dark furniture and frame-edge artefacts. Once
+# the prediction started following the world cameras (geometric_bootstrap) that instability became
+# visible immediately: Dylan's "dot is flying across screen".
+#
+# Same reasoning as the canthus jump gate: physics constrains what a real detection can do between
+# frames, and physics does not depend on how confident a detector claims to be. A jump beyond this
+# is a mis-detection by construction, so hold the previous value rather than propagate it.
+DOT_MAX_JUMP = 0.12
+_dot_prev = {"L": None, "R": None}
+
+
+def _gate_dot(d, side):
+    """Reject a world-dot detection that moved impossibly far since the last accepted one."""
+    prev = _dot_prev[side]
+    if d is None:
+        return prev
+    if prev is not None:
+        if float(np.hypot(d[0] - prev[0], d[1] - prev[1])) > DOT_MAX_JUMP:
+            return prev                      # implausible -> keep the last good position
+    _dot_prev[side] = (float(d[0]), float(d[1]))
+    return _dot_prev[side]
+
+
 def _features_from(wlf, wrf, lf, rf, detector, trk_L, trk_R, last):
     """Assemble 8 features from the four camera frames. (features, conf, ok)."""
     if wlf is None or wrf is None or lf is None or rf is None:
         return last, 0.0, False
     dL, _ = detector.detect(wlf)
     dR, _ = detector.detect(wrf)
+    dL = _gate_dot(dL, "L")
+    dR = _gate_dot(dR, "R")
     if dL is None or dR is None:
         return last, 0.0, False
     lc, sl = trk_L.track(lf)
