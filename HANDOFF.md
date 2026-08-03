@@ -130,6 +130,48 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > - Full-load profile measured 2026-08-01: track 45.7 ms / sync 19.6 ms / overlay 8.8 ms,
 >   73.6 ms per frame, **CPU only 9% of 16 cores**. The loop is **I/O-bound, not CPU-bound**.
 >
+> ## >>> STATE AS OF 2026-08-03 SESSION 2, END — READ THIS BEFORE THE OLDER BLOCKS <<<
+> The rig ran on a face this session. Two software blockers were fixed, three suspects were killed
+> by measurement, and **a fresh 3000-frame worn corpus is captured and waiting to be labelled.**
+> The next action is labelling, not hardware.
+>
+> **THE CURRENT DIAGNOSIS, which supersedes the older "framing" story below.** Dylan pushed back
+> with *"the canthus is fully visible, why doesn't it work?"* — and he was right. Drawing the
+> model's prediction on worn frames settled it:
+> - **The canthus IS fully in frame on both eyes.** The framing story was overstated.
+> - **The model is not landing on it.** On `eyeR` it sits on the upper lid crease, ~0.12 of frame
+>   width up-and-inboard of the real corner; on `eyeL` it sits on skin beside the corner.
+> - **So the gate is doing its job** — it is correctly refusing a wrong landmark. That kills the
+>   "widen the band" idea outright: widening it would accept a point on an eyelid. The previous
+>   handoff advised exactly that, and it was wrong.
+> - **The size of the miss is the tell:** held-out error on the seed frames was 14.1 px of 1280
+>   (~0.011), but the live miss is **~0.12-0.13 of frame width, ten times larger**. That is not
+>   model capacity, it is **distribution shift** — trained at one seating, run at another.
+> - Whether the band is ALSO wrong cannot be separated from this until the model hits the corner.
+>   Do not touch the band until after a retrain.
+>
+> **What is measured and settled this session (do not re-derive):**
+> - **Exposure is solved**: 0.7%/0.7% saturated worn. Not a variable any more.
+> - **Focus is fine**: lashes and iris texture resolve. (Laplacian says 14/13 — it is useless here.)
+> - **`eyeR` framing is GOOD** — leave that boom alone. It reached 48% lock, up from 6%.
+> - **`eyeL` is the mis-seated one** (0.815 labelled -> 0.675 -> 0.607 across the session). One
+>   carrier adjustment improved `eyeR` and worsened `eyeL`, so **the booms must move
+>   independently** — treating it as one carrier tweak is what traded one eye for the other.
+> - **Seating is NOT repeatable**: the mount is held by **ZIP TIES**, not the ASSEMBLY.md M3
+>   thumbscrews. Adjustment is cut/reposition/re-tie — coarse and different every time. That is an
+>   argument for making the band **mount-relative** (the mount is bolted to the camera, so it
+>   cancels seating) rather than sim-derived. Dylan's own `12d2c13` fiducial, one step further.
+>
+> **>>> NEXT ACTION: label the new corpus.** `data/canthus_corpus.npz` = **3000 frames, 1500/eye,
+> 1280x800, confirmed worn across all three thirds of the run**, captured with the new `--guided`
+> phase prompts. Diversity vs the ungTuided first attempt: `eyeL` u sd 0.008 -> **0.015**, range
+> 0.048 -> **0.069**, closed 2% -> **15%**; `eyeR` closed 42% -> **13%**. Then:
+> ```bash
+> python3 canthus_label.py          # ~20-30 clicks on the inner canthus
+> python3 canthus_train.py --train  # torch, in .venv-train
+> ```
+> Backups: `data/canthus_corpus_20260802.npz` is the original 656 MB corpus, untouched.
+>
 > ## STATE AS OF 2026-08-03 SESSION 2 (bugfix session, no hardware touched)
 > Both things that stopped the last run are fixed and covered by checks; `verify_all --fast` is
 > green at **38 checks, 0 failures** (37 + the new `calib-loop input plumbing`). Note the previous

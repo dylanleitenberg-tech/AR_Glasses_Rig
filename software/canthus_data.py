@@ -114,8 +114,29 @@ def match_with_margin(gray, tmpl, cv2):
     return float(peak), (u, v), float(peak) - rival
 
 
+# Guided capture schedule: (seconds_into_run, instruction). The FIRST corpus captured without
+# this produced 400 eyeL frames with a landmark spread of sd 0.008 over a 0.048 range -- 400
+# near-identical frames, which label beautifully and teach the model nothing. That is the
+# "gaze-diverse seed breaks the eyeball-following shortcut" lesson arriving as data: a corpus is
+# only worth the clicks if it spans the configurations the model will actually meet. The wide and
+# closed phases are here specifically because HANDOFF lists them as the model's weakest coverage.
+PHASES = [(0, "LOOK FAR LEFT"), (12, "LOOK FAR RIGHT"), (24, "LOOK UP"), (34, "LOOK DOWN"),
+          (44, "EYES HELD WIDE"), (56, "NORMAL — BLINK NATURALLY"), (70, "EYES CLOSED"),
+          (80, "NORMAL — SLOW LOOK AROUND")]
+
+
+def _phase_at(t, phases):
+    """Current instruction and seconds left in it."""
+    cur, nxt = phases[0][1], None
+    for i, (start, txt) in enumerate(phases):
+        if t >= start:
+            cur = txt
+            nxt = phases[i + 1][0] if i + 1 < len(phases) else None
+    return cur, nxt
+
+
 def collect(eye_cams, target=1500, min_margin=MIN_MARGIN, seconds=None, view=True,
-            raw=False, verbose=True):
+            raw=False, verbose=True, phases=None):
     """Stream both eye cams and store frames.
 
     `raw=True` stores EVERY frame with no template gate, and that is what a training corpus wants.
@@ -178,7 +199,20 @@ def collect(eye_cams, target=1500, min_margin=MIN_MARGIN, seconds=None, view=Tru
                                 (10, 26), cv2.FONT_HERSHEY_SIMPLEX, 0.7, col, 2, cv2.LINE_AA)
                     tiles.append(cv2.resize(s, (480, 300)))
             if win and tiles:
-                cv2.imshow(win, np.hstack(tiles) if len(tiles) > 1 else tiles[0])
+                sheet = np.hstack(tiles) if len(tiles) > 1 else tiles[0]
+                if phases:
+                    el = time.time() - t0
+                    cur, nxt = _phase_at(el, phases)
+                    left = (nxt - el) if nxt else ((seconds - el) if seconds else 0)
+                    bar = np.zeros((78, sheet.shape[1], 3), np.uint8)
+                    cv2.putText(bar, cur, (14, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.15,
+                                (0, 255, 255), 3, cv2.LINE_AA)
+                    cv2.putText(bar, "%2.0fs left in this step   |   %2.0fs total   |   %d frames"
+                                % (max(left, 0), max((seconds or 0) - el, 0), sum(kept.values())),
+                                (14, 68), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 1,
+                                cv2.LINE_AA)
+                    sheet = np.vstack([bar, sheet])
+                cv2.imshow(win, sheet)
                 if (cv2.waitKey(1) & 0xFF) in (ord("q"), 27):
                     break
     finally:
@@ -266,11 +300,14 @@ if __name__ == "__main__":
     ap.add_argument("--no-view", action="store_true")
     ap.add_argument("--raw", action="store_true",
                     help="store every frame, no template gate (what a training corpus wants)")
+    ap.add_argument("--guided", action="store_true",
+                    help="on-screen phase prompts (gaze/wide/blink/closed) for a DIVERSE corpus")
     a = ap.parse_args()
     if a.selftest:
         sys.exit(selftest())
     if a.collect:
         sys.exit(collect({"eyeL": a.eye_cam_left, "eyeR": a.eye_cam_right},
                          target=a.target, min_margin=a.min_margin,
-                         seconds=a.seconds, view=not a.no_view, raw=a.raw))
+                         seconds=a.seconds, view=not a.no_view, raw=a.raw,
+                         phases=PHASES if a.guided else None))
     ap.print_help()
