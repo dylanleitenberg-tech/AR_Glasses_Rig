@@ -459,6 +459,18 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   Fixing the order takes peak inliers **0 → 6** and track ids **1 → 39** — but map points
 >   **stay 0**. So the swap was *a* cause, not *the* cause. Next place to look is
 >   `WorldMesh.ingest`, not the correspondence filter, which is now known-good.
+> - **`WorldTracker`: THE CORRECTED PAIR ORDER DOES NOT FIX IT — RE-TESTED ON HARDWARE 2026-08-03.**
+>   Run with the ordering established that day (**worldL=3, worldR=2**), on live frames, with the
+>   head moving: **0 inliers, 2 track ids over 67 frames**, telemetry `{'used': 'imu'}` while no IMU
+>   is present. **The reversed pair was never the cause.** That closes the question the earlier note
+>   left open as "a cause, not *the* cause" — the correspondence filter and the pair order are both
+>   now known-good. **Do not investigate either again.** The fix is an IMU.
+> - **XREAL's OWN MOTION TRACKING MUST BE OFF DURING CALIBRATION.** Dylan asked to run "with motion
+>   tracking", meaning the glasses'. With their 3DoF tracking active the optics displace the image
+>   by a **head-pose-dependent amount** before it reaches the eye, so identical (eye features + dot)
+>   map to different physical directions depending on head history — the learned map fits an average
+>   and is wrong everywhere. **Head-following IS the "off" state** (screen rigidly attached to the
+>   glasses) and is the correct one. Anchor/locked = tracking ON = corrupts the calibration.
 > - **`WorldTracker` 0 map points is a GEOMETRY problem, not a bug** (researched 2026-08-03).
 >   The SLAM literature names this exact configuration: stereo VI-SLAM initialisation degrades
 >   badly under **pure/intense rotation** (head motion in glasses is rotation-dominant, almost no
