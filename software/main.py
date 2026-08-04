@@ -422,14 +422,41 @@ DOT_MAX_JUMP = 0.12
 _dot_prev = {"L": None, "R": None}
 
 
+# Frames of SUSTAINED disagreement after which a "jump" is accepted as real motion.
+#
+# THE GATE USED TO HAVE NO ESCAPE, AND IT SILENTLY RUINED A 35-SAMPLE CALIBRATION.
+# On a jump it returned `prev` WITHOUT updating `_dot_prev`, so the next frame compared against
+# the same stale position, exceeded the threshold again, and rejected again -- permanently. Move
+# the target further than DOT_MAX_JUMP once and the feature froze for the rest of the session.
+# Measured consequence (2026-08-03, 35 approved samples): every one of the 8 features spanned
+# 0.013-0.052 of frame, the dot barely moving, so the fit had almost no information and behaved
+# like a constant -- which on the glasses reads as "the overlay moves WITH my head".
+#
+# The canthus tracker already solved this exact problem with MAX_HELD: a one-frame flick is a
+# mis-detection, but a position that PERSISTS is the world having genuinely moved. Physics
+# constrains how fast the dot can move between frames; it does not forbid it from being somewhere
+# new a moment later. This gate now gets the same escape, and deliberately reuses the same
+# reasoning rather than inventing a second policy.
+DOT_MAX_HELD = 8                 # ~0.6 s at the measured 13 fps
+_dot_held = {"L": 0, "R": 0}
+
+
 def _gate_dot(d, side):
-    """Reject a world-dot detection that moved impossibly far since the last accepted one."""
+    """Reject a world-dot detection that moved impossibly far since the last accepted one.
+
+    A SUSTAINED new position is accepted after DOT_MAX_HELD frames -- moving the calibration
+    target IS the point of the exercise, so a gate with no escape defeats the whole session.
+    """
     prev = _dot_prev[side]
     if d is None:
         return prev
     if prev is not None:
         if float(np.hypot(d[0] - prev[0], d[1] - prev[1])) > DOT_MAX_JUMP:
-            return prev                      # implausible -> keep the last good position
+            _dot_held[side] += 1
+            if _dot_held[side] <= DOT_MAX_HELD:
+                return prev                  # transient -> a mis-detection, hold the last good
+            # held long enough: the target really did move. Accept and resync.
+    _dot_held[side] = 0
     _dot_prev[side] = (float(d[0]), float(d[1]))
     return _dot_prev[side]
 
@@ -532,6 +559,27 @@ def selftest_input() -> int:
     check("all-good frame is live with no reason", ok and why == "" and conf > 0,
           "conf %.2f" % conf)
     check("all-good frame yields 8 features", ok and feats.shape == (8,))
+
+    # -- 3. THE DOT GATE MUST LET THE TARGET ACTUALLY MOVE --
+    # Written as the failing case first: before DOT_MAX_HELD existed, a jump returned `prev`
+    # WITHOUT updating it, so the very next frame compared against the same stale position and
+    # rejected again, forever. Moving the calibration target -- the entire point of the exercise --
+    # froze the feature for the rest of the session and produced a 35-sample set whose features
+    # spanned 0.013-0.052 of frame, i.e. almost no information.
+    _dot_prev["L"] = None
+    _dot_held["L"] = 0
+    check("gate accepts the first detection", _gate_dot((0.20, 0.50), "L") == (0.20, 0.50))
+    check("gate accepts a small move", _gate_dot((0.24, 0.50), "L") == (0.24, 0.50))
+    held = [_gate_dot((0.80, 0.50), "L") for _ in range(DOT_MAX_HELD)]
+    check("a big jump is HELD at first (a one-frame flick is a mis-detection)",
+          all(h == (0.24, 0.50) for h in held), "held %d frames" % len(held))
+    after = _gate_dot((0.80, 0.50), "L")
+    check("but a SUSTAINED new position is finally ACCEPTED (the target really moved)",
+          after == (0.80, 0.50), "got %s" % (after,))
+    check("and the gate resyncs there rather than re-freezing",
+          _gate_dot((0.82, 0.50), "L") == (0.82, 0.50))
+    _dot_prev["L"] = None
+    _dot_held["L"] = 0
 
     # -- 1. keys survive when nothing is being tracked --
     # The InputController is stateless w.r.t. liveness, so the property to pin is that the loop's
