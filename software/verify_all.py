@@ -87,6 +87,8 @@ def main(fast=False):
          "python3 smoothing.py --selftest", "SMOOTHING OK"),
         ("latency compensation by prediction (beats filtering AND raw at photon time)",
          "python3 predictor.py --selftest", "PREDICTOR OK"),
+        ("XREAL internal IMU decode + gyro integrator", "python3 xreal_imu.py --selftest",
+         "XREAL IMU OK"),
         ("capture/blink/fallback", "python3 main.py --capture-test", "PROVEN"),
         ("imu filter selftest", "python3 imu.py", "IMU FILTER OK"),
         ("imu serial + gyro integrator", "python3 imu_serial.py --selftest", "GYRO INTEGRATOR OK ✅"),

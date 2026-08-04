@@ -500,7 +500,34 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   geometric error from **396 px to 72 px** against the simulator oracle. **Test new geometry
 >   against `autosim` before trusting it on hardware** — it found this in one run.
 >
-> ## >>> THE XREAL'S OWN IMU IS PROBABLY READABLE — CHECK THIS BEFORE WIRING ANYTHING
+> ## >>> THE XREAL IMU IS WORKING — 1100-1400 Hz, DECODED AND CONFIRMED (2026-08-03)
+> `software/xreal_imu.py`. **It is NOT HID.** The glasses present as a **USB NETWORK device**:
+> here they came up as `en8`, host `169.254.2.10`, **glasses at `169.254.2.1`, TCP port 52998**,
+> pushing a binary stream the moment you connect. (HID interfaces exist — VendorID 0x3318, usage
+> pages 0x41 and 0x0c — open fine and produce **no reports**. Dead end; do not spend time there.)
+>
+> **Wire format:** fixed **134-byte records**, magic `28 36 00 00`, at **~1100-1400 Hz**.
+> ```
+> offset 0x22 (34)   3x float32 LE   GYRO   rad/s
+> offset 0x2e (46)   3x float32 LE   ACCEL  m/s^2
+> ```
+> **CONFIRMED BY PHYSICS, NOT BY EYE:** stationary, `|accel|` = **9.773 m/s²** against gravity's
+> 9.81 — **0.38% off**, which is mounting tilt and bias, not a mis-parse. Gyro reads 0.23 °/s at
+> rest. Those two facts are what make this a decode rather than a plausible guess.
+>
+> **`python3 xreal_imu.py --live`** prints rate, `|a|` vs g, and `|w|` — re-run it after any
+> firmware or cable change, because a silently wrong offset would still decode to finite floats.
+>
+> - **THIS IS 63x THE CAMERA RATE** (1133 Hz vs 17.9 fps) and it is the fast half of the fast/slow
+>   split every XR stack uses. `predictor.py` currently estimates velocity from the dot's image
+>   motion; the IMU replaces that estimate and **nothing else in the chain changes**.
+> - Also the fix for `WorldTracker`'s 0 map points. **One component, two problems.**
+> - **NO SOLDERING, NO CARRIER CHANGE** — which matters because the carrier is final. Prefer this
+>   over the XIAO IMU in the CAD: the XREAL's is rigid to the **glasses** (where the DISPLAY is,
+>   which is what reprojection needs), while a carrier IMU is rigid to the **cameras**.
+> - Needs `pip install hidapi` only for the (dead-end) HID diagnostic; the TCP path needs nothing.
+>
+> ## >>> (superseded) the XREAL IMU is probably readable — CHECK THIS BEFORE WIRING ANYTHING
 > Dylan, 2026-08-03: *"the xreal has an imu so it may not need an additional imu."* He is right,
 > and it may be BETTER than a carrier-mounted one. **Verified on this Mac:** the glasses enumerate
 > as USB `XREAL One Pro`, **VendorID 13080 (0x3318), ProductID 1078**, and expose **HID interfaces
