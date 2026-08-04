@@ -416,6 +416,29 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > `calib_preflight` now reports the dot's depth **±σ and the parallax cost per 10 cm of head
 > motion**, instead of a bare millimetre figure.
 >
+> ## >>> READ `LATENCY_AND_TRACKING.md` — WE HAVE BEEN USING THE WRONG CLASS OF TOOL
+> Researched 2026-08-03 after a session spent fighting overlay lag and jitter by tuning filters.
+> **A filter can only trade lag against jitter. The field's answer is PREDICT then REPROJECT**,
+> which removes lag *without* adding jitter because it adds information instead of smoothing it.
+> - **Holloway (Presence 6, 1997)**: in an OST-HMD error budget, **system delay is the LARGEST
+>   single registration error** — bigger than tracker noise, calibration or distortion — because
+>   every other term is roughly constant while the latency term scales with **head angular
+>   velocity**. Stand still and lag is invisible; turn and it is the only error you see.
+>   **So calibration accuracy is not the bottleneck while latency dominates.**
+> - **Modern XR targets < 20 ms motion-to-photon. We measure 62 ms** (was 196 ms). ~3x over, and
+>   **no filter tuning closes it** — 56 ms of that is capture-and-process, which no causal filter
+>   can remove.
+> - **THE FIX, in order of value:** (1) **predict forward by the measured latency** — we know it is
+>   62 ms, head motion is predictable at that horizon, and `fraunhoferhhi/pred6dof` is a readable
+>   Kalman reference evaluated at 20-100 ms look-ahead; (2) **late-stage reprojection off the
+>   XREAL's own IMU** at 100-1000 Hz against our 17.9 fps loop; (3) **then camera speed stops
+>   mattering** — do NOT optimise the vision pipeline before doing 1 and 2.
+> - Same IMU the project already concluded is the fix for `WorldTracker`'s 0 map points. The
+>   latency work and the SLAM work want the same component.
+> - **Expected failure mode of prediction:** overshoot at motion onset and reversal. It will feel
+>   worse at turn reversals before it feels better overall; the recent literature is about
+>   detecting unpredictable motion and shortening the look-ahead then.
+>
 > ## >>> GEOMETRY IS NOW THE BACKBONE, LEARNING IS A RESIDUAL (2026-08-03) — `software/geometry.py`
 > Dylan, watching a trained model throw the dot across the display on the smallest head movement:
 > *"use distance and angle of rotation to calculate how much the dot has to move in the opposite
