@@ -316,6 +316,18 @@ def run_loop(cfg: Config, simulate: bool) -> int:
     pred_s = None                  # EMA of the predicted pixel (reduces jitter)
     conf = 1.0
     n_saved = 0
+    # --- RE-SEAT PROTOCOL ---------------------------------------------------------------
+    # Every cfg.reseat_every approvals, the wearer is told ON SCREEN to take the glasses off and
+    # put them back on, and the following samples are tagged with a new seating index. This is
+    # protocol, not modelling: geometry.eye_offset_mm can only be shown to help if the quantity it
+    # corrects for -- the glasses' position on the face -- actually varies within the dataset.
+    reseat_every = int(getattr(cfg, "reseat_every", 0) or 0)
+    seat_idx = 0
+    since_reseat = 0
+    reseat_pending = False
+    if reseat_every > 0:
+        print("re-seat protocol: ON — every %d approvals, take the glasses OFF and back ON"
+              % reseat_every)
     print("Loop running. %s. Q/ESC quits."
           % ("joystick + keyboard" if inp.has_joystick else "keyboard (no pad)"))
 
@@ -377,7 +389,21 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                 # so it can still succeed if the frame recovers in between. It prints its own
                 # reason when it doesn't.
                 hud += "\nNOT LIVE -- %s  (nudge/undo/quit still work)" % why
-            key = overlay.render(tuple(shown), green, hud)
+            # The banner is rebuilt and redrawn EVERY frame, including not-live ones. The first
+            # version of the IMU mapper only redrew after a SUCCESSFUL sample and so froze exactly
+            # when the operator most needed to be told something.
+            banner = None
+            if reseat_pending:
+                banner = ("TAKE THE GLASSES OFF\nAND PUT THEM BACK ON\n"
+                          "then press ENTER   (seating %d)" % (seat_idx + 2))
+                hud += "\nRE-SEAT PENDING — approve is blocked until you confirm"
+            elif live and _offscreen(features):
+                # Say it ON THE DISPLAY, not in the terminal. The operator is wearing the rig and
+                # would otherwise press ENTER, see nothing happen, and have no way to know why --
+                # which is how four unstorable samples got stored in the first place.
+                banner = ("TARGET IS %.0f DEG OFF AXIS\nOUTSIDE THE %.0f DEG DISPLAY\n"
+                          "turn towards it" % (_offaxis(features), _display_fov()))
+            key = overlay.render(tuple(shown), green, hud, banner)
             if key != -1 and key != 255:
                 _last_key[0] = key
             act = inp.poll(key)
@@ -398,6 +424,11 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                     cal = build_calibrator(cfg, ds)   # retrain without the removed sample
                     nudge[:] = 0.0
                     pred_s = None; pred_filt.reset()
+                    # Recount from the DB rather than decrementing: undoing across a batch
+                    # boundary would otherwise leave the re-seat prompt armed forever.
+                    _seats = ds.load_seats()
+                    since_reseat = int(np.sum(_seats == seat_idx))
+                    reseat_pending = reseat_every > 0 and since_reseat >= reseat_every
                     print("  undo — removed sample #%d (%d left), retrained"
                           % (ds.count() + 1, ds.count()))
             m = overlay.take_mouse()               # click/drag places the dot (fast, X+Y at once)
@@ -405,7 +436,33 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                 nudge = np.clip(np.array(m) - pred_s, -1.0, 1.0)
             nudge = np.clip(nudge + np.array([act.dx, act.dy]), -1, 1)
 
-            if act.approve:
+            if act.approve and reseat_pending:
+                # ENTER means "I have re-seated the glasses", not "approve". Everything stateful
+                # that remembers the OLD seating is dropped here, because carrying it across the
+                # boundary is exactly what would smear the signal this protocol exists to create:
+                #   - the eye-feature EMA (alpha 0.4) would blend the previous seat into the first
+                #     samples of the new one;
+                #   - the canthus jump gate coasts for MAX_HELD=15 frames against a move larger
+                #     than max_jump, and a re-seat is deliberately larger than max_jump.
+                # The MOUNT ANCHOR is deliberately NOT reset: the mount is bolted to the camera, so
+                # it is rigid across a re-seat, and re-calibrating it would throw away a good
+                # reference for nothing.
+                seat_idx += 1
+                since_reseat = 0
+                reseat_pending = False
+                smooth_feat = None
+                nudge[:] = 0.0
+                pred_s = None; pred_filt.reset()
+                if not simulate:
+                    for _t in (trk_L, trk_R):
+                        if hasattr(_t, "reset"):
+                            _t.reset()
+                else:
+                    sim_dev = world.seat()          # a genuinely new glasses pose
+                    sim_features, sim_truth, sim_i = _sim_next_ordered(
+                        world, sim_subject, sim_dev, sim_pts, sim_i)
+                print("  re-seated — now on seating %d" % (seat_idx + 1))
+            elif act.approve:
                 snap_why = ""
                 if simulate:
                     snap_features, snap_conf = features, 1.0
@@ -420,14 +477,27 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                 elif snap_conf < cfg.eye_conf_min:
                     print("  eye confidence %.2f < %.2f — hold steady, not stored"
                           % (snap_conf, cfg.eye_conf_min))
+                elif _offscreen(snap_features):
+                    # The world cams see 70 deg; the display covers 48.25. A target outside that
+                    # cannot be drawn on, so an "alignment" to it is not an alignment -- the
+                    # overlay is sitting on the clipped display edge while the operator lines it
+                    # up with something else. FOUR of the 17 real samples of 2026-08-03 were this,
+                    # at 36-37 deg off axis, and they were invisible because geometric_pixel
+                    # clips. See geometry.offscreen.
+                    print("  target is %.0f deg off axis — outside the %.1f deg display, "
+                          "not stored (turn towards it)"
+                          % (_offaxis(snap_features), _display_fov()))
                 else:
                     approved = np.clip(pred_s + nudge, 0.0, 1.0)
-                    ds.add(snap_features, approved, weight=snap_conf)
+                    ds.add(snap_features, approved, weight=snap_conf, seat=seat_idx)
                     cal = build_calibrator(cfg, ds)    # retrain on all samples
                     nudge[:] = 0.0
                     pred_s = None; pred_filt.reset()
-                    print("  approved #%d  (conf %.2f, %s, lambda %.3f)" %
-                          (ds.count(), snap_conf,
+                    since_reseat += 1
+                    if reseat_every > 0 and since_reseat >= reseat_every:
+                        reseat_pending = True
+                    print("  approved #%d  (conf %.2f, seat %d, %s, lambda %.3f)" %
+                          (ds.count(), snap_conf, seat_idx + 1,
                            "trained" if cal.is_trained else "warming up",
                            cal.lambda_ or 0))
                     if simulate:
@@ -722,6 +792,33 @@ def _sim_next_ordered(world, subject, dev, pts, i):
     return f, t, i % n
 
 
+# THE DISPLAY SEES LESS THAN THE CAMERAS DO. World cams are 70 deg, the display 48.25 -- so the
+# rig can detect a target it has no pixel for. These wrap geometry.py so a missing module degrades
+# to "never off-screen" rather than blocking every approve.
+def _offscreen(features) -> bool:
+    try:
+        from geometry import offscreen
+        return offscreen(features)
+    except Exception:
+        return False
+
+
+def _offaxis(features) -> float:
+    try:
+        from geometry import offaxis_deg
+        return offaxis_deg(features)
+    except Exception:
+        return float("nan")
+
+
+def _display_fov() -> float:
+    try:
+        from geometry import DISPLAY_FOV_DEG
+        return DISPLAY_FOV_DEG
+    except Exception:
+        return float("nan")
+
+
 def make_hud(n, cal, simulate, shown, green, conf) -> str:
     lines = ["samples: %d   model: %s   lambda: %.3f" %
              (n, "trained" if cal.is_trained else "warming up", cal.lambda_ or 0),
@@ -762,6 +859,12 @@ def main(argv=None) -> int:
                         "is moved there BEFORE going fullscreen (without it, fullscreen fills the "
                         "primary monitor and nothing reaches the glasses)")
     p.add_argument("--db", type=str, help="override sample DB path")
+    p.add_argument("--reseat-every", type=int, default=0, metavar="N",
+                   help="every N approved samples, stop and tell the wearer ON SCREEN to take "
+                        "the glasses OFF and put them back ON. Each batch is stored with its own "
+                        "seating index. This is what makes the eye-corner correction testable: a "
+                        "glasses-POSITION term cannot be validated by a run where the glasses "
+                        "never moved (2026-08-03: eye-feature sd 0.032/0.0085, every gain lost).")
     p.add_argument("--reset-db", action="store_true",
                    help="RESET fallback: wipe all stored calibration samples (start clean) "
                         "then exit. Use when the sample DB is full of misinputted data.")
@@ -881,6 +984,7 @@ def main(argv=None) -> int:
         cfg.fullscreen = True
     if args.db:
         cfg.db_path = args.db
+    cfg.reseat_every = int(getattr(args, "reseat_every", 0) or 0)
 
     import os
     meta_path = os.path.join(os.path.dirname(cfg.db_path), "meta.db")

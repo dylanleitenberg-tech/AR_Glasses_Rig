@@ -230,13 +230,61 @@ def geometric_pixel(features, depth_mm=None, display_fov_deg=DISPLAY_FOV_DEG,
                     use_eye_features=True):
     """THE MAIN ENTRY POINT. 8 features -> the display pixel the overlay must use.
 
+    Clipped to the display, because the caller is a render loop and cannot draw off-canvas. Use
+    `geometric_pixel_raw` when you need to know that the clip HAPPENED -- see `offscreen`.
+    """
+    return np.clip(geometric_pixel_raw(features, depth_mm, display_fov_deg, use_eye_features),
+                   0.0, 1.0)
+
+
+def offscreen(features, depth_mm=None, display_fov_deg=DISPLAY_FOV_DEG, margin=0.0):
+    """Is the target outside the display's field of view entirely?
+
+    >>> THIS CAUGHT FOUR POISONED SAMPLES IN THE ONLY REAL CALIBRATION SET (2026-08-04). <<<
+
+    The world cameras see 70 deg; the display covers 48.25. So the rig can DETECT a target it
+    cannot possibly DRAW ON, and 4 of the 17 stored samples were exactly that: the dot detector
+    locked a frame-edge artefact at 36-37 deg off axis, against a display half-angle of 24.1 deg.
+
+    What made them invisible is that `geometric_pixel` CLIPS. An off-screen target silently became
+    an edge pixel, the operator nudged the overlay onto whatever they could actually see, and the
+    sample was stored looking entirely normal. One of them (u 0.972, v 0.072) even scored a 0.9 px
+    error -- the best in the set -- because the human had pushed the dot into the same corner the
+    clip produced. A check agreeing with a clamp is not a check.
+
+    Those 4 samples carried 3 of the 3 gross errors (640, 690, 706 px) and, worse, they were the
+    entire basis for the recorded claim that the run had healthy feature spread: with them the
+    world-dot span is 0.467, without them it is 0.056.
+
+    So: an approve must be REFUSED when this returns True. A target the display cannot reach
+    cannot be aligned by definition, and a sample that says otherwise is noise with a label.
+    """
+    p = geometric_pixel_raw(features, depth_mm, display_fov_deg)
+    if not np.all(np.isfinite(p)):
+        return True
+    return bool(np.any(p < -margin) or np.any(p > 1.0 + margin))
+
+
+def offaxis_deg(features):
+    """Angle between the target and the straight-ahead direction, in degrees. For messages."""
+    x = np.asarray(features, float).ravel()
+    if x.size < 4 or not np.all(np.isfinite(x[:4])):
+        return float("nan")
+    d = direction_from_frame((x[0] + x[2]) / 2.0, (x[1] + x[3]) / 2.0)
+    return float(np.degrees(np.arctan2(float(np.hypot(d[0], d[1])), float(d[2]))))
+
+
+def geometric_pixel_raw(features, depth_mm=None, display_fov_deg=DISPLAY_FOV_DEG,
+                        use_eye_features=True):
+    """As `geometric_pixel`, but NOT clipped to the display.
+
     `features` = [worldL_u, worldL_v, worldR_u, worldR_v, eyeL_u, eyeL_v, eyeR_u, eyeR_v].
     `depth_mm` may be supplied (from depth.StereoDepth); if omitted it is triangulated from the
     world pair. Depth only affects the PARALLAX term, so a wrong depth degrades near targets and
     barely touches far ones -- the error is graceful, not catastrophic.
 
-    Returns (u, v) normalised. Never raises: an unusable input returns the frame centre, because
-    the caller is a render loop.
+    Returns (u, v) normalised, possibly outside [0,1]. Never raises: an unusable input returns the
+    frame centre, because the caller is a render loop.
     """
     x = np.asarray(features, float).ravel()
     if x.size < 4 or not np.all(np.isfinite(x[:4])):
@@ -273,7 +321,7 @@ def geometric_pixel(features, depth_mm=None, display_fov_deg=DISPLAY_FOV_DEG,
     px = pixel_for_direction(d, display_fov_deg)
     if not np.all(np.isfinite(px)):
         return np.array([0.5, 0.5])
-    return np.clip(px, 0.0, 1.0)
+    return px
 
 
 def _depth_from_pair(x):
@@ -359,6 +407,34 @@ def selftest():
         _G.EYE_SHIFT_GAIN = _g0
     chk("DEFAULT gain is 0 — built and tested, NOT yet validated as an improvement",
         _G.EYE_SHIFT_GAIN == 0.0)
+
+    # --- OFF-SCREEN DETECTION, written against the four REAL samples it was built from --------
+    # These are the literal stored features of samples 1, 11, 14 and 15 of data/samples.db
+    # (2026-08-03), which the dot detector picked out of a frame corner. Before `offscreen`
+    # existed, geometric_pixel clipped them to the display edge and they were stored as valid.
+    POISONED = [(0.972, 0.072, 0.948, 0.070), (0.971, 0.047, 0.945, 0.046),
+                (0.957, 0.070, 0.932, 0.067), (0.968, 0.074, 0.944, 0.072)]
+    off_hits = [offscreen(list(w) + NOM) for w in POISONED]
+    chk("the four real frame-corner samples are all detected as OFF-SCREEN", all(off_hits),
+        "%d/4, off-axis %s deg" % (sum(off_hits),
+                                   "/".join("%.0f" % offaxis_deg(list(w) + NOM)
+                                            for w in POISONED)))
+    chk("...and the clipped pixel hid it — geometric_pixel returns an ordinary edge pixel",
+        all(np.all(geometric_pixel(list(w) + NOM) <= 1.0 + 1e-9) for w in POISONED))
+    chk("...while the RAW pixel shows how far outside they were",
+        all(geometric_pixel_raw(list(w) + NOM)[0] > 1.1 for w in POISONED),
+        "raw u %s" % " ".join("%.2f" % geometric_pixel_raw(list(w) + NOM)[0]
+                              for w in POISONED))
+    # NEGATIVE CONTROL: the 13 good samples of the same run must NOT be rejected. A guard that
+    # throws away real data is worse than the problem it fixes.
+    GOOD = [(0.531, 0.376, 0.497, 0.365), (0.507, 0.378, 0.473, 0.366),
+            (0.560, 0.396, 0.525, 0.384), (0.505, 0.418, 0.470, 0.405)]
+    chk("real ON-screen samples are NOT rejected",
+        not any(offscreen(list(w) + NOM) for w in GOOD))
+    # ...nor a target at the very edge of the display, which is legitimate and needed for spread
+    edge = geometric_pixel_raw([0.72, 0.5, 0.70, 0.5] + NOM)
+    chk("a target near the display edge is kept (spread across the field is the goal)",
+        not offscreen([0.72, 0.5, 0.70, 0.5] + NOM), "raw u %.2f" % edge[0])
 
     # --- known-bad inputs must not crash a render loop ---
     for bad, nm in ((np.full(8, np.nan), "all-NaN"), ([0.5, 0.5], "too short"),
