@@ -88,6 +88,22 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > 3. `git log --oneline | head -20` — the last three commits are this rig's hardware truth.
 >
 > ## SETTLED — do not re-derive, do not re-litigate
+> - **XREAL DISPLAY MODE MUST BE HEAD-FOLLOWING (0DoF), NEVER ANCHOR/LOCKED (3DoF).** Asked by
+>   Dylan 2026-08-03 while calibrating; he had follow on, which is correct. The calibration learns
+>   a fixed map from (eye features + world dot) -> DISPLAY PIXEL, and that map only exists if a
+>   pixel corresponds to a FIXED direction relative to the glasses. Follow mode gives exactly that.
+>   Anchor mode has the glasses' own IMU shift the image *within* the optics to hold it world-fixed,
+>   so the pixel you draw is moved by an amount depending on head pose before it reaches the eye —
+>   you would be fitting your rig's geometry AND XREAL's internal stabiliser simultaneously, with
+>   the second changing every frame. It is a second hidden calibration fighting yours.
+> - **HYPOTHESIS, NOT MEASURED:** if follow mode uses *smoothed* following rather than rigid
+>   attachment, the image lags during and just after a fast head turn. That would fit Dylan's
+>   report that "slight adjustments work well, big head shifts make it not work". Unverified — the
+>   firmware's damping behaviour is unknown. Prefer an instant/no-smoothing follow if one exists.
+> - **THE XREAL MUST BE EXTENDED, NOT MIRRORED.** Found 2026-08-03: system_profiler reported
+>   `Mirror: On` on both displays. Mirroring scales the 3072x1920 desktop into the glasses'
+>   1920x1080, so every approved sample would encode that scaling rather than the rig's geometry,
+>   and the calibration would break the moment the mode changed. Check before every real run.
 > These each cost a full session to establish more than once. They are encoded in `rig.py` so
 > code and memory agree; if you believe one is wrong, say so explicitly and change **both**.
 > - **Eye-cam lens is 45°** (measured). `rig.EYE_FOV = 45.0`. Not 90.
