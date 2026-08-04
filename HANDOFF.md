@@ -500,6 +500,33 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   geometric error from **396 px to 72 px** against the simulator oracle. **Test new geometry
 >   against `autosim` before trusting it on hardware** — it found this in one run.
 >
+> ## >>> ASYMMETRIC LIGHTING: SOLVED BY NORMALISATION, NOT BY RETRAINING (2026-08-03)
+> Dylan: *"the light in my house is to my left. it is not a rig problem... should we run a low
+> light scan and use it to do more training?"* **No — it was free.**
+> **ROOT CAUSE:** the corpus was captured in a brightness band of **139-161** (median 161). A live
+> frame at mean 49 is entirely outside everything the model has ever seen, so it mis-locates.
+> **MEASURED against the 87 ground-truth clicks, median error px of 1280:**
+>
+> | normaliser | normal | dark x0.5 | dark x0.34 |
+> |---|---|---|---|
+> | none | 25 px | **206 px** | **715 px** |
+> | mean | 26 px | 25 px | 23 px |
+> | **MEDIAN** | **21 px** | **21 px** | **21 px** |
+>
+> Median-normalising is **flat across a 3x brightness range and beats doing nothing even at full
+> brightness.** On by default in `CanthusNet.predict`, target `TRAIN_MEDIAN = 161`.
+> **WHY MEDIAN, NOT MEAN:** a blown-out window in one corner drags the MEAN up with pixels carrying
+> no information, so mean-normalising under-corrects the dark region that matters. Measured on
+> `eyeL`, whose live frame had **mean 39 but median 11**.
+>
+> **THE HONEST LIMIT — and the part light must still fix.** Normalisation corrects a LEVEL, not a
+> GRADIENT. `eyeL` reached **median 11 of 255**, essentially black, and neither a normaliser nor
+> more training can recover information that was never captured. CLAHE was *worse* than plain gain
+> (0.477/0.423 vs 0.695/0.858), so local contrast is not a free win. `eyeL` also fluctuated
+> **mean 94 -> 39 within minutes**, so its exposure is unstable rather than merely low.
+> **Any future corpus should deliberately SPAN lighting** — the 139-161 narrowness is what made the
+> model brittle to begin with.
+>
 > ## >>> THE IMU NOW DRIVES THE PREDICTOR — axis map MEASURED, R^2 0.99 (2026-08-03)
 > `data/imu_map.npz`, measured by `python3 xreal_imu.py --map`. Result:
 > ```

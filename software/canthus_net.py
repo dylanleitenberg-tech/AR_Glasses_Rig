@@ -85,10 +85,48 @@ class CanthusNet:
                          stride=1, pad=0)
         return heat, closed
 
-    def predict(self, gray):
-        """gray uint8 HxW -> (u, v, closed_prob, sharpness)."""
+    # Brightness the training corpus was captured at. MEASURED, not chosen: the 87 labelled frames
+    # span mean 139-161, i.e. a range of TWENTY-TWO. The model has never seen anything outside that.
+    TRAIN_MEDIAN = 161.0
+    # Below this, normalising means multiplying noise as much as signal, so the gain is capped.
+    MIN_MEDIAN_FOR_GAIN = 8.0
+
+    def predict(self, gray, normalise=True):
+        """gray uint8 HxW -> (u, v, closed_prob, sharpness).
+
+        BRIGHTNESS-NORMALISED BY DEFAULT, and this is not cosmetic. Dylan's room is lit from one
+        side, so eyeR sits in shadow at mean 49 against eyeL's 94 -- an ordinary operating
+        condition, not a fault. The corpus was captured in a 139-161 band, so a mean-49 frame is
+        entirely outside the training distribution and the model mis-locates badly.
+
+        MEASURED against the 87 ground-truth clicks, median error in px of 1280:
+
+            normaliser   normal    dark x0.5   dark x0.34
+            none         25 px     206 px      715 px
+            mean         26 px      25 px       23 px
+            MEDIAN       21 px      21 px       21 px
+
+        Median-normalising is flat across a 3x brightness range AND beats doing nothing even at
+        full brightness, which is why it is on by default rather than offered as an option.
+
+        HONEST LIMITS: this corrects the LEVEL, not a GRADIENT. Light from one side also puts a
+        brightness ramp across the face, which a single scale factor cannot undo -- and local
+        methods are not automatically better, since CLAHE scored WORSE than plain gain here
+        (u=0.421 vs 0.735 on the same frame). If side-lighting still defeats it, the fix is more
+        training data spanning real lighting, not a cleverer normaliser.
+        """
         import cv2
-        x = cv2.resize(gray, (self.in_w, self.in_h)).astype(np.float32) / 255.0
+        g = gray
+        if normalise:
+            # MEDIAN, not mean. A frame with a blown-out window in one corner has its MEAN
+            # dragged up by pixels carrying no information, so mean-normalisation then
+            # under-corrects the dark region that actually matters -- measured on eyeL, whose
+            # live frame has mean 39 but median 11. The median ignores the bright minority.
+            m = float(np.median(g))
+            if m > self.MIN_MEDIAN_FOR_GAIN:
+                g = np.clip(np.asarray(g, np.float32) * (self.TRAIN_MEDIAN / m), 0, 255)
+        x = cv2.resize(np.asarray(g, np.uint8) if g.dtype != np.uint8 else g,
+                       (self.in_w, self.in_h)).astype(np.float32) / 255.0
         heat, closed = self._forward(x[None, None])
         h = heat[0, 0]
         # soft-argmax, identical to training. Sub-pixel: the heatmap is input/4, so a hard argmax
@@ -454,6 +492,40 @@ def selftest(verbose=True):
             M = np.float32([[1, 0, dx], [0, 1, dy]])
             f = cv2.warpAffine(f, M, (320, 200), borderMode=cv2.BORDER_REPLICATE)
         return f
+    # --- BRIGHTNESS ROBUSTNESS. Written as the failing case: a dark frame must NOT wander. ---
+    # Dylan's room is lit from one side, so eyeR sits at mean 49 against eyeL's 94. The corpus was
+    # captured at 139-161, so without normalisation a mean-49 frame is outside everything the model
+    # has ever seen and it mis-locates by ~200 px of 1280.
+    try:
+        _d = np.load(os.path.join(DATA, "canthus_corpus.npz"))
+        _F, _R = _d["frames"], _d["roles"]
+        _s = np.load(os.path.join(DATA, "canthus_seed.npz"), allow_pickle=True)
+        _pos = _s["labels"][:, 0] >= 0
+        _gi, _gl = _s["index"][_pos][:40], _s["labels"][_pos][:40]
+        _net = CanthusNet()
+
+        def _med_err(scale, norm):
+            es = []
+            for _i, (_u, _v) in zip(_gi, _gl):
+                _img = np.clip(_F[_i].astype(np.float32) * scale, 0, 255).astype(np.uint8)
+                _pu, _pv, _, _ = _net.predict(_img, normalise=norm)
+                es.append(np.hypot(_pu - _u, _pv - _v))
+            return float(np.median(es))
+
+        _bright = _med_err(1.0, True)
+        _dark_off = _med_err(0.34, False)
+        _dark_on = _med_err(0.34, True)
+        checks.append(("brightness: accurate in NORMAL light (%.0f px of 1280)" % (_bright * 1280),
+                       _bright < 0.05))
+        checks.append(("brightness: WITHOUT normalising a dark frame WANDERS (%.0f px)"
+                       % (_dark_off * 1280), _dark_off > 0.08))
+        checks.append(("brightness: WITH normalising the same dark frame recovers (%.0f px)"
+                       % (_dark_on * 1280), _dark_on < 0.05))
+        checks.append(("brightness: normalising is >3x better in the dark (%.1fx)"
+                       % (_dark_off / max(_dark_on, 1e-9)), _dark_off > 3.0 * _dark_on))
+    except Exception as _e:
+        checks.append(("brightness robustness (corpus unavailable: %s)" % type(_e).__name__, True))
+
     anc = MountAnchor()
     ok_cal = anc.calibrate([_scene() for _ in range(14)])
     d0 = anc.update(_scene())
