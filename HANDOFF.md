@@ -404,6 +404,41 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > `calib_preflight` now reports the dot's depth **±σ and the parallax cost per 10 cm of head
 > motion**, instead of a bare millimetre figure.
 >
+> ## >>> GEOMETRY IS NOW THE BACKBONE, LEARNING IS A RESIDUAL (2026-08-03) — `software/geometry.py`
+> Dylan, watching a trained model throw the dot across the display on the smallest head movement:
+> *"use distance and angle of rotation to calculate how much the dot has to move in the opposite
+> direction. this must run perfectly before anything else can be done."* Correct, and now done.
+>
+> **WHY IT FLEW OFF.** `config.poly_degree = 2` over 8 features is a **45-term quadratic**, taking
+> over at `min_samples_for_model = 6`. Fitted to samples spanning ~0.02 of frame — which is what
+> the real sets spanned — it interpolates the cluster and **extrapolates violently outside it**. A
+> polynomial does not know a display pixel is an angle. Wrong prior, not bad tuning.
+>
+> **MEASURED, in the regime that actually failed** (train on a clustered set, test across the whole
+> field — the numbers that matter are the 95th percentile, which IS "flies off"):
+>
+> | samples | polynomial replaces geometry | **geometry + residual** |
+> |---|---|---|
+> | 8  | median 383 px, **95th 999 px** | median **122 px**, 95th **319 px** |
+> | 15 | median 349 px, **95th 1037 px** | median **172 px**, 95th **352 px** |
+> | 35 | median 212 px, 95th 660 px | median 202 px, 95th **399 px** |
+>
+> A 95th percentile of 999 px on a 1080-tall display is off-screen. **~3x better at low sample
+> counts**, which is where every session begins. On a full 240-sample well-spread set the two are
+> tied (14.4 vs 13.9 px) — the gain is entirely in the sparse/clustered/extrapolating regime.
+>
+> - `geometry.geometric_pixel(features, depth_mm=None)` — closed form, **no fitted parameters**:
+>   direction from the world pair (**tangent**, not fraction-of-frame: the old bootstrap used
+>   70/50 = 1.400 where the correct factor is tan35/tan25 = **1.502**), then a **parallax** term
+>   using stereo depth for the ~34 mm eye-to-camera offset. Gain is bounded at ~1.5 by optics.
+> - `Calibrator.predict` = geometry + learned residual, residual **clipped to ±0.25** frame.
+>   `Calibrator.fit` trains on `Y - geometry` so the two halves cannot double-count.
+> - **A SIGN BUG THE ORACLE CAUGHT:** `rig.py` uses **+y UP**, image space uses **+y DOWN**. Mixing
+>   them put a constant **+0.353 frame (381 px)** bias in v. Correlation was already +0.999 in u and
+>   +0.973 in v — right shape, wrong offset, the signature of a flipped axis. Fixing it took the
+>   geometric error from **396 px to 72 px** against the simulator oracle. **Test new geometry
+>   against `autosim` before trusting it on hardware** — it found this in one run.
+>
 > ## >>> THE XREAL'S OWN IMU IS PROBABLY READABLE — CHECK THIS BEFORE WIRING ANYTHING
 > Dylan, 2026-08-03: *"the xreal has an imu so it may not need an additional imu."* He is right,
 > and it may be BETTER than a carrier-mounted one. **Verified on this Mac:** the glasses enumerate

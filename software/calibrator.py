@@ -115,6 +115,18 @@ class Calibrator:
             self.W = None                    # not enough to trust a poly fit yet
             return
 
+        # TRAIN ON THE RESIDUAL, not the absolute pixel — predict() adds geometry back, so
+        # fitting Y directly here would double-count it. Subtracting geometry first also makes the
+        # learning problem far easier: the target becomes a small, smooth correction (kappa, real
+        # display FOV, distortion) instead of the full nonlinear direction mapping, which is
+        # exactly the part a 45-term quadratic had no business trying to reproduce from a handful
+        # of clustered samples.
+        Y_target = Y
+        if self.residual_mode:
+            base = np.array([self.geometric_pixel(xi) for xi in X], float)
+            if base.shape == Y.shape and np.all(np.isfinite(base)):
+                Y_target = Y - base
+
         self.x_mean = X.mean(0)
         self.x_std = X.std(0); self.x_std[self.x_std < 1e-9] = 1.0
         Xs = (X - self.x_mean) / self.x_std
@@ -122,8 +134,8 @@ class Calibrator:
         self.p_mean = P.mean(0)
         self.p_std = P.std(0); self.p_std[self.p_std < 1e-9] = 1.0
         Ps = (P - self.p_mean) / self.p_std
-        self.y_mean = np.average(Y, axis=0, weights=w)
-        Yc = Y - self.y_mean
+        self.y_mean = np.average(Y_target, axis=0, weights=w)
+        Yc = Y_target - self.y_mean
 
         # Robust IRLS: refit, down-weight gross residuals (Huber), repeat.
         rw = w.copy()
@@ -137,12 +149,47 @@ class Calibrator:
             W, lam = self._ridge_gcv(Ps, Yc, rw)
         self.W, self.lambda_ = W, lam
 
+    # GEOMETRY IS THE BACKBONE; LEARNING IS A RESIDUAL ON TOP.
+    #
+    # This used to be a switch: geometric_bootstrap until the model trained, then the polynomial
+    # INSTEAD. That is what threw the dot across the display. poly_degree=2 over 8 features is a
+    # 45-term quadratic taking over at min_samples_for_model=6, and the real sample sets spanned
+    # ~0.02 of frame -- so it interpolated the cluster and extrapolated violently outside it.
+    # Dylan on hardware: "dot flies off with the smallest movement."
+    #
+    # A polynomial does not know a display pixel is an angle. Geometry does, needs no data, and is
+    # right everywhere from frame one. So geometry always predicts, and the learned model corrects
+    # only what geometry cannot know -- true display FOV, kappa, real eye position, distortion.
+    # `residual_mode` is what `fit` trains against, so the two halves cannot disagree about which
+    # quantity is being learned.
+    residual_mode = True
+
     def predict(self, x) -> np.ndarray:
         """Predict a normalized display pixel for one feature vector (d,)."""
+        base = self.geometric_pixel(x)
         if self.W is None:
+            return np.clip(base, 0.0, 1.0)
+        corr = self.y_mean + (self._design(np.asarray(x, float)) @ self.W)[0]
+        if not self.residual_mode:
+            return np.clip(corr, 0.0, 1.0)
+        # The residual is a CORRECTION, and a correction that exceeds the whole display is a
+        # symptom of extrapolation rather than a real offset. Bounding it keeps a data-starved or
+        # badly-conditioned fit from undoing geometry that was already approximately right.
+        corr = np.clip(np.asarray(corr, float), -self.max_residual, self.max_residual)
+        return np.clip(base + corr, 0.0, 1.0)
+
+    # Largest correction the learned residual may apply, in normalised display units. 0.25 = a
+    # quarter of the display; anything beyond that is not a lens/kappa correction.
+    max_residual = 0.25
+
+    def geometric_pixel(self, x) -> np.ndarray:
+        """Closed-form pixel from direction + stereo depth. Falls back to the old FOV-ratio
+        bootstrap only if geometry.py is unavailable, so this file keeps working standalone."""
+        try:
+            from geometry import geometric_pixel as _g
+            return _g(x)
+        except Exception:
             return self.geometric_bootstrap(x)
-        y = self.y_mean + (self._design(np.asarray(x, float)) @ self.W)[0]
-        return np.clip(y, 0.0, 1.0)
 
     # Display and world-camera fields of view, used only by the untrained bootstrap below.
     # Kept as plain numbers rather than importing rig, so calibrator.py stays dependency-free.
