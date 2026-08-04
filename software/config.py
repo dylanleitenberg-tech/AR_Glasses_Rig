@@ -53,6 +53,14 @@ class Config:
 
     # ---- learning ----
     db_path: str = os.path.join(_DATA, "samples.db")
+    # RE-SEAT THE GLASSES EVERY N APPROVED SAMPLES (0 = never, the old behaviour).
+    #
+    # The eye-corner cameras exist to measure where the glasses sit on the face, and that term can
+    # only be validated against data where the seat actually CHANGED. The 2026-08-03 run had
+    # eye-feature sd 0.032 / 0.0085 -- the glasses did not move once across 17 samples -- so every
+    # value of geometry.EYE_SHIFT_GAIN lost to leaving it off, which says nothing about the
+    # correction and everything about the data. See reseat.py.
+    reseat_every: int = 0
     poly_degree: int = 2
     min_samples_for_model: int = 6 # below this, fall back to weighted-mean pixel
     retrain_every: int = 1         # retrain after every N new samples

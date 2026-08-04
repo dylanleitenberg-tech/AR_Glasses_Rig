@@ -83,6 +83,8 @@ def main(fast=False):
          "python3 depth.py --selftest", "DEPTH OK"),
         ("closed-form overlay geometry (counter-rotation sign, bounded gain, parallax)",
          "python3 geometry.py --selftest", "GEOMETRY OK"),
+        ("re-seat protocol: underpowered vs null, aliasing, planted-gain recovery",
+         "python3 reseat.py --selftest", "RESEAT OK"),
         ("velocity-adaptive smoothing (beats every fixed EMA on jitter AND lag)",
          "python3 smoothing.py --selftest", "SMOOTHING OK"),
         ("latency compensation by prediction (beats filtering AND raw at photon time)",

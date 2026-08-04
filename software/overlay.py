@@ -64,17 +64,48 @@ class Overlay:
             return self._mouse
         return None
 
+    def draw_banner(self, canvas, banner: str) -> None:
+        """Large centred instructions for the person WEARING the rig.
+
+        Terminal output does not reach someone with the glasses on -- that coordination failure
+        has wasted whole runs. Anything the operator must DO has to be legible in the optic, so
+        this is deliberately big, centred and high-contrast rather than another HUD line.
+        The caller must redraw it EVERY frame, including failing ones, or it freezes exactly when
+        things go wrong."""
+        lines = banner.split("\n")
+        scale, thick = 1.5, 3
+        sizes = [cv2.getTextSize(l, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)[0]
+                 for l in lines]
+        gap = int(max(s[1] for s in sizes) * 1.9)
+        top = self.h // 2 - gap * len(lines) // 2
+        pad = 28
+        wide = max(s[0] for s in sizes)
+        cv2.rectangle(canvas,
+                      (self.w // 2 - wide // 2 - pad, top - gap),
+                      (self.w // 2 + wide // 2 + pad, top + gap * len(lines)),
+                      (0, 0, 0), -1)
+        for i, (line, (tw, _)) in enumerate(zip(lines, sizes)):
+            cv2.putText(canvas, line, (self.w // 2 - tw // 2, top + gap * i + gap // 2),
+                        cv2.FONT_HERSHEY_SIMPLEX, scale, (0, 220, 255), thick,
+                        cv2.LINE_AA)
+
     def render(self, red_norm: Tuple[float, float],
                green_norm: Optional[Tuple[float, float]] = None,
-               hud: Optional[str] = None) -> int:
+               hud: Optional[str] = None,
+               banner: Optional[str] = None) -> int:
         canvas = np.zeros((self.h, self.w, 3), dtype=np.uint8)
         if green_norm is not None:                     # sim-only truth target
             gx, gy = int(green_norm[0] * self.w), int(green_norm[1] * self.h)
             cv2.drawMarker(canvas, (gx, gy), (0, 220, 0),
                            cv2.MARKER_CROSS, 26, 2)
             cv2.circle(canvas, (gx, gy), self.dot_radius + 4, (0, 120, 0), 1)
-        rx, ry = int(red_norm[0] * self.w), int(red_norm[1] * self.h)
-        cv2.circle(canvas, (rx, ry), self.dot_radius, (0, 0, 255), -1)
+        if banner:
+            # No overlay dot while a banner is up: the dot is the thing being aligned, and
+            # showing it during a re-seat invites aligning it with the glasses half on.
+            self.draw_banner(canvas, banner)
+        else:
+            rx, ry = int(red_norm[0] * self.w), int(red_norm[1] * self.h)
+            cv2.circle(canvas, (rx, ry), self.dot_radius, (0, 0, 255), -1)
         if hud:
             for i, line in enumerate(hud.split("\n")):
                 cv2.putText(canvas, line, (16, 28 + 26 * i),
