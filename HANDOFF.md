@@ -5,6 +5,112 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 
 ---
 
+> # >>> START HERE — STATE AT END OF 2026-08-03 <<<
+>
+> You're continuing the **AR eye-calibration rig** (`~/ar-eye-calibration`, a git repo): a modified
+> **XREAL One Pro** that registers AR-overlay pixels to the real world using eye-corner cameras
+> (how the glasses sit on the face) plus two forward world cameras. Hardware is **built and
+> working**. **END GOAL: overlay content on people and cars that are FAR AWAY** — that shapes every
+> trade-off below, because far-field is direction-dominated and near-field is not.
+>
+> ## THE ONE-PARAGRAPH STATUS
+> Preflight is **6/6 READY TO CALIBRATE**. Both eyes track (~90% lock, ~100% in band), the dot
+> detector locks on the paper target, the **glasses' own IMU is decoded and driving latency
+> prediction at ~1100 Hz**, lighting asymmetry is solved in software, and overlay geometry is
+> closed-form with a **measured** display scale. Real-sample overlay error is **27 px @1080**.
+> `verify_all.py --fast` = **44 checks, all passing**. **17 real calibration samples** are stored
+> with healthy feature spread. Dylan's verdict on the last run: *"much better... it actually locks
+> and trys to follow dot"*, with fly-offs only when the dot detector grabs the wrong object.
+>
+> ## THE ARCHITECTURE, AS IT NOW STANDS (this changed a lot on 2026-08-03)
+> ```
+> world cams --> dot_detector.detect_pair (JOINT stereo pick, not per-camera argmax)
+>                    |
+> eye cams ------> canthus_net (learned landmark, median-brightness-normalised)
+>                    |
+>                    v
+>            geometry.geometric_pixel   <-- CLOSED FORM, no fitted parameters
+>              direction (tangent) + stereo-depth parallax + optional eye-seat offset
+>                    |
+>                    v
+>            calibrator: geometry + learned RESIDUAL, but the residual is DISCARDED
+>              unless k-fold proves it beats geometry alone
+>                    |
+>                    v
+>            predictor.LatencyCompensator  <-- extrapolates by measured latency,
+>              velocity from the XREAL GYRO (~1100 Hz), not from image motion
+>                    |
+>                    v
+>                 overlay pixel
+> ```
+> **GEOMETRY IS THE BACKBONE. Learning is a bounded correction that must earn its place.** That
+> inversion is the single most important change of the session.
+>
+> ## SETTLED THIS SESSION — DO NOT RE-DERIVE (all measured, all committed)
+> | fact | value |
+> |---|---|
+> | Camera roles (RE-SCAN EVERY SESSION) | last: `worldL=3 worldR=2 eyeL=0 eyeR=1` — world pair WAS reversed |
+> | Capture modes (**per-sensor, do NOT derive from aspect**) | eye OV9281 **640x400**; world AR0234 **640x480** |
+> | Pipeline rate | 55.9 ms/frame = **17.9 fps** |
+> | Overlay latency | **62 ms** (was 196 ms) |
+> | Display scale `DISPLAY_FOV_DEG` | **48.25** — EFFECTIVE, not physical (see geometry.py) |
+> | XREAL IMU | **TCP 169.254.2.1:52998**, 134-byte records, gyro @0x22, accel @0x2e, ~1100 Hz |
+> | Gyro→image axis map | `du<-wy(yaw) +`, `dv<-wx(pitch) -`, R² 0.99/0.85, in `data/imu_map.npz` |
+> | Corpus brightness | 139–161 (narrow — this made the model brittle) |
+> | Real-sample overlay error | **27 px @1080**, geometry-only |
+>
+> ## >>> NEXT ACTIONS, IN ORDER OF MEASURED VALUE <<<
+> 1. **RE-SEAT THE GLASSES DURING THE NEXT CALIBRATION RUN.** Take them off and back on between
+>    batches. The eye-corner correction is built and inert because the last run's eye-feature
+>    spread was sd 0.032/0.0085 — *the glasses never moved*, so a glasses-position correction had
+>    nothing to correct. This is the cheapest unlock and it is pure protocol, no code.
+> 2. **MEASURE DISPLAY DISTORTION** — `display_calib.py --render-grid`, photograph the checkerboard
+>    through the optic, `--analyze`. k1/k2 are still `rig.py` placeholders, and part of the 2-3°
+>    gap between the fitted and physical FOV should migrate there. **Re-fit `DISPLAY_FOV_DEG`
+>    afterwards.**
+> 3. **DOT-DETECTOR ROBUSTNESS** — the only remaining cause of fly-offs. It is stable when the
+>    target is well framed (73 px std, 1.2 px frame-to-frame) and wanders when it is not (422 px).
+>    A bigger/higher-contrast target is the free fix; track-don't-redetect is the real one.
+> 4. **THE DATABASE IDEA** (Dylan's original architecture: match the user to a premade eye set).
+>    Structurally right, and the correct answer to the overfitting measured today. `match.py`,
+>    `calibrate.py`, `preset.py`, `identify.py`, `megarun.py` and a 2.4 MB `calibration_db.npz`
+>    already exist — **but the DB is STALE** (built at `EYE_FOV=90` on the OUTER canthus).
+>    Identifiability is mixed: IPD recovers well (16% of population spread), internals poorly
+>    (`ep_dist` 54%, `globe_r` 50%). Fortunately IPD and eye POSITION are what matter for our
+>    gaze-independent viewpoint.
+> 5. **`WorldTracker` 0 map points** — needed for world-locked content, NOT for calibration. It is
+>    a geometry problem (rotation-dominant motion, far landmarks vs a 67 mm baseline), confirmed by
+>    re-test with the corrected pair order: still 0 inliers. **The IMU is the fix and it is now
+>    available.**
+>
+> ## READ THESE FOUR DOCS BEFORE CHANGING ANYTHING
+> - **`LATENCY_AND_TRACKING.md`** — why a filter cannot fix lag; predict-then-reproject; Holloway's
+>   result that system delay is the LARGEST registration error because it scales with head velocity.
+> - **`DOMAIN_REFERENCE.md`** — eye anatomy, tracking, birdbath optics, the viewpoint question, and
+>   §7 on how the field fixes lighting. Explains why the canthus approach is *correct* (slippage)
+>   and why the pupil cannot improve registration here (gaze-independent viewpoint).
+> - **`CAPABILITIES.md`** — full hardware/software inventory and the UNDER-USED RESOURCES list.
+> - **`HARDWARE_BRINGUP.md`, `ASSEMBLY.md` §6-8, `WIRING.md`, `SAFETY.md`** — before anything physical.
+>
+> ## HOW TO WORK ON THIS RIG (learned the hard way, repeatedly)
+> - **When a number and an image disagree, BELIEVE THE IMAGE.** Every wrong turn on 2026-08-03 came
+>   from trusting a metric measured off-face; every correction came from opening the PNG.
+> - **MEASURE ONLY WHILE THE RIG IS WORN, and confirm the user is wearing it BEFORE starting.**
+>   Mid-turn messages arrive late; several runs were wasted measuring a desk.
+> - **Terminal output does NOT reach someone wearing the glasses.** Any run needing the operator to
+>   *do* something must draw instructions ON SCREEN — and must refresh **on failure**, or it freezes
+>   exactly when things go wrong (`xreal_imu.py --map` does this correctly).
+> - **Test the DEVICE, not a simulation of it.** "cameras.py forces 4:3, measured not to matter" was
+>   wrong: it tested a software resize, not what the camera returns per mode.
+> - **Build the object under test through its real constructor.** `__new__` + hand-assigned
+>   attributes is how a tracker that could not be constructed at all passed every check.
+> - **Write the failing case first, and run the negative control.** Several selftests now pin
+>   known-bad inputs; each was verified to go RED against the old code.
+> - **A green release gate is not evidence the rig works** — 38 checks passed against code that
+>   crashed on frame one.
+>
+> ---
+
 > You're continuing the **AR eye-calibration rig** (`~/ar-eye-calibration`, a git repo): a
 > modified **XREAL One Pro** that registers AR-overlay pixels to the real world using eye-corner
 > cameras (how the glasses sit on the face) plus two forward world cameras. The hardware is
