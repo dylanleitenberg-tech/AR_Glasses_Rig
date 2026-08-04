@@ -52,10 +52,23 @@ import rig
 #    pixels are ground truth, since he nudged each until the overlay sat on the target -- minimises
 #    at 48.25 deg (26.9 px, against 32 px at the old assumed 50.0 and 43 px at 46.71).
 #
-# They reconcile: the wall method is very sensitive to D, and a 2-inch error there -- measuring
-# from the body rather than the EYE, exactly the noise Dylan flagged -- moves it from 46.7 to 48.3.
-# So both point at ~48.25, and a one-parameter fit against ground-truth pixels is the sharper of
-# the two estimators.
+# THEY DO NOT FULLY RECONCILE, AND THAT IS THE POINT -- READ THIS BEFORE "FIXING" THIS CONSTANT.
+#
+# Dylan measured D from the CAMERA LENS, which sits 50.5 mm FORWARD of the eye (rig.WC_FWD 22 vs
+# rig.T0 -28.5). True eye-to-wall is therefore LARGER, which makes the physical FOV SMALLER --
+# about 45.2 deg, i.e. even further from the fit. Every correction to the wall measurement pushes
+# it DOWN while the data pulls UP, so the ~2-3 deg gap is not measurement noise cancelling out.
+#
+# THE RESOLUTION: this constant is an EFFECTIVE SCALE, not purely the display's physical FOV. It
+# is the only free scale between "direction to the target" and "pixel on the display", so it also
+# absorbs whatever else is mis-scaled -- unmodelled display distortion (k1/k2 are still the
+# rig.py placeholders), the eye-position assumption, residual world-camera error. The physical
+# display FOV is probably nearer 45-47 deg; 48.25 is what makes the OVERLAY land correctly.
+#
+# So: keep the FITTED value, because minimising real overlay error is the job. Do NOT replace it
+# with a physically-measured FOV -- that would be more "correct" and measurably worse (43 px at
+# 46.71 against 27 px here). If the distortion is ever measured properly (display_calib.py
+# --render-grid --analyze), re-fit this afterwards; part of the gap should move into k1/k2.
 #
 # THE OLD ASSUMED 50.0 WAS WRONG BY 1.75 DEGREES, worth ~16 px of overlay. This had been the
 # largest single unknown in the chain: 2 degrees of FOV error costs more than getting a user's IPD
