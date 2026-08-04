@@ -510,6 +510,43 @@ def run_loop(bank, roles, seconds=10.0, guard=None, rate=None, on_frame=None, wa
     return stats, reason
 
 
+def dead_camera_advice(dead, shapes):
+    """What to actually do when a camera delivers nothing. -> list of lines.
+
+    BUS STARVATION AND ONE BAD CABLE LOOK IDENTICAL IN THE RESULT TABLE. Both give a dead camera
+    and, because sync_capture's barrier waits for everyone, a whole bank crawling at ~1 fps. This
+    module used to blame the bus unconditionally and tell you to cut resolution.
+
+    They are told apart by the frame size that was actually DELIVERED. Starvation is a bandwidth
+    problem, so it cannot be the cause when the survivors are already serving small frames — a bus
+    short of bandwidth does not carry three streams flawlessly and drop the fourth entirely.
+
+    MEASURED 2026-08-04, which is why this exists: eyeL dead with all four requested at 640x480 and
+    the whole bank at 1 fps. Dropping eyeL took the other three to 38 fps, 0 misses, 7.13 ms
+    jitter — the bus had capacity to spare — and eyeL then delivered 0/30 frames opened ALONE at
+    every mode. It was the cable. The old advice would have had us cut a resolution already cut.
+    """
+    shapes = [s for s in shapes if s]
+    small = [s for s in shapes if max(s[:2]) <= 800]
+    if len(dead) == 1 and shapes and len(small) == len(shapes):
+        return [
+            "ONE camera is dead while the rest already serve small frames, so this is",
+            "NOT bandwidth — a bus cannot starve one stream and carry the others.",
+            "The barrier makes it look bank-wide: every camera waits for %s." % dead[0],
+            "ISOLATE IT: re-run with --skip <its index>. If the rest jump to ~38 fps,",
+            "the bus is fine and the fault is that camera's cable, connector or hub",
+            "port. Then open it ALONE — an intermittent lead delivers a frame to",
+            "--scan and nothing a minute later.",
+        ]
+    return [
+        "%d camera(s) delivered nothing. On this rig that is usually the shared" % len(dead),
+        "USB 2.0 bus: it carries THREE native streams, and a 4th starves while",
+        "sync_capture's barrier stalls the whole bank.",
+        "Re-run with --res 640 (all four serve that over MJPEG), or use --ramp to",
+        "find how many streams this bus actually carries.",
+    ]
+
+
 def run(seconds=15.0, max_index=8, target_rate=20.0, budget=0.50, res=None, skip=(),
         layout="binocular", roles=None, view=False, save=False, cv_threads=2, warm=True,
         native=False, verbose=True):
@@ -631,12 +668,9 @@ def run(seconds=15.0, max_index=8, target_rate=20.0, budget=0.50, res=None, skip
                 "  <-- macOS de-rated the CPU during the run" if thermally_throttled(st) else ""))
         if dead:
             print("  => NO FRAMES FROM: %s ❌" % ", ".join(dead))
-            print("     %d of %d cameras delivered nothing. On this rig that is almost always the"
-                  % (len(dead), len(rep)))
-            print("     shared USB 2.0 bus, not a dead camera: the bus carries THREE native")
-            print("     streams, and a 4th starves while sync_capture's barrier stalls the bank.")
-            print("     Re-run with --res 640 (all four serve that over MJPEG), or use --ramp to")
-            print("     find how many streams this bus actually carries.")
+            for line in dead_camera_advice(dead, [getattr(r, "shape", None)
+                                                  for r in rep.values()]):
+                print("     " + line)
         else:
             print("  =>", {"done": "BANK UP ✅", "cpu-stop": "STOPPED ON CPU BUDGET ⚠️",
                            "camera-died": "A CAMERA DROPPED OUT ⚠️"}[reason])
@@ -918,6 +952,24 @@ def selftest(verbose=True):
     bank2.close()
     checks.append(("run_loop STOPS a pinned machine instead of cooking it (reason=%s)" % reason2,
                    reason2 == "cpu-stop"))
+
+    # DEAD-CAMERA ADVICE. The two causes are indistinguishable in the table and the wrong advice
+    # sends you to cut a resolution that is already cut, so pin which one is named. Written from
+    # the 2026-08-04 fault: one dead camera, everyone else at 640x480.
+    SMALL = [(480, 640)] * 3
+    NATIVE = [(1200, 1920)] * 3
+    one_small = " ".join(dead_camera_advice(["eyeL"], SMALL + [None]))
+    checks.append(("dead-cam advice: 1 dead + small frames -> ISOLATE, not bandwidth",
+                   "NOT bandwidth" in one_small and "--skip" in one_small
+                   and "--res 640" not in one_small))
+    # NEGATIVE CONTROL: the same single dead camera with the survivors at NATIVE resolution is the
+    # bus story, and must still be told as one -- otherwise this just renames the old advice.
+    one_native = " ".join(dead_camera_advice(["eyeL"], NATIVE + [None]))
+    checks.append(("dead-cam advice: 1 dead + NATIVE frames -> still the bus",
+                   "--res 640" in one_native and "NOT bandwidth" not in one_native))
+    two_small = " ".join(dead_camera_advice(["eyeL", "eyeR"], SMALL))
+    checks.append(("dead-cam advice: 2 dead -> the bus, whatever the frame size",
+                   "--res 640" in two_small and "NOT bandwidth" not in two_small))
 
     ok = all(v for _, v in checks)
     if verbose:
