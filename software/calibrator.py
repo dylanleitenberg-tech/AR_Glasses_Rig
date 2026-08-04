@@ -149,6 +149,27 @@ class Calibrator:
             W, lam = self._ridge_gcv(Ps, Yc, rw)
         self.W, self.lambda_ = W, lam
 
+        # THE RESIDUAL MUST EARN ITS PLACE. Cross-validate it against doing nothing.
+        #
+        # Measured on the first good 17-sample set (2026-08-03): pure geometry scored 32 px @1080
+        # held-out -- an HONEST number, since geometry has zero fitted parameters -- while every
+        # learned residual was WORSE: degree 2 at 66 px, degree 2 with 100x regularisation at 61,
+        # degree 1 at 85. The learning curve also RÖSE with more samples (58 -> 62 px from n=6 to
+        # n=14), which is the signature of fitting noise rather than signal.
+        #
+        # A 45-term quadratic over 8 features cannot be constrained by seventeen samples, several
+        # of which carry a mis-detected dot. So rather than trusting the fit, MEASURE it: k-fold
+        # the residual against the geometry-only baseline on the same folds, and if it does not
+        # beat geometry, discard it. That turns "is the calibration helping?" from a judgement call
+        # into a number the code checks every time it fits.
+        if self.residual_mode and n >= self.min_samples + 4:
+            try:
+                self._residual_helps = self._beats_geometry(X, Y, w)
+            except Exception:
+                self._residual_helps = False
+            if not self._residual_helps:
+                self.W = None          # fall back to pure geometry
+
     # GEOMETRY IS THE BACKBONE; LEARNING IS A RESIDUAL ON TOP.
     #
     # This used to be a switch: geometric_bootstrap until the model trained, then the polynomial
@@ -163,6 +184,33 @@ class Calibrator:
     # `residual_mode` is what `fit` trains against, so the two halves cannot disagree about which
     # quantity is being learned.
     residual_mode = True
+
+    _residual_helps = None       # None = not yet assessed; False = geometry was better
+
+    def _beats_geometry(self, X, Y, w, folds=4):
+        """k-fold: does the learned residual beat geometry alone on held-out samples?"""
+        n = X.shape[0]
+        idx = np.random.default_rng(0).permutation(n)
+        e_res, e_geo = [], []
+        for f in range(folds):
+            te = idx[f::folds]
+            tr = np.setdiff1d(idx, te)
+            if len(tr) < self.min_samples or len(te) == 0:
+                continue
+            probe = Calibrator(self.n_features, self.degree, self.min_samples,
+                               self.lambdas, self.robust_iters, self.huber_k)
+            probe.residual_mode = False          # avoid recursing into this check
+            base = np.array([self.geometric_pixel(X[i]) for i in tr])
+            probe.fit(X[tr], Y[tr] - base, w[tr])
+            for i in te:
+                g = self.geometric_pixel(X[i])
+                r = probe.predict_raw(X[i]) if probe.W is not None else np.zeros(2)
+                r = np.clip(r, -self.max_residual, self.max_residual)
+                e_res.append(np.linalg.norm(np.clip(g + r, 0, 1) - Y[i]))
+                e_geo.append(np.linalg.norm(g - Y[i]))
+        if not e_res:
+            return False
+        return float(np.median(e_res)) < float(np.median(e_geo))
 
     def predict(self, x) -> np.ndarray:
         """Predict a normalized display pixel for one feature vector (d,)."""
