@@ -108,15 +108,30 @@ def check_world_dot(frames, detector=None):
     """BOTH world cams must see the target dot — capture.py's `no_target` needs both."""
     from dot_detector import DotDetector
     det = detector or DotDetector()
+    # JOINT stereo selection, not one argmax per camera.
+    #
+    # Picking each camera's best blob independently is what produced every world-dot failure on
+    # this rig: the cams confidently lock onto DIFFERENT objects and the geometry below then
+    # rejects the pair after the fact. Measured 2026-08-03 with the real target in view, the true
+    # dot ranked 2nd in worldL and 3rd in worldR -- beaten in both by larger dark round things,
+    # because the single-camera score rewards area. detect_pair uses the one property only the
+    # target has: it appears in BOTH cams on the same epipolar row at a plausible disparity.
     seen, where = [], {}
-    for r in ("worldL", "worldR"):
-        f = frames.get(r)
-        if f is None:
-            continue
-        xy, _ = det.detect(f)
-        if xy is not None:
-            seen.append(r)
-            where[r] = xy
+    fL, fR = frames.get("worldL"), frames.get("worldR")
+    if fL is not None and fR is not None:
+        L, R = det.detect_pair(fL, fR)
+        if L is not None:
+            where["worldL"], where["worldR"] = L, R
+            seen = ["worldL", "worldR"]
+    if not seen:                      # fall back so a single-camera view still reports something
+        for r in ("worldL", "worldR"):
+            f = frames.get(r)
+            if f is None:
+                continue
+            xy, _ = det.detect(f)
+            if xy is not None:
+                seen.append(r)
+                where[r] = xy
     ok = len(seen) == 2
     # DotDetector returns NORMALISED (0..1) coords — print 3 decimals, not %.0f, or every
     # position rounds to 0/1 and a real detection is indistinguishable from a corner artefact.

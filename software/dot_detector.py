@@ -92,3 +92,92 @@ class DotDetector:
         cy = M["m01"] / M["m00"]
         cv2.circle(annotated, (int(cx), int(cy)), 10, (0, 255, 0), 2)
         return (cx / w, cy / h), annotated
+
+
+    def candidates(self, frame):
+        """Every blob that passes ALL the single-camera gates, as (score, u, v). Ranked.
+
+        Exposed because the single-camera argmax is not enough on a cluttered scene, and the way
+        it fails is systematic rather than unlucky. See detect_pair.
+        """
+        h, w = frame.shape[:2]
+        gray = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5, 5), 0)
+        inv = cv2.bitwise_not(gray)
+        _, mask = cv2.threshold(inv, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        out = []
+        max_area = self.max_area_frac * w * h
+        for c in contours:
+            area = cv2.contourArea(c)
+            if area < self.min_area or area > max_area:
+                continue
+            peri = cv2.arcLength(c, True)
+            if peri == 0:
+                continue
+            circ = 4 * np.pi * area / (peri * peri)
+            if circ < self.min_circularity:
+                continue
+            x, y, bw, bh = cv2.boundingRect(c)
+            pad = int(max(bw, bh) * 1.6) + 4
+            patch = gray[max(0, y - pad):min(h, y + bh + pad),
+                         max(0, x - pad):min(w, x + bw + pad)]
+            inner = gray[y:y + bh, x:x + bw]
+            if patch.size == 0:
+                continue
+            surround = float(np.median(patch))
+            dot_val = float(np.median(inner)) if inner.size else 255.0
+            if surround < self.min_surround:
+                continue
+            contrast = (surround - dot_val) / max(surround, 1.0)
+            if contrast < self.min_contrast:
+                continue
+            M = cv2.moments(c)
+            if M["m00"] == 0:
+                continue
+            out.append((circ * np.sqrt(area) * contrast,
+                        (M["m10"] / M["m00"]) / w, (M["m01"] / M["m00"]) / h))
+        out.sort(reverse=True)
+        return out
+
+    # Joint stereo selection tolerances.
+    max_row_offset = 0.030   # |vL - vR| for one physical point on a roughly-aligned pair
+    min_disp = 0.004         # below this the point is too far to trust (and near zero disparity)
+    max_disp = 0.300         # above this it is closer than the rig can be looking at
+
+    def detect_pair(self, frameL, frameR):
+        """Pick the dot in BOTH frames JOINTLY. -> ((uL,vL), (uR,vR)) or (None, None).
+
+        WHY NOT ARGMAX PER CAMERA. Each camera choosing its own best blob is what produced every
+        world-dot failure on this rig: the two cameras confidently lock onto DIFFERENT objects and
+        the stereo checks then reject the pair after the fact -- epipolar violation 0.154, implied
+        depth 246 mm, worldR pinned against a frame edge. The single-camera score is
+        `circularity * sqrt(area) * contrast`, so it rewards AREA, and in a real room there is
+        always a bigger dark round thing than a dot on a page. MEASURED on this rig with the real
+        target in view: the true dot ranked 2nd in worldL (score 4.99 at u=0.508) and 3rd in worldR
+        (5.07 at u=0.536), beaten by larger blobs at 6.15 and 6.64.
+
+        But the dot is the only thing in the room that appears in BOTH cameras at the SAME
+        epipolar row with a PHYSICALLY PLAUSIBLE disparity. That is a property of the target, not a
+        threshold to tune, and it is exactly the information a per-camera argmax throws away. So
+        score every (L, R) pairing and let geometry break the tie: the true pair above sits at a
+        row offset of 0.012 against the impostor's 0.020, and both must clear the same bar.
+
+        Deliberately does NOT check the disparity SIGN -- a reversed world pair must still be
+        caught loudly by calib_preflight.dot_geometry rather than silently accommodated here.
+        """
+        candL, candR = self.candidates(frameL), self.candidates(frameR)
+        best, best_score = None, -1.0
+        for sL, uL, vL in candL[:12]:
+            for sR, uR, vR in candR[:12]:
+                row = abs(vL - vR)
+                if row > self.max_row_offset:
+                    continue
+                disp = abs(uL - uR)
+                if not (self.min_disp <= disp <= self.max_disp):
+                    continue
+                # appearance score, penalised by how badly the pair violates the epipolar row
+                score = (sL + sR) * (1.0 - row / self.max_row_offset)
+                if score > best_score:
+                    best_score, best = score, ((uL, vL), (uR, vR))
+        return best if best else (None, None)
