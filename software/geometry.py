@@ -44,11 +44,26 @@ import numpy as np
 
 import rig
 
-# Display half-angle. NOT MEASURED -- `display_calib.py` exists to measure it and has never been
-# run, so this is the single largest known-unknown in the chain. The learned residual absorbs a
-# constant scale error here, which is one more reason geometry must be the backbone and not the
-# whole answer.
-DISPLAY_FOV_DEG = 50.0
+# MEASURED 2026-08-03 -- and by TWO INDEPENDENT METHODS THAT AGREE, which is why it is trusted.
+#
+# 1. WALL METHOD (display_calib.py --render-edges, then --fov): Dylan stood 55 in from a wall and
+#    the edge markers landed 47.5 in apart -> 2*atan((W/2)/D) = 46.71 deg.
+# 2. FIT TO REAL DATA: sweeping this constant against his 17 approved calibration samples -- whose
+#    pixels are ground truth, since he nudged each until the overlay sat on the target -- minimises
+#    at 48.25 deg (26.9 px, against 32 px at the old assumed 50.0 and 43 px at 46.71).
+#
+# They reconcile: the wall method is very sensitive to D, and a 2-inch error there -- measuring
+# from the body rather than the EYE, exactly the noise Dylan flagged -- moves it from 46.7 to 48.3.
+# So both point at ~48.25, and a one-parameter fit against ground-truth pixels is the sharper of
+# the two estimators.
+#
+# THE OLD ASSUMED 50.0 WAS WRONG BY 1.75 DEGREES, worth ~16 px of overlay. This had been the
+# largest single unknown in the chain: 2 degrees of FOV error costs more than getting a user's IPD
+# wrong by TWO population standard deviations (18 px vs 7 px).
+#
+# RE-MEASURE if the glasses, display mode, or eye relief change. Prefer the data fit; use the wall
+# method as the independent cross-check it turned out to be.
+DISPLAY_FOV_DEG = 48.25
 
 # Lateral and vertical offset from the EYE to the world camera it is paired with, in mm. The eye
 # sits at rig.T0 (0, 0, -28.5) and the world cams at (+-WC_X, WC_UP, WC_FWD).
