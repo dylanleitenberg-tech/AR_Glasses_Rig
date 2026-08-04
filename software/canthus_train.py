@@ -111,9 +111,38 @@ def augment(rng, img, uv):
     suffer; small shifts cover seating drift. Deliberately NO horizontal flip — that would turn a
     left eye into a right eye and teach the wrong landmark."""
     import cv2
-    a = 0.7 + 0.6 * rng.random()                       # contrast
-    b = rng.uniform(-40, 40)                           # brightness
-    out = np.clip(img.astype(np.float32) * a + b, 0, 255)
+    out = img.astype(np.float32)
+
+    # ILLUMINATION GRADIENT — the augmentation that was missing, and the one that matters most.
+    # Dylan's room is lit from one side, so a brightness RAMP crosses the face; the old
+    # augmentation only ever changed the LEVEL. Measured consequence: on a synthetic side-lit
+    # frame the model went from 26 px to 258 px, and NO preprocessing rescued it -- illumination
+    # flattening fixed the gradient but destroyed clean performance (26 -> 243 px) because the
+    # model had never seen a flattened image. A gradient the model has never seen cannot be
+    # normalised away at inference; it has to be trained through.
+    if rng.random() < 0.7:
+        H0, W0 = out.shape
+        strength = rng.uniform(0.15, 0.75)
+        if rng.random() < 0.5:                          # left-right ramp
+            ramp = np.linspace(1.0, 1.0 - strength, W0)[None, :]
+        else:                                           # top-bottom ramp
+            ramp = np.linspace(1.0, 1.0 - strength, H0)[:, None]
+        if rng.random() < 0.5:
+            ramp = ramp[:, ::-1] if ramp.shape[1] > 1 else ramp[::-1, :]
+        out = out * ramp
+
+    # GAMMA — a nonlinear response change, which a linear gain cannot imitate. Range follows the
+    # published pupil-detection recipe (ETRA 2019): gamma in [0.6, 1.4].
+    if rng.random() < 0.6:
+        g = rng.uniform(0.6, 1.4)
+        out = 255.0 * np.power(np.clip(out, 0, 255) / 255.0, g)
+
+    # WIDE MULTIPLICATIVE GAIN. The old range was contrast 0.7-1.3 with a +-40 offset -- about
+    # 110-190 on a corpus sitting at ~150. The rig's real frames measured 39-94, entirely outside
+    # it. 0.3-1.5 covers what the hardware actually produces.
+    a = rng.uniform(0.30, 1.50)
+    b = rng.uniform(-40, 40)
+    out = np.clip(out * a + b, 0, 255)
     if rng.random() < 0.5:
         out += rng.normal(0, rng.uniform(2, 8), out.shape)
     if rng.random() < 0.3:
@@ -123,7 +152,15 @@ def augment(rng, img, uv):
     H, W = out.shape
     M = np.float32([[1, 0, du * W], [0, 1, dv * H]])
     out = cv2.warpAffine(out, M, (W, H), borderMode=cv2.BORDER_REPLICATE)
-    return np.clip(out, 0, 255), (uv[0] + du, uv[1] + dv)
+    # MATCH INFERENCE. canthus_net.predict median-normalises every frame, so training must see the
+    # same transform or the two disagree about what an image looks like. Normalising here also
+    # means the gain/gamma augmentation above is not wasted: it is the GRADIENT and the noise that
+    # survive normalisation, which is exactly the part the model must learn to tolerate.
+    out = np.clip(out, 0, 255)
+    m = float(np.median(out))
+    if m > 8.0:
+        out = np.clip(out * (161.0 / m), 0, 255)
+    return out, (uv[0] + du, uv[1] + dv)
 
 
 def _load_pairs(with_pseudo):
