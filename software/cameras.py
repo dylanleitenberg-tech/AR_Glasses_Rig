@@ -31,6 +31,23 @@ class Camera:
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         except Exception:
             pass
+        # VERIFY THE MODE ACTUALLY TOOK — a rejected mode is SILENT.
+        #
+        # UVC does not error on an unsupported size; it hands back the native one. Asking an
+        # AR0234 for 640x400 returns 1920x1200, which is 7.5x the pixels, and four of those on one
+        # USB 2.0 bus starves half the bank. The visible symptom is "only 2 cameras are running" --
+        # nothing anywhere says the resolution request was ignored. This turns that into a warning
+        # at the one place that knows both what was asked and what arrived.
+        self.requested = (int(width), int(height))
+        self.actual = (int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+                       int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+        if self.actual != self.requested and self.actual != (0, 0):
+            print("!! %s: asked %dx%d, got %dx%d — the mode was IGNORED. That is %.1fx the "
+                  "pixels and will starve the shared USB bus. See cameras.ROLE_MODE."
+                  % (self.name, self.requested[0], self.requested[1],
+                     self.actual[0], self.actual[1],
+                     (self.actual[0] * self.actual[1]) /
+                     max(1.0, self.requested[0] * self.requested[1])))
 
     def read(self):
         ok, frame = self.cap.read()
@@ -75,6 +92,29 @@ ROLE_RES = {"worldL": 1280, "worldR": 1280, "eyeL": 640, "eyeR": 640,
             "pupilL": 640, "pupilR": 640, "eye2L": 640, "eye2R": 640}
 
 
+# EXPLICIT PER-SENSOR CAPTURE MODES. Do NOT compute these from an aspect ratio.
+#
+# AN UNSUPPORTED MODE DOES NOT FAIL -- IT SILENTLY RETURNS NATIVE, which then saturates the shared
+# USB 2.0 bus and starves the other cameras. Measured 2026-08-03 on this rig:
+#
+#   OV9281 eye  (1280x800 native): 640x400 -> 640x400 TRUE DOWNSCALE, full FOV
+#                                  640x480 -> a CROP at scale 1.00 (~30% of the sensor area)
+#   AR0234 world (1920x1200 native): 640x480 -> 640x480 TRUE DOWNSCALE, full FOV
+#                                    640x400 -> IGNORED, returns 1920x1200
+#                                    1280x800 -> IGNORED, returns 1920x1200
+#
+# So the two sensors need DIFFERENT modes and neither generalises from the other. Deriving the
+# height from a single aspect rule broke this twice in one session: 3/4 gave the eye cams a crop,
+# and 10/16 made the world cams silently run native and starve half the bank (only 2 of 4 cameras
+# delivered frames).
+ROLE_MODE = {
+    "worldL": (640, 480), "worldR": (640, 480),          # AR0234 — 640x400 is ignored
+    "eyeL":   (640, 400), "eyeR":   (640, 400),          # OV9281 — 640x480 is a crop
+    "pupilL": (640, 400), "pupilR": (640, 400),
+    "eye2L":  (640, 400), "eye2R":  (640, 400),
+}
+
+
 class CameraBank:
     """Opens the role-mapped camera suite. `role_index` maps a subset of ROLES to UVC device
     indices (use --list-cams to find them). Only the roles you pass are opened: the 8-feature
@@ -87,19 +127,8 @@ class CameraBank:
             raise ValueError("unknown camera role(s): %s (valid: %s)" % (bad, ROLES))
         self.cams = {}
         for role, idx in role_index.items():
-            res = ROLE_RES[role]
-            # 16:10, NOT 4:3. This line used to compute `res * 3 // 4`, i.e. 640x480 for the eye
-            # cams and 1280x960 for the world cams -- a 4:3 shape imposed on sensors that are both
-            # natively 16:10 (OV9281 1280x800, AR0234 1920x1200).
-            #
-            # That is not a cosmetic mismatch. MEASURED 2026-08-03 by template-matching one mode
-            # into the other: asking these cameras for 640x480 returns a CROP of the sensor at
-            # scale 1.00 -- eyeL's 640x480 covers only x[288..928], y[50..530] of 1280x800, about
-            # 30% of the area, with a materially narrower field of view. 640x400 is a true 2x
-            # DOWNSCALE keeping the whole frame (full-frame correlation 0.981 against a best crop
-            # match of 0.725), needs LESS bandwidth than 640x480, and preserves the framing the
-            # canthus model was TRAINED on. Training frames are full-FOV; inference must be too.
-            self.cams[role] = Camera(idx, res, int(res * 10 // 16), fps=fps, name=role)
+            w, h = ROLE_MODE[role]
+            self.cams[role] = Camera(idx, w, h, fps=fps, name=role)
 
     def read(self) -> dict:
         """Live read: {role: frame-or-None}."""

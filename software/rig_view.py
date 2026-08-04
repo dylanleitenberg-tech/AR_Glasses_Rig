@@ -42,10 +42,12 @@ def run(roles, tile=(480, 300)):
     #
     # Nothing is lost for this purpose: the view exists to position the target and the glasses,
     # and every detector downstream is scale-invariant in normalised coordinates.
-    # 640x400, not 640x480 -- see cameras.CameraBank: 640x480 is a CROP of these 16:10 sensors
-    # (measured, ~30% of the area), while 640x400 is a true downscale that keeps the full FOV the
-    # canthus model was trained on. It is also cheaper on the shared USB 2.0 bus.
-    cams = {r: Camera(i, 640, 400, name=r) for r, i in roles.items()}
+    # PER-SENSOR modes from cameras.ROLE_MODE — never one size for every role. The eye (OV9281)
+    # and world (AR0234) sensors accept DIFFERENT modes, and an unsupported request silently
+    # returns native, saturating the bus. Hardcoding 640x400 here gave the world cams 1920x1200
+    # and starved half the bank: "only 2 cams are running".
+    from cameras import ROLE_MODE
+    cams = {r: Camera(i, *ROLE_MODE.get(r, (640, 480)), name=r) for r, i in roles.items()}
     det = DotDetector()
     trk = {"eyeL": CanthusTracker(mirrored=True), "eyeR": CanthusTracker(mirrored=False)}
     win = "rig view — position everything until all four read green.  q quits"
@@ -55,13 +57,25 @@ def run(roles, tile=(480, 300)):
         frames = {r: c.read() for r, c in cams.items()}
         tiles, dots, states = {}, {}, {}
 
+        # JOINT stereo pick, so this view shows what the LIVE LOOP will actually use. Each camera
+        # taking its own argmax is how the two cams end up locked onto different furniture.
+        _pair = {}
+        _fl, _fr = frames.get("worldL"), frames.get("worldR")
+        if _fl is not None and _fr is not None:
+            try:
+                _L, _R = det.detect_pair(_fl, _fr)
+                if _L is not None:
+                    _pair = {"worldL": _L, "worldR": _R}
+            except Exception:
+                _pair = {}
+
         for r in ("worldL", "worldR"):
             f = frames.get(r)
             if f is None:
                 tiles[r] = np.zeros((tile[1], tile[0], 3), np.uint8)
                 continue
             g = cv2.cvtColor(f, cv2.COLOR_BGR2GRAY) if f.ndim == 3 else f
-            d, _ = det.detect(f if f.ndim == 3 else cv2.cvtColor(f, cv2.COLOR_GRAY2BGR))
+            d = _pair.get(r)
             vis = cv2.cvtColor(_enhance(g, cv2), cv2.COLOR_GRAY2BGR)
             H, W = vis.shape[:2]
             if d is not None:

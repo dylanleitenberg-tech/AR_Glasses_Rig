@@ -130,6 +130,18 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > - **NoIR/IR-remote test on the eye cams: already passed.** Do not ask for it again.
 > - **No IR LEDs are wired, and none are needed for calibration.** The pupil/PCCR path is
 >   `use_pupil=False` by default and was measured not to improve registration.
+> - **>>> CAPTURE MODES ARE PER-SENSOR. THE TWO SENSORS DISAGREE. `cameras.ROLE_MODE` is the table.**
+>   Measured 2026-08-03 by asking each camera for each mode and comparing what came back:
+>   | sensor | use | why |
+>   |---|---|---|
+>   | **OV9281 eye** (1280x800) | **640x400** | true downscale, FULL FOV. **640x480 is a CROP** (~30% of sensor) |
+>   | **AR0234 world** (1920x1200) | **640x480** | true downscale, FULL FOV. **640x400 and 1280x800 are IGNORED -> native 1920x1200** |
+>   **AN UNSUPPORTED MODE DOES NOT FAIL — UVC SILENTLY RETURNS NATIVE.** Four natives on one
+>   USB 2.0 bus starves half the bank, and the only symptom Dylan saw was *"only 2 cams are
+>   running"*. Nothing said the request had been ignored. `Camera.__init__` now compares requested
+>   vs actual and PRINTS the discrepancy with the pixel-count multiplier.
+>   **Do NOT derive the height from an aspect rule.** Doing so broke this twice in one session:
+>   `3//4` gave the eye cams a crop, `10//16` made the world cams run native and starve the bank.
 > - **CUT THE RESOLUTION. 640x480, always.** Four streams only run on this one USB 2.0 bus at
 >   640x480. This has now cost more than one session — it is not a thing to rediscover. As of
 >   2026-08-02 `bank_bringup.py` reads `SyncBank.ROLE_MODE` so the default is finally correct;

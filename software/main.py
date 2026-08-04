@@ -476,8 +476,26 @@ def _features_from(wlf, wrf, lf, rf, detector, trk_L, trk_R, last):
                               ("eyeL", lf), ("eyeR", rf)) if f is None]
     if missing:
         return last, 0.0, False, "no frame from: " + ", ".join(missing)
-    dL, _ = detector.detect(wlf)
-    dR, _ = detector.detect(wrf)
+    # JOINT stereo pick, not one argmax per camera.
+    #
+    # This was still the OLD independent path long after calib_preflight had been switched over,
+    # which meant preflight could report a clean stereo pair while the LIVE loop was locking each
+    # camera onto its own dark object. The single-camera score is circularity*sqrt(area)*contrast,
+    # so it rewards AREA, and a real room always contains a bigger dark round thing than a dot on
+    # a page -- measured on this rig, the true dot ranked 2nd in worldL and 3rd in worldR. When the
+    # two cams lock onto different furniture the dot feature stops tracking the target altogether,
+    # and the overlay then appears glued to the head, which is exactly what Dylan reported:
+    # "it is following my head movements... it should be going the opposite direction."
+    dL = dR = None
+    try:
+        pair = detector.detect_pair(wlf, wrf)
+        if pair[0] is not None:
+            dL, dR = pair
+    except Exception:
+        pass
+    if dL is None:
+        dL, _ = detector.detect(wlf)
+        dR, _ = detector.detect(wrf)
     dL = _gate_dot(dL, "L")
     dR = _gate_dot(dR, "R")
     nodot = [n for n, d in (("worldL", dL), ("worldR", dR)) if d is None]
