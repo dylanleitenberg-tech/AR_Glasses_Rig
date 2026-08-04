@@ -80,7 +80,13 @@ class Config:
     feat_smooth_world: float = 1.0 # world dot: NO smoothing (1.0 = pass through)
     # pred_smooth existed to hide POLYNOMIAL jitter. Geometry is now the backbone (see geometry.py)
     # and is stable frame-to-frame, so heavy smoothing here buys nothing and costs a frame of lag.
-    pred_smooth: float = 0.9       # EMA on the displayed prediction (0.9 = barely smoothed)
+    pred_smooth: float = 0.9       # (legacy EMA, superseded by the One Euro filter below)
+    # VELOCITY-ADAPTIVE prediction smoothing. See smoothing.py for the measured comparison against
+    # fixed EMAs; the short version is that a fixed filter must choose between lag and jitter and
+    # this one does not. min_cutoff sets how still the dot is when you are still (lower = stiller);
+    # beta sets how fast it opens up when you move (higher = less lag, more jitter during motion).
+    one_euro_min_cutoff: float = 0.8
+    one_euro_beta: float = 4.0
 
     # NIR pupil-centre feature (8 -> 10): the 2 NIR pupil cams of the 6-camera binocular CORE.
     # Off by default so the 8-feature WORLD+EYE-CORNER base pipeline (selftest/pixel_sweep/

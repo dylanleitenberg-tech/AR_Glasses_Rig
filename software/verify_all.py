@@ -83,6 +83,8 @@ def main(fast=False):
          "python3 depth.py --selftest", "DEPTH OK"),
         ("closed-form overlay geometry (counter-rotation sign, bounded gain, parallax)",
          "python3 geometry.py --selftest", "GEOMETRY OK"),
+        ("velocity-adaptive smoothing (beats every fixed EMA on jitter AND lag)",
+         "python3 smoothing.py --selftest", "SMOOTHING OK"),
         ("capture/blink/fallback", "python3 main.py --capture-test", "PROVEN"),
         ("imu filter selftest", "python3 imu.py", "IMU FILTER OK"),
         ("imu serial + gyro integrator", "python3 imu_serial.py --selftest", "GYRO INTEGRATOR OK ✅"),

@@ -286,6 +286,8 @@ def run_loop(cfg: Config, simulate: bool) -> int:
     last_features = np.full(cfg.n_features, 0.5)
     smooth_feat = None             # EMA of live eye features (real mode)
     _last_key = [None]             # most recent raw cv2 keycode, surfaced on the HUD
+    from smoothing import OneEuro
+    pred_filt = OneEuro(min_cutoff=cfg.one_euro_min_cutoff, beta=cfg.one_euro_beta)
     pred_s = None                  # EMA of the predicted pixel (reduces jitter)
     conf = 1.0
     n_saved = 0
@@ -321,8 +323,16 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                     last_features = features
 
             predicted = cal.predict(features)
-            pred_s = predicted if pred_s is None else (
-                cfg.pred_smooth * predicted + (1 - cfg.pred_smooth) * pred_s)
+            # VELOCITY-ADAPTIVE smoothing on the PREDICTION (not on the nudge, which is a
+            # deliberate human input and must stay crisp).
+            #
+            # A fixed EMA has one knob and two jobs. Heavy (0.5) cost 56 ms of lag -- "it feels
+            # more like i am moving the dot with my head". Light (0.9) removed the lag and let
+            # tremor through -- "it is jittering rapidly... overestimating how much it needs to
+            # move based on my body's vibration". Measured on intermittent motion, the One Euro
+            # filter has LOWER jitter than either (0.0015 vs 0.0023/0.0037) because it smooths hard
+            # while you are still and opens up as soon as you actually turn. See smoothing.py.
+            pred_s = pred_filt(predicted, time.time())
             shown = np.clip(pred_s + nudge, 0.0, 1.0)
 
             hud = make_hud(ds.count(), cal, simulate, shown, green, conf)
@@ -353,7 +363,7 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                 print("Re-run --calibrate-corners for fresh templates.")
             if act.reset:                          # RESET fallback: cancel a mis-nudge
                 nudge[:] = 0.0
-                pred_s = None
+                pred_s = None; pred_filt.reset()
                 print("  reset — current nudge cancelled (nothing stored)")
             if act.undo:                           # UNDO fallback: drop the last bad sample
                 removed = ds.undo_last()
@@ -362,7 +372,7 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                 else:
                     cal = build_calibrator(cfg, ds)   # retrain without the removed sample
                     nudge[:] = 0.0
-                    pred_s = None
+                    pred_s = None; pred_filt.reset()
                     print("  undo — removed sample #%d (%d left), retrained"
                           % (ds.count() + 1, ds.count()))
             m = overlay.take_mouse()               # click/drag places the dot (fast, X+Y at once)
@@ -390,7 +400,7 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                     ds.add(snap_features, approved, weight=snap_conf)
                     cal = build_calibrator(cfg, ds)    # retrain on all samples
                     nudge[:] = 0.0
-                    pred_s = None
+                    pred_s = None; pred_filt.reset()
                     print("  approved #%d  (conf %.2f, %s, lambda %.3f)" %
                           (ds.count(), snap_conf,
                            "trained" if cal.is_trained else "warming up",
