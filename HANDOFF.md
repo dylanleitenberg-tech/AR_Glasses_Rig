@@ -378,6 +378,42 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >    do NOT expect better registration from it (corner-only 9.9 px vs +pupil 10.1 px) — the payoff
 >    is geometry ID (`ep_dist` 81→54%, `globe_r` 87→50%, IPD 57→16%) and blink rejection.
 >
+> ## RENDERING ARCHITECTURE — follow mode + own IMU, decided 2026-08-03
+> Dylan asked the right question: to paint a goblet onto a cup, in FOLLOW mode the goblet swings
+> with your head so software must counter-rotate it, whereas a LOCKED screen appears to do that
+> for free. The answer is that you must do it yourself, and the reason is not calibration hygiene:
+>
+> - **A 3DoF stabiliser cancels ROTATION exactly at any distance, and TRANSLATION not at all**,
+>   because the needed shift depends on depth, which it does not know. A 10 cm sideways head move,
+>   uncorrected: **0.5 m -> 11.3° = 434 px**; 2 m -> 2.9° = 110 px; **20 m -> 0.29° = 11 px**.
+>   So anchor mode cannot do the cup. For the far field it is nearly sufficient.
+> - **You cannot tell anchor mode where the cup is.** It holds whatever was drawn relative to
+>   wherever it anchored. You still must compute the pixel — and now through a transform you can
+>   neither query nor calibrate. That is what breaks both the calibration and the rendering.
+> - **THE GLASSES CANNOT GET DEPTH.** An IMU integrates rotation cleanly but translation needs
+>   double-integrating acceleration, which drifts quadratically — metres within seconds. Physics,
+>   not firmware. (Believed no built-in world cams on the One Pro; the XREAL Eye is a clip-on —
+>   VERIFY, not measured.)
+> - **THE RIG CAN, and the scaling is the good news.** 67 mm baseline, focal 913 px. Stereo depth
+>   error and the depth error REQUIRED for sub-pixel parallax **both scale as d²**, so their ratio
+>   is **constant at 0.90 across the whole range** — 1 mm needed / 1 mm available at 0.5 m,
+>   1.8 m / 1.6 m at 20 m. The baseline is matched to the task at EVERY distance, not just near.
+>   Caveat: assumes 0.25 px disparity precision (optimistic) and leaves only 10% headroom; at a
+>   realistic 0.5 px you are ~2 px off. Thin, not comfortable.
+> - **LATENCY IS THE REAL ARGUMENT FOR ANCHOR MODE, and it is a strong one.** The measured loop is
+>   **73.6 ms/frame**: at 30°/s that is 2.2° = **85 px** of lag, at 100°/s **283 px**, at 200°/s
+>   **565 px**. The goblet would visibly swim on every head turn. XREAL's stabiliser runs in the
+>   display pipeline at near-zero latency and genuinely does something a 13 fps loop cannot.
+> - **>>> THE ARCHITECTURE: keep FOLLOW mode, and do low-latency rotation compensation with YOUR
+>   OWN IMU, applied as late as possible before drawing** (late-stage reprojection / timewarp —
+>   what every VR/AR system does, for exactly this reason). You get the near-zero-latency rotation
+>   cancellation AND keep a transform you own and can calibrate. The CAD already has the IMU mount,
+>   and the handoff already concluded an IMU is the fix for `WorldTracker`'s 0 map points —
+>   **the same IMU solves both, which makes it the highest-value unbuilt thing in the project.**
+> - **Strategic:** the end goal is people and cars FAR away, where translation costs only ~11 px at
+>   20 m. So for the actual target **rotation is nearly the entire problem**, and rotation is
+>   exactly what an IMU cancels perfectly. The far-field goal is a much easier problem than the cup.
+>
 > ## FAR-FIELD: the arithmetic that shapes priorities
 > Stereo depth dies with distance on a 67 mm baseline — disparity 30.6 px at 2 m, 3.1 px at 20 m,
 > 0.6 px at 100 m (unusable). **But you barely need depth out there:** the world cam sits ~34 mm
