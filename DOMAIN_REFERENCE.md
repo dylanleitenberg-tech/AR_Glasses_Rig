@@ -197,3 +197,73 @@ smallest terms.
 **Known-unverified, do not treat as fact:**
 - Display FOV ~50° (assumed), eyebox size and eye relief (unmeasured), our actual position within
   the eyebox, and whether the One Pro's follow mode is rigid or damped.
+
+---
+
+## 7. HOW OTHERS FIX THE LIGHTING PROBLEM (researched 2026-08-03)
+
+Dylan's room is lit from one side, so `eyeL` shadows while `eyeR` does not — mean 94 vs 49, and
+`eyeL` fluctuating 94→39 within minutes. That is an ordinary operating condition, not a fault, and
+the field has three answers. We have implemented the cheapest; the other two are the real ones.
+
+### 7a. WHAT WE DID — normalise the input (free, done, measured)
+Median-normalise every frame to the corpus median before inference. **21 px flat across a 3×
+brightness range**, versus 715 px unnormalised at ×0.34. See §4 of `canthus_net.predict`.
+
+**Limit:** it corrects a LEVEL, not a GRADIENT, and cannot invent signal. `eyeL` at median 11/255
+is past saving by any preprocessing.
+
+### 7b. WHAT THE ML LITERATURE DOES — augment the training data
+Every serious CNN eye tracker trains with **photometric augmentation**, because a model trained in
+one lighting band is brittle outside it — exactly our failure. Published recipes
+([Improving real-time CNN-based pupil detection through domain-specific data augmentation](https://dl.acm.org/doi/10.1145/3314111.3319914),
+ETRA 2019) use:
+
+- **random gamma** γ ∈ {0.6, 0.8, 1.2, 1.4}
+- **exposure offset** up to **±25 levels**
+- **Gaussian blur** 2 ≤ σ ≤ 7
+- random brightness/contrast, plus noise
+
+Related work ([EllSeg](https://arxiv.org/pdf/2007.09600),
+[LEyes](https://arxiv.org/pdf/2309.06129)) reports the same theme: models tested on high-appearance-
+variability data benefit from multiset training, while narrow-band training generalises only within
+its band.
+
+**Directly applicable to us.** Our corpus spans **139–161** — a range of 22 — which is precisely a
+narrow band. Retraining with gamma and exposure jitter costs **no new labelling** (augment the
+frames we already have, keep the same 87 clicks) and would harden the model where normalisation
+cannot. **This is the cheapest remaining robustness win and should be done when the model is next
+retrained.**
+
+### 7c. WHAT THE HARDWARE PEOPLE DO — and it is the real answer
+**Active NIR illumination plus a matched bandpass filter**, which is universal in commercial
+head-mounted eye tracking. The point is not the pupil: it is that **the eye image stops depending
+on the room at all.**
+
+- **850 nm** is the standard choice — among the brightest IR LED wavelengths, and just outside
+  visible so it does not distract.
+- A **narrow 850 nm bandpass filter** between lens and sensor blocks visible light, so sunlight,
+  lamps and side-lighting simply do not reach the sensor. Transmission ≥85–90%
+  ([Edmund 54809](https://www.edmundoptics.com/p/narrow-nir-850nm-c-mount-bandpass-filter/54809/),
+  [MidOpt BP850](https://fjwoptical.com/products/bp850)).
+- Consumer headsets do exactly this: the user sees a display while the tracking cameras see a scene
+  lit only by invisible NIR, **regardless of display content or ambient light**
+  ([KUPO Optics guide](https://www.kupooptics.com/en/blogs/optics-playbook/ir-pass-filters-vr-ar-tracking-guide)).
+
+**Why this matters so much for us specifically:** our eye cams are **NoIR** (IR-sensitive, no IR-cut
+filter) — already the right sensor — and macOS gives us **no software exposure control at all**
+(AVFoundation rejects every `set()`). So we have neither of the two software levers a normal system
+would use, and the one hardware lever that removes the problem entirely is unfitted. IR LEDs are
+listed in `WIRING.md` and `SAFETY.md` but **none are wired**.
+
+### 7d. Order of value for this rig
+1. **Photometric augmentation at next retrain** — free, no labelling, hardens the 139–161 band.
+2. **Fill light on the right side** — LED not daylight; getting `eyeL`'s median from 11 to ~40 puts
+   it inside what normalisation already handles.
+3. **850 nm LEDs + bandpass filters** — the actual fix, and the one that makes lighting irrelevant
+   forever. Note it also delivers the pupil/glint path the incoming pupil cams need, so the two
+   upgrades share the same hardware work.
+
+**Safety note, non-negotiable:** IR is invisible, so the blink reflex does not protect the eye.
+`SAFETY.md` and `WIRING.md` already specify the power-anomaly cutoff and exposure limits — follow
+them before energising anything near the eye.
