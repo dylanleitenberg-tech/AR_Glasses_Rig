@@ -100,10 +100,19 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   attachment, the image lags during and just after a fast head turn. That would fit Dylan's
 >   report that "slight adjustments work well, big head shifts make it not work". Unverified — the
 >   firmware's damping behaviour is unknown. Prefer an instant/no-smoothing follow if one exists.
-> - **THE XREAL MUST BE EXTENDED, NOT MIRRORED.** Found 2026-08-03: system_profiler reported
->   `Mirror: On` on both displays. Mirroring scales the 3072x1920 desktop into the glasses'
->   1920x1080, so every approved sample would encode that scaling rather than the rig's geometry,
->   and the calibration would break the moment the mode changed. Check before every real run.
+> - **MIRRORING IS FINE *IF* THE XREAL IS THE MASTER — I GOT THIS BACKWARDS FIRST TIME.**
+>   I claimed mirroring scales the 3072x1920 desktop into the glasses and corrupts every sample,
+>   and told Dylan to switch to Extended. **Wrong direction.** `system_profiler` on this rig shows
+>   the **XREAL is `Main Display: Yes` and `Mirror Status: Master Mirror`**, with the built-in
+>   Retina as the `Hardware Mirror` follower, and `UI Looks like: 1920 x 1080`. So the desktop
+>   framebuffer IS the glasses' native 1920x1080 and the overlay lands **1:1**; the LAPTOP is the
+>   one showing a scaled copy, and nothing reads pixels from there.
+>   **What actually matters is not mirror-vs-extend, it is: is the framebuffer the XREAL's native
+>   1920x1080, and is the XREAL the master?** Check with:
+>   `system_profiler SPDisplaysDataType | grep -E "Resolution|Mirror|Main Display|UI Looks"`
+>   If the built-in were master instead, the glasses WOULD get a rescaled image and the samples
+>   would encode it. Extended is then a cosmetic preference (it stops the overlay covering the
+>   laptop screen), not a correctness requirement.
 > These each cost a full session to establish more than once. They are encoded in `rig.py` so
 > code and memory agree; if you believe one is wrong, say so explicitly and change **both**.
 > - **Eye-cam lens is 45°** (measured). `rig.EYE_FOV = 45.0`. Not 90.
