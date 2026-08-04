@@ -416,6 +416,32 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > `calib_preflight` now reports the dot's depth **±σ and the parallax cost per 10 cm of head
 > motion**, instead of a bare millimetre figure.
 >
+> ## >>> READ `DOMAIN_REFERENCE.md` — eye anatomy / tracking / optics, and what each implies here
+> Researched 2026-08-03. Three items change how to read our own past measurements:
+> - **THE CANTHUS APPROACH IS THE LITERATURE'S SLIPPAGE ANSWER, NOT A WORKAROUND.** 3D
+>   model-based eye trackers compensate for headset slip; **2D video-based ones have NO known
+>   solution**, and measured slippage costs **0.8-3.1° of gaze error**. We track a face-fixed
+>   landmark to recover the glasses' pose — that IS the slippage term. With a **zip-tied,
+>   non-repeatable mount** this is essential rather than optional.
+> - **THE 9.9 vs 10.1 px PUPIL RESULT IS STRUCTURAL, NOT A NULL FINDING.** Rendering needs a
+>   projection centre: the **entrance pupil** gives the best ANGULAR accuracy but **moves ~10 mm
+>   with gaze** (the eye rotates about a point ~10 mm behind the pupil); the **centre of rotation**
+>   is gaze-INDEPENDENT. A canthus can only give the gaze-independent one, so pupil information has
+>   nowhere to go in our formulation. It cost ~0 to omit — and at 20 m the two viewpoints differ by
+>   **0.003°**, so **the choice is well matched to the far-field goal.** It would cost ~44 px at 0.5 m.
+> - **DISPLAY FOV IS NOT A CONSTANT.** "Pupil swim" means the angle→pixel mapping varies with where
+>   the eye sits in the eyebox, in **every** near-eye display. So `geometry.DISPLAY_FOV_DEG = 50.0`
+>   is both unmeasured AND unrepresentable as one scalar. **The saving grace is architectural:** the
+>   learned residual takes the EYE-CORNER features as input, which encode exactly the eye-position
+>   variable pupil swim depends on — so geometry+residual can learn a position-dependent correction
+>   that no fixed constant could. That is a stronger argument for the split than the one we adopted
+>   it for.
+> - **`display_calib.py` is written, has NEVER been run, and measures real FOV + K1/K2.** It is the
+>   highest-value unrun tool in the repo and feeds the second-largest unmodelled error term.
+> - Also settled: angle kappa (visual vs optical axis) is **~5° horizontal, ~1.5° vertical** and
+>   **varies per person**; the inner canthus is skull-fixed soft tissue, which is why
+>   `SOFT_TISSUE_SD=0.15mm` is a "holding still" placeholder that squinting/talking exceeds.
+>
 > ## >>> READ `LATENCY_AND_TRACKING.md` — WE HAVE BEEN USING THE WRONG CLASS OF TOOL
 > Researched 2026-08-03 after a session spent fighting overlay lag and jitter by tuning filters.
 > **A filter can only trade lag against jitter. The field's answer is PREDICT then REPROJECT**,
