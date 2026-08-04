@@ -5,7 +5,7 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 
 ---
 
-> # >>> START HERE — STATE AT END OF 2026-08-03 <<<
+> # >>> START HERE — STATE AT END OF 2026-08-04 <<<
 >
 > You're continuing the **AR eye-calibration rig** (`~/ar-eye-calibration`, a git repo): a modified
 > **XREAL One Pro** that registers AR-overlay pixels to the real world using eye-corner cameras
@@ -14,13 +14,29 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > trade-off below, because far-field is direction-dominated and near-field is not.
 >
 > ## THE ONE-PARAGRAPH STATUS
-> Preflight is **6/6 READY TO CALIBRATE**. Both eyes track (~90% lock, ~100% in band), the dot
-> detector locks on the paper target, the **glasses' own IMU is decoded and driving latency
-> prediction at ~1100 Hz**, lighting asymmetry is solved in software, and overlay geometry is
-> closed-form with a **measured** display scale. Real-sample overlay error is **27 px @1080**.
-> `verify_all.py --fast` = **44 checks, all passing**. **17 real calibration samples** are stored
-> with healthy feature spread. Dylan's verdict on the last run: *"much better... it actually locks
-> and trys to follow dot"*, with fly-offs only when the dot detector grabs the wrong object.
+> Preflight was **6/6 READY TO CALIBRATE** on 2026-08-03. Both eyes track (~90% lock), the
+> **glasses' own IMU is decoded and driving latency prediction at ~1100 Hz**, lighting asymmetry is
+> solved in software, and overlay geometry is closed-form. `verify_all.py --fast` = **45 checks,
+> all passing**. **The next run is a re-seat calibration, and `SESSION_2026-08-04.md` changes how
+> to do it** — the tooling for it (`reseat.py`, `--reseat-every`) is built and selftested but has
+> never run on hardware.
+>
+> ## >>> READ `SESSION_2026-08-04.md` — IT CORRECTS TWO THINGS THIS FILE USED TO SAY <<<
+> 1. **The "17 real calibration samples with healthy feature spread" were 13.** Four had the target
+>    **36-37° off axis, outside the 48° display**, and `geometric_pixel` CLIPPED them so they
+>    stored looking normal — one even scored the set's best error, 0.9 px, because the human had
+>    pushed the dot into the same corner the clip produced. **The recorded spread claim came
+>    entirely from those four**: world-dot span 0.467 with them, **0.056 without**. Now guarded by
+>    `geometry.offscreen`, refused at approve, and pinned in the selftest against the four literal
+>    stored vectors.
+> 2. **`DISPLAY_FOV_DEG = 48.25` is pinned to about ±3°, not ±0.1.** Bootstrapped 95% CI on the
+>    clean 13 is **47.2–52.8**. Keep the value — the reasoning for preferring the fit over the
+>    physical measurement is unchanged — but stop quoting it as if it were nailed down, and
+>    **re-fit it after a run that actually spans the field.**
+>
+> **And the strategic one:** the eye-corner correction is **parallax, so it dies as 1/distance** —
+> 14 px at 0.4 m, 3 px at 2 m, **0.3 px at 20 m**. For the far-field end goal it is worth a third
+> of a pixel. Measure it near; do not expect it to buy accuracy on cars down the street.
 >
 > ## THE ARCHITECTURE, AS IT NOW STANDS (this changed a lot on 2026-08-03)
 > ```
@@ -53,17 +69,38 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > | Capture modes (**per-sensor, do NOT derive from aspect**) | eye OV9281 **640x400**; world AR0234 **640x480** |
 > | Pipeline rate | 55.9 ms/frame = **17.9 fps** |
 > | Overlay latency | **62 ms** (was 196 ms) |
-> | Display scale `DISPLAY_FOV_DEG` | **48.25** — EFFECTIVE, not physical (see geometry.py) |
+> | Display scale `DISPLAY_FOV_DEG` | **48.25** — EFFECTIVE, not physical (see geometry.py). **CI 47.2–52.8**, so ±3° not ±0.1 — re-fit after a run that spans the field |
+> | Eye-shift correction is PARALLAX | 3 mm of seat = 14 px @0.4 m, 3 px @2 m, **0.3 px @20 m** — near-field only |
+> | Display vs camera FOV | cams see **70°**, display covers **48.25°** — the rig can DETECT a target it cannot DRAW ON (`geometry.offscreen`) |
 > | XREAL IMU | **TCP 169.254.2.1:52998**, 134-byte records, gyro @0x22, accel @0x2e, ~1100 Hz |
 > | Gyro→image axis map | `du<-wy(yaw) +`, `dv<-wx(pitch) -`, R² 0.99/0.85, in `data/imu_map.npz` |
 > | Corpus brightness | 139–161 (narrow — this made the model brittle) |
-> | Real-sample overlay error | **27 px @1080**, geometry-only |
+> | Real-sample overlay error | **27 px @1080** median, geometry-only — but **p95 693 px** over all 17, **60 px over the clean 13** |
+> | The real sample set | **13 usable, not 17** — 4 were off-screen targets (see `SESSION_2026-08-04.md`) |
 >
 > ## >>> NEXT ACTIONS, IN ORDER OF MEASURED VALUE <<<
-> 1. **RE-SEAT THE GLASSES DURING THE NEXT CALIBRATION RUN.** Take them off and back on between
->    batches. The eye-corner correction is built and inert because the last run's eye-feature
->    spread was sd 0.032/0.0085 — *the glasses never moved*, so a glasses-position correction had
->    nothing to correct. This is the cheapest unlock and it is pure protocol, no code.
+> 1. **THE RE-SEAT CALIBRATION RUN — and the protocol is NOT what this file used to say.**
+>    "Take them off and put them back on between batches" is a **coin flip**: measured over 12
+>    simulated runs (`python3 reseat.py --power`), it detects a true gain **50% of the time** at 32
+>    samples. Four changes make it certain at the same sample count, all free:
+>    - **RE-SEAT DELIBERATELY DIFFERENTLY (~6 mm), not just off-and-on** — shift the glasses
+>      up/down/left/right on the nose. The mount is zip-tied; this is easy and it is the real
+>      slippage the correction exists for.
+>    - **KEEP THE TARGET CLOSE, 0.4–1.0 m, FOR THIS MEASUREMENT.** The term is parallax: 9 px of
+>      effect at 0.4–1 m against 1.8 px at 1–3 m. The gain is dimensionless so it transfers.
+>    - **COVER THE SAME PART OF THE FIELD AT EVERY SEATING.** One target per seating aliases seat
+>      with direction perfectly (independence 1%, gain scatter ±1.2) — `reseat.py` detects it and
+>      refuses rather than reporting a confident wrong number.
+>    - **SPAN THE FIELD.** The last run covered **5.6%** of it. This is also what `DISPLAY_FOV_DEG`
+>      needs in order to be pinned better than ±3°.
+>    ```bash
+>    python3 main.py ... --reseat-every 8      # 4+ seatings, 8 samples each, targets 0.4-1.0 m
+>    python3 reseat.py --check --joint         # SET IT / LEAVE IT OFF / CANNOT DECIDE
+>    ```
+>    **`reseat.py` can say CANNOT DECIDE, and that is the whole point.** On the 2026-08-03 samples
+>    it does: effect **0.85 px**, gain 23 ± 62, seat span **0.00 mm**. The old sweep's "no gain
+>    wins" was never a null result, and recording it as one would have frozen `EYE_SHIFT_GAIN` at
+>    0.0 for a reason that was never tested.
 > 2. **MEASURE DISPLAY DISTORTION** — `display_calib.py --render-grid`, photograph the checkerboard
 >    through the optic, `--analyze`. k1/k2 are still `rig.py` placeholders, and part of the 2-3°
 >    gap between the fitted and physical FOV should migrate there. **Re-fit `DISPLAY_FOV_DEG`

@@ -76,6 +76,21 @@ import rig
 #
 # RE-MEASURE if the glasses, display mode, or eye relief change. Prefer the data fit; use the wall
 # method as the independent cross-check it turned out to be.
+#
+# >>> HOW PRECISE IS THIS, REALLY? ABOUT +-3 DEGREES. MEASURED 2026-08-04, AND IT IS NOT +-0.1. <<<
+#
+# Bootstrapping the fit that produced it (400 resamples of the real samples):
+#     clean 13 samples   best 49.00   95% CI  47.2 - 52.8
+#     all 17 samples     best 49.00   95% CI  46.7 - 52.8
+# The profile is not a parabola, it is noise: 25.9 px at 47.0, 26.5 at 48.0, 20.6 at 49.0, 25.6 at
+# 50.0. THE REASON IS SPREAD, NOT SAMPLE COUNT: those samples span 5.6% of the world field once the
+# four off-screen ones are removed (see `offscreen` below), and an angular scale fitted over almost
+# no lever arm is barely constrained. Since 2 degrees costs 18 px, this constant carries about as
+# much uncertainty as the residual it was credited with removing.
+#
+# KEEP THE VALUE — everything above still holds, and removing the four bad samples moves the fit
+# from 48.20 to 49.00, deep inside the interval, so contamination did not bias it. But do not quote
+# 48.25 as if it were nailed down, and RE-FIT IT AFTER A RUN THAT SPANS THE FIELD.
 DISPLAY_FOV_DEG = 48.25
 
 # Lateral and vertical offset from the EYE to the world camera it is paired with, in mm. The eye
