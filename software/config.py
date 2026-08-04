@@ -65,8 +65,22 @@ class Config:
 
     # ---- capture quality / smoothing ----
     eye_conf_min: float = 0.45     # reject an approve if eye-corner match < this
-    feat_smooth: float = 0.4       # EMA on live eye features (0..1, higher=snappier)
-    pred_smooth: float = 0.5       # EMA on the displayed prediction (reduces jitter)
+    # SMOOTH THE SLOW SIGNAL, NOT THE FAST ONE. Measured 2026-08-03: the pipeline runs 55.9 ms/frame
+    # (17.9 fps) and these two EMAs added 84 + 56 = 140 ms on top -- 71% of a 196 ms total, which is
+    # 225 px of lag at a gentle 30 deg/s head turn. Dylan: "it feels more like i am moving the dot
+    # with my head than the dot is trying to reach the point."
+    #
+    # The two feature groups have completely different dynamics and must not share a filter:
+    #   WORLD DOT (features 0-3) is the DIRECTION term. It moves as fast as the head does, it is
+    #     already protected against mis-detections by main._gate_dot, and smoothing it is precisely
+    #     what converts head motion into lag. Runs UNSMOOTHED.
+    #   EYE CORNERS (features 4-7) encode how the glasses SIT on the face. That changes slowly --
+    #     a re-seat, a slip -- so smoothing costs nothing and genuinely steadies the estimate.
+    feat_smooth: float = 0.4       # EMA on the EYE features only (0..1, higher=snappier)
+    feat_smooth_world: float = 1.0 # world dot: NO smoothing (1.0 = pass through)
+    # pred_smooth existed to hide POLYNOMIAL jitter. Geometry is now the backbone (see geometry.py)
+    # and is stable frame-to-frame, so heavy smoothing here buys nothing and costs a frame of lag.
+    pred_smooth: float = 0.9       # EMA on the displayed prediction (0.9 = barely smoothed)
 
     # NIR pupil-centre feature (8 -> 10): the 2 NIR pupil cams of the 6-camera binocular CORE.
     # Off by default so the 8-feature WORLD+EYE-CORNER base pipeline (selftest/pixel_sweep/

@@ -308,11 +308,16 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                     live = False
                     features = last_features
                 else:
-                    # EMA-smooth the live eye features to steady the prediction
-                    smooth_feat = (features if smooth_feat is None else
-                                   cfg.feat_smooth * features +
-                                   (1 - cfg.feat_smooth) * smooth_feat)
-                    features = smooth_feat
+                    # EMA the EYE features only. The world dot drives DIRECTION and must pass
+                    # through unsmoothed -- filtering it is what made the overlay lag behind the
+                    # head. See config.feat_smooth_world for the measured lag budget.
+                    if smooth_feat is None:
+                        smooth_feat = features.copy()
+                    else:
+                        aw, ae = cfg.feat_smooth_world, cfg.feat_smooth
+                        smooth_feat[:4] = aw * features[:4] + (1 - aw) * smooth_feat[:4]
+                        smooth_feat[4:] = ae * features[4:] + (1 - ae) * smooth_feat[4:]
+                    features = smooth_feat.copy()
                     last_features = features
 
             predicted = cal.predict(features)
