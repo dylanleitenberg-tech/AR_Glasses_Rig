@@ -404,6 +404,33 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > `calib_preflight` now reports the dot's depth **±σ and the parallax cost per 10 cm of head
 > motion**, instead of a bare millimetre figure.
 >
+> ## >>> THE XREAL'S OWN IMU IS PROBABLY READABLE — CHECK THIS BEFORE WIRING ANYTHING
+> Dylan, 2026-08-03: *"the xreal has an imu so it may not need an additional imu."* He is right,
+> and it may be BETTER than a carrier-mounted one. **Verified on this Mac:** the glasses enumerate
+> as USB `XREAL One Pro`, **VendorID 13080 (0x3318), ProductID 1078**, and expose **HID interfaces
+> including `PrimaryUsagePage = 65` (0x41, vendor-defined)** — which is exactly where the
+> community Linux/macOS drivers read IMU packets from. No extra hardware, no soldering.
+> - Prior art: `SamiMitwalli/One-Pro-IMU-Retriever-Demo` (One Pro specifically, gyro + accel) and
+>   `adidoes/xrealair-sdk-macos` (macOS port of the nrealAir driver, reads two HID interfaces).
+> - **WHY IT MAY BEAT OUR OWN IMU, and this is the real argument:** the XREAL's IMU is rigid to the
+>   GLASSES, which is where the DISPLAY is. Our carrier is **ZIP-TIED** and moves relative to the
+>   glasses. Late-stage reprojection needs *display-relative* rotation, so the glasses' own IMU is
+>   the more correct reference. A carrier IMU measures the CAMERAS' motion (what VIO wants); the
+>   two differ only by carrier flex, which `MountAnchor` already detects.
+> - **STILL UNVERIFIED:** that the packets can actually be decoded on the One Pro, and at what rate.
+>   The HID interfaces existing is not the same as the data being readable. Try before planning on it.
+>
+> ## ACCELERATION vs POSITION — Dylan's second question, and he is right
+> *"why do we need to know acceleration if we know change in position/distance/angle?"* We do NOT.
+> My earlier "an IMU cannot give translation, it drifts" was about an **IMU ALONE**. With cameras
+> supplying position and the gyro supplying rotation you FUSE them — that is visual-inertial
+> odometry, the standard solution, and it is why the drift argument does not apply here.
+> - For the immediate need — **low-latency rotation compensation — only the GYRO is used.** Gyro
+>   integrates cleanly over short intervals. No accelerometer, no double integration, no drift problem.
+> - **"Can it update in real time?" Yes, and that is the whole point.** IMUs run 100-1000 Hz against
+>   our **13 fps** camera loop. Fast gyro for high-rate rotation, slow cameras for absolute position
+>   and drift correction. The camera loop never has to get faster.
+>
 > ## RENDERING ARCHITECTURE — follow mode + own IMU, decided 2026-08-03
 > Dylan asked the right question: to paint a goblet onto a cup, in FOLLOW mode the goblet swings
 > with your head so software must counter-rotate it, whereas a LOCKED screen appears to do that
