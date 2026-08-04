@@ -139,6 +139,17 @@ def check_world_dot(frames, detector=None):
     if ok:
         depth_mm, dv, warns = dot_geometry(where["worldL"], where["worldR"])
         detail += "  depth %s" % ("∞" if depth_mm is None else "%.0f mm" % depth_mm)
+        # A DEPTH WITHOUT ITS UNCERTAINTY INVITES THE PROJECT'S OLDEST MISTAKE -- trusting a
+        # number because it exists. depth.py reports how wrong it can be AND whether that is good
+        # enough for the parallax correction the overlay actually needs at that range.
+        try:
+            from depth import StereoDepth
+            m = StereoDepth().measure(where["worldL"], where["worldR"])
+            if m["ok"]:
+                detail += " ±%.0f mm (%.1f%%), parallax %.0f px per 10 cm of head motion" % (
+                    m["sigma_mm"], 100.0 * m["rel_sigma"], m["parallax_px_100mm"])
+        except Exception:
+            pass
         for w in warns:
             detail += "\n                     ⚠ " + w
         ok = not warns                       # a geometrically impossible "dot" is NOT a pass

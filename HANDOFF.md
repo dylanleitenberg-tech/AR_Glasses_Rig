@@ -378,6 +378,23 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >    do NOT expect better registration from it (corner-only 9.9 px vs +pupil 10.1 px) — the payoff
 >    is geometry ID (`ep_dist` 81→54%, `globe_r` 87→50%, IPD 57→16%) and blink rejection.
 >
+> ## >>> READ `CAPABILITIES.md` — the rig/XREAL capability inventory (added 2026-08-03)
+> Written because capability was scattered across 78 modules, `rig.py` and several sessions of
+> measurements, so it was genuinely hard to know what the rig already does. Every figure is either
+> measured on this hardware or read from `rig.py`, and anything **assumed** is labelled as such
+> (display FOV ~50°, "no world cams on the One Pro", follow-mode damping). It also lists the
+> **UNDER-USED RESOURCES**, which is the point: the unwired IMU (solves three problems at once),
+> the world cams as a depth sensor, the 70% of the eye sensor thrown away by 640×480, the free
+> pupil head, the mount as a fiducial, and global shutter on all four cameras.
+>
+> **`software/depth.py` (new)** — the world pair as a METRIC DEPTH SENSOR with uncertainty, which
+> is the one capability the glasses fundamentally cannot have. `python3 depth.py --table` prints
+> the working envelope; `--selftest` is in `verify_all` (now **40 checks**). Refusals are
+> first-class: epipolar violation, **negative disparity** (reversed pair — never `abs()`'d), and
+> disparity below the noise floor each return a named cause rather than a confident number.
+> `calib_preflight` now reports the dot's depth **±σ and the parallax cost per 10 cm of head
+> motion**, instead of a bare millimetre figure.
+>
 > ## RENDERING ARCHITECTURE — follow mode + own IMU, decided 2026-08-03
 > Dylan asked the right question: to paint a goblet onto a cup, in FOLLOW mode the goblet swings
 > with your head so software must counter-rotate it, whereas a LOCKED screen appears to do that
