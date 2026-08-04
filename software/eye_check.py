@@ -8,13 +8,13 @@ guessing.
 
 READ THE CAVEATS, THEY ARE THE POINT:
 
-  * MEASURE ONLY WHILE THE RIG IS WORN. On a desk the cams stare at the room and every number here
-    is meaningless. Worn-vs-not is decided by smooth_frac() -- the share of the frame that is flat
-    skin -- NOT by the saturated-pixel ratio. Saturation was the original test and it was WRONG:
-    it called a dim room "consistent with the worn signature" at 0.2% saturated. Read
-    smooth_frac's docstring before trusting anything here. When the rig is not on a face this
-    tool now refuses to report exposure or model verdicts at all, because numbers about the
-    furniture are worse than no numbers.
+  * MEASURE ONLY WHILE THE RIG IS WORN -- and note that DETECTING that is genuinely hard. Two
+    metrics were tried and both overclaimed. Saturation was first and was plain wrong: it called
+    a dim room "consistent with the worn signature" at 0.2% saturated. flat-skin (smooth_frac) is
+    better but the classes OVERLAP -- measured worn 83-92%, room 77-83% -- so a hard threshold
+    false-negatived a rig that was locking 88% of frames on a real eye. It is now an ADVISORY,
+    corroborated by whether the canthus holds an in-band lock, and the measurement is never
+    silently withheld. The saved PNG remains the only real proof.
 
   * WHOLE-FRAME LAPLACIAN IS NOT A FOCUS METRIC HERE. An eye socket is mostly smooth skin; a
     living room is wall-to-wall edges. A perfectly focused eye cam reads ~15 while a world cam
@@ -40,7 +40,7 @@ SAT_DESK = {"eyeL": 40.9, "eyeR": 20.2}
 SAT_BLOWN = 15.0        # above this, the image is too clipped for the model to read texture
 
 
-SMOOTH_WORN_MIN = 84.0   # % of frame in flat regions; see smooth_frac() for why this and not sat
+SMOOTH_WORN_MIN = 82.0   # % of frame in flat regions; see smooth_frac() for why this and not sat
 
 
 def smooth_frac(gray, cv2):
@@ -77,11 +77,28 @@ def _verdict(role, sat, states, in_band, n, smooth=None):
     # NOT-WORN SHORT-CIRCUITS EVERYTHING. Reporting exposure and model verdicts on a picture of a
     # room is worse than reporting nothing: it sends the session off adjusting hardware against
     # numbers that describe furniture.
-    if smooth is not None and smooth < SMOOTH_WORN_MIN:
-        return ["NOT ON A FACE — only %.0f%% of the frame is flat skin (worn reads >%.0f%%, a room "
-                "reads ~77-83%%). Every other number below is about the room, not your eye. Put "
-                "the rig on and re-run; look at the saved PNG to confirm."
-                % (smooth, SMOOTH_WORN_MIN)]
+    # ADVISORY, NOT A VETO — the classes genuinely OVERLAP and I twice claimed otherwise.
+    #
+    # Measured flat-skin on this rig: WORN 92.1, 90.7, 85, 84, 83 | ROOM 83.2, 81.5 | DESK 77.2,
+    # 77.3. Worn-83 and room-83.2 are indistinguishable, so no threshold separates them. The
+    # six-frame calibration that suggested a clean gap was simply too small a sample, and a hard
+    # veto built on it false-negatived a rig that was locking 88% of frames on a real eye.
+    #
+    # A LOCKED, IN-BAND CANTHUS IS THE STRONGER EVIDENCE. The model was trained on this face; if it
+    # is locking consistently inside the anatomical band, the numbers below describe an eye. Note
+    # this is NOT circular for the question being asked -- "are these numbers about a room?" -- and
+    # it is not sufficient alone either, since a room once scored 100% in-band on eyeR. So: report
+    # both signals, warn when they disagree, and never silently withhold the measurement.
+    lock_ok = n and states.get("ok", 0) >= 0.5 * n and in_band >= 0.5 * n
+    if smooth is not None and smooth < SMOOTH_WORN_MIN and not lock_ok:
+        return ["PROBABLY NOT ON A FACE — only %.0f%% of the frame is flat skin (worn 83-92%%, "
+                "room 77-83%%, and those OVERLAP), and the canthus is not holding a lock. Treat "
+                "everything below as suspect and check the saved PNG."
+                % smooth]
+    if smooth is not None and smooth < SMOOTH_WORN_MIN and lock_ok:
+        out.append("flat-skin %.0f%% is low (worn 83-92%%, room 77-83%%) but the canthus is LOCKED "
+                   "and in band, so this is a face — the flat-skin screen is the unreliable half."
+                   % smooth)
     if sat >= SAT_BLOWN:
         near = "desk/blown-out (%.1f%%)" % desk if abs(sat - desk) < abs(sat - worn) else "blown out"
         out.append("BLOWN OUT — %.1f%% saturated, matches the %s signature, not the worn one "
@@ -289,9 +306,20 @@ def selftest():
     chk("blown-out but locked STILL reports blowout", "BLOWN OUT" in v)
     # THE FRAME THAT FOOLED THE OLD CHECK: a dim room read 0.2% saturated -- inside the worn
     # band -- and was reported as "EXPOSURE OK". Flat-skin must veto it regardless of exposure.
-    v = " ".join(_verdict("eyeR", 0.2, {"ok": 30}, 30, 30, smooth=81.5))
-    chk("dim ROOM (0.2% sat, looks worn by exposure) is caught as NOT ON A FACE",
+    v = " ".join(_verdict("eyeR", 0.2, {"lost": 30}, 0, 30, smooth=81.5))
+    chk("dim ROOM (looks worn by exposure, no lock) is flagged NOT ON A FACE",
         "NOT ON A FACE" in v)
+    # THE FALSE ALARM THIS REPLACES: eyeL read 83% flat-skin while locking 88% of frames on a real
+    # eye, and the old hard veto suppressed a perfectly good measurement.
+    # The exact 2026-08-03 false alarm: 83% flat-skin while locking 88% on a real eye.
+    v2 = " ".join(_verdict("eyeL", 3.6, {"ok": 208, "held": 28}, 210, 236, smooth=83.0))
+    chk("83% flat-skin + locked is NOT vetoed (the 2026-08-03 false alarm)",
+        "NOT ON A FACE" not in v2)
+    chk("...and it still reports the model result", "MODEL" in v2)
+    # Below the threshold AND locked: report, but say which signal to distrust.
+    v3 = " ".join(_verdict("eyeL", 3.6, {"ok": 208, "held": 28}, 210, 236, smooth=79.0))
+    chk("below-threshold flat-skin + locked still reports, naming the weak signal",
+        "NOT ON A FACE" not in v3 and "unreliable half" in v3 and "MODEL" in v3)
     chk("not-on-a-face suppresses the exposure verdict", "EXPOSURE OK" not in v)
     chk("not-on-a-face suppresses the model verdict", "MODEL" not in v)
     chk("genuinely worn (92.1%) is NOT vetoed",
