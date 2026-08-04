@@ -85,6 +85,8 @@ def main(fast=False):
          "python3 geometry.py --selftest", "GEOMETRY OK"),
         ("velocity-adaptive smoothing (beats every fixed EMA on jitter AND lag)",
          "python3 smoothing.py --selftest", "SMOOTHING OK"),
+        ("latency compensation by prediction (beats filtering AND raw at photon time)",
+         "python3 predictor.py --selftest", "PREDICTOR OK"),
         ("capture/blink/fallback", "python3 main.py --capture-test", "PROVEN"),
         ("imu filter selftest", "python3 imu.py", "IMU FILTER OK"),
         ("imu serial + gyro integrator", "python3 imu_serial.py --selftest", "GYRO INTEGRATOR OK ✅"),

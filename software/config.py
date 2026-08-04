@@ -86,7 +86,14 @@ class Config:
     # this one does not. min_cutoff sets how still the dot is when you are still (lower = stiller);
     # beta sets how fast it opens up when you move (higher = less lag, more jitter during motion).
     one_euro_min_cutoff: float = 0.8
-    one_euro_beta: float = 4.0
+    one_euro_beta: float = 8.0     # prediction supplies responsiveness, so the filter stays smooth
+    # PIPELINE LATENCY, measured 2026-08-03: 55.9 ms/frame capture+process plus filter delay.
+    # This is the look-ahead the predictor extrapolates by, so it must track the real pipeline --
+    # RE-MEASURE IT if the camera modes, resolution or per-frame work change.
+    latency_s: float = 0.062
+    # How fast the look-ahead backs off when motion becomes unpredictable (a turn reversal).
+    # Lower = more cautious. Swept: 2 / 10 / 50 gave overall 24 / 20 / 20 px, so 10 is the knee.
+    predict_accel_scale: float = 10.0
 
     # NIR pupil-centre feature (8 -> 10): the 2 NIR pupil cams of the 6-camera binocular CORE.
     # Off by default so the 8-feature WORLD+EYE-CORNER base pipeline (selftest/pixel_sweep/
