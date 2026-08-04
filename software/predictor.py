@@ -67,7 +67,8 @@ class LatencyCompensator:
     # overall while keeping rest-jitter near the heavy-smoothing value -- which is the combination
     # no single filter could reach, and the reason this module exists.
     def __init__(self, lookahead_s=0.062, min_cutoff=0.8, beta=8.0,
-                 vel_cutoff=1.2, accel_scale=10.0, max_lead_frac=0.35):
+                 vel_cutoff=1.2, accel_scale=10.0, max_lead_frac=0.35,
+                 velocity_source=None):
         self.lookahead_s = float(lookahead_s)
         self.accel_scale = float(accel_scale)
         # Hard ceiling on how far a prediction may move the dot, as a fraction of the display.
@@ -76,6 +77,11 @@ class LatencyCompensator:
         self.max_lead_frac = float(max_lead_frac)
         self._pos = OneEuro(min_cutoff=min_cutoff, beta=beta)
         self._vel = OneEuro(min_cutoff=vel_cutoff, beta=0.0)
+        # OPTIONAL EXTERNAL VELOCITY — the IMU. Differentiating the dot gives this same quantity
+        # at 17.9 Hz and one frame stale; the gyro gives it at ~1100 Hz and current, which is the
+        # entire point of the fast/slow split. Supplying it changes nothing else in the chain.
+        self.velocity_source = velocity_source
+        self.used_imu = False
         self.reset()
 
     def reset(self):
@@ -95,8 +101,20 @@ class LatencyCompensator:
             self._v_prev = np.zeros_like(p)
             return p
         dt = max(float(t) - self._t_prev, 1e-6)
-        v_raw = (p - self._p_prev) / dt
-        v = self._vel(v_raw, t)
+        v_ext = None
+        if self.velocity_source is not None:
+            try:
+                cand = np.asarray(self.velocity_source(), float)
+                if cand.shape == p.shape and np.all(np.isfinite(cand)):
+                    v_ext = cand
+            except Exception:
+                v_ext = None
+        self.used_imu = v_ext is not None
+        if v_ext is not None:
+            v = v_ext                       # already current and low-noise; do not re-filter
+        else:
+            v_raw = (p - self._p_prev) / dt
+            v = self._vel(v_raw, t)
         a = (v - self._v_prev) / dt
 
         # PREDICTABILITY. Steady motion extrapolates well; a sharp direction change does not, and

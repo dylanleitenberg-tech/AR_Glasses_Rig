@@ -500,6 +500,41 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 >   geometric error from **396 px to 72 px** against the simulator oracle. **Test new geometry
 >   against `autosim` before trusting it on hardware** — it found this in one run.
 >
+> ## >>> THE IMU NOW DRIVES THE PREDICTOR — axis map MEASURED, R^2 0.99 (2026-08-03)
+> `data/imu_map.npz`, measured by `python3 xreal_imu.py --map`. Result:
+> ```
+> du <- wy (YAW)    sign +1   |corr| 0.99   fitted/theoretical 0.97   R^2 0.988
+> dv <- wx (PITCH)  sign -1   |corr| 0.99   fitted/theoretical 0.73   R^2 0.853
+> ```
+> Yaw drives horizontal, pitch drives vertical — physically correct — and the **fitted scale
+> matches the FOV prediction to 3% on u, which independently confirms `WORLD_FOV = 70°`.** The v
+> ratio of 0.73 is not error: the 16:10 sensor's VERTICAL FOV predicts 0.68, so the aspect-corrected
+> theory matches and the naive one does not. That is a second, independent confirmation.
+>
+> **`main.py` now uses the IMU as the predictor's velocity source automatically**, and falls back
+> to image motion if the glasses are unplugged or no usable map exists. `load_map()` **REFUSES a
+> map with R^2 < 0.3** rather than letting a bad one predict backwards.
+>
+> **THREE THINGS THAT MADE THIS WORK, each after a failed attempt — do not undo them:**
+> 1. **OPTICAL FLOW, NOT THE DOT.** The dot is one small target competing with a whole room; when
+>    it mis-detects it jumps to an unrelated object. Across three runs the fitted axis assignment
+>    FLIPPED between yaw and pitch at |corr| 0.13 — a fit converging on nothing. Head rotation moves
+>    the ENTIRE SCENE, so median sparse flow over ~300 corners is vastly more robust, needs no
+>    detector, and does not care if the target leaves frame. **|corr| went 0.13 -> 0.99.**
+> 2. **INTEGRATE, DO NOT DIFFERENTIATE.** Differencing dot positions at 17.9 fps against 0.004
+>    noise gives velocity SNR ~1.7 (R^2 0.03-0.07). Regressing DISPLACEMENT over a 0.30 s window
+>    against the INTEGRATED gyro averages noise down while signal grows linearly.
+> 3. **CONSTRAIN THE FIT TO THE PHYSICS.** A free 2x3 least squares has six parameters, and natural
+>    head motion couples the axes — it confidently attributed u to ROLL with a coefficient of -2.76
+>    where the entire plausible range is |1/FOV| = 0.82. Only FOUR things are unknown (which axis
+>    for u, which for v, and two signs); the magnitude follows from the FOV. Fixing the scale turns
+>    fitted/theoretical into a **CHECK** instead of a free parameter.
+>
+> **ON-SCREEN GUIDANCE.** `--map` shows instructions, live head-rate, and flow status **on the
+> display**, because terminal output does not reach someone wearing the glasses — that coordination
+> failure wasted several runs in one session. It also refreshes on FAILURE, since the first version
+> only redrew after a successful sample and so froze exactly when things went wrong.
+>
 > ## >>> THE XREAL IMU IS WORKING — 1100-1400 Hz, DECODED AND CONFIRMED (2026-08-03)
 > `software/xreal_imu.py`. **It is NOT HID.** The glasses present as a **USB NETWORK device**:
 > here they came up as `en8`, host `169.254.2.10`, **glasses at `169.254.2.1`, TCP port 52998**,

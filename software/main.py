@@ -291,10 +291,28 @@ def run_loop(cfg: Config, simulate: bool) -> int:
     # WITHOUT adding jitter. Measured at photon time on realistic head motion: 21 px, against
     # 58 px for the One Euro filter alone and 30 px for the raw signal. See predictor.py.
     from predictor import LatencyCompensator
+    # THE IMU IS THE VELOCITY SOURCE IF IT IS THERE. ~1100 Hz and current, against a 17.9 fps
+    # camera loop whose differentiated velocity is one frame stale. Falls back silently to the
+    # image-motion estimate if the glasses are unplugged or the axis map was never measured --
+    # load_map() REFUSES a low-R^2 map rather than letting a bad one predict backwards.
+    _imu_vel = None
+    try:
+        from xreal_imu import XrealIMU, ImuVelocity, load_map
+        _M, _r2 = load_map()
+        if _M is not None:
+            _imu = XrealIMU().open()
+            _iv = ImuVelocity(_M, _imu)
+            _imu_vel = _iv.velocity
+            print("IMU velocity source: ON (axis map R^2 %.2f/%.2f)" % (_r2[0], _r2[1]))
+        else:
+            print("IMU velocity source: off (no usable axis map — run xreal_imu.py --map)")
+    except Exception as _e:
+        print("IMU velocity source: off (%s)" % _e)
     pred_filt = LatencyCompensator(lookahead_s=cfg.latency_s,
                                    min_cutoff=cfg.one_euro_min_cutoff,
                                    beta=cfg.one_euro_beta,
-                                   accel_scale=cfg.predict_accel_scale)
+                                   accel_scale=cfg.predict_accel_scale,
+                                   velocity_source=_imu_vel)
     pred_s = None                  # EMA of the predicted pixel (reduces jitter)
     conf = 1.0
     n_saved = 0

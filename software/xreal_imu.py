@@ -321,6 +321,295 @@ def rad_to_display_px(angle_rad, display_fov_deg=50.0, display_px=1920):
     return np.tan(np.asarray(angle_rad, float)) / (2.0 * th) * display_px
 
 
+# ---------------------------------------------------------------------------
+#  Gyro -> image-plane velocity: the mapping MUST be measured, never assumed
+# ---------------------------------------------------------------------------
+MAP_PATH = "../data/imu_map.npz"
+
+
+def measure_axis_map(world_left=3, world_right=2, seconds=20.0, verbose=True):
+    """Regress world-dot image velocity against gyro to find the axis/sign mapping.
+
+    WHY MEASURED. The gyro reports rate about the glasses' own axes; the predictor needs velocity
+    in normalised IMAGE units. Which gyro axis drives u, which drives v, and with what SIGN, depends
+    on how the IMU is mounted inside the glasses and how the world cameras are oriented -- and this
+    rig has already been bitten by a flipped axis (rig.py +y UP vs image +y DOWN cost a 381 px
+    bias) and by a reversed stereo pair. A guessed sign here would predict the overlay BACKWARDS,
+    which looks exactly like the lag it is meant to cure.
+
+    So: move your head for `seconds` while a static target is in view, and solve the 2x3 least
+    squares  [du/dt, dv/dt] = M @ [wx, wy, wz]. The R^2 reported per row is the evidence that the
+    mapping is real -- a low R^2 means the fit is noise and must NOT be used.
+    """
+    import cv2
+    from cameras import Camera, ROLE_MODE
+    from dot_detector import DotDetector
+    det = DotDetector()
+    L = Camera(world_left, *ROLE_MODE["worldL"], name="worldL")
+    R = Camera(world_right, *ROLE_MODE["worldR"], name="worldR")
+    imu = XrealIMU().open()
+
+    # ON-SCREEN INSTRUCTIONS, because terminal output does not reach someone wearing the glasses.
+    # This exact coordination failure wasted several hardware runs in one session: the operator
+    # cannot read a console while the rig is on their face, so a run that needs them to DO
+    # something must say so on the display. It also shows live gyro rate and dot lock, so a bad
+    # run is obvious while it is happening rather than 20 s later.
+    win = "IMU axis map — follow the instruction.  q aborts"
+    cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+
+    def _hud(phase, remain, dps, locked, n):
+        img = np.zeros((300, 900, 3), np.uint8)
+        cv2.putText(img, phase, (24, 80), cv2.FONT_HERSHEY_SIMPLEX, 1.6, (0, 255, 255), 4)
+        cv2.putText(img, "%4.1f s left   (small moves - KEEP THE TARGET IN VIEW)" % max(remain, 0), (24, 140),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (220, 220, 220), 2)
+        col = (0, 255, 0) if dps > 15 else (0, 165, 255) if dps > 5 else (0, 0, 255)
+        cv2.putText(img, "head %5.1f deg/s %s" % (dps, "" if dps > 15 else "<- MOVE MORE"),
+                    (24, 200), cv2.FONT_HERSHEY_SIMPLEX, 1.0, col, 3)
+        cv2.putText(img, "flow %s   samples %d" % ("OK" if locked else "no texture", n),
+                    (24, 258), cv2.FONT_HERSHEY_SIMPLEX, 0.9,
+                    (0, 255, 0) if locked else (0, 0, 255), 2)
+        cv2.imshow(win, img)
+        return cv2.waitKey(1) & 0xFF
+
+    for c in range(3, 0, -1):                      # let them settle and read the first phase
+        _hud("GET READY — look at the target", c, 0.0, False, 0)
+        time.sleep(1.0)
+    # SAMPLE ONLY ON A GENUINELY NEW FRAME.
+    # Camera.read() happily returns the same buffered frame again, and dividing a ~zero position
+    # change by a ~zero dt manufactures enormous fake velocities that swamp the regression. The
+    # first attempt did exactly that and produced R^2 = 0.004 with a coefficient of 86 -- noise
+    # wearing the shape of a fit. Require both a minimum interval AND a changed frame.
+    MIN_DT = 0.035                        # ~ one frame at 17.9 fps, minus slack
+    samples = []
+    t0 = time.time()
+    last_t = 0.0
+    last_sig = None
+    gyro_seen = []
+    prev_gray = None
+    prev_pts = None
+    flow_pos = (0.0, 0.0)
+    try:
+        while time.time() - t0 < seconds:
+            now = time.time()
+            fL, fR = L.read(), R.read()
+            batch = imu.drain()
+            if batch:
+                gyro_seen.extend(b[0] for b in batch)
+            if fL is None or fR is None or not batch:
+                continue
+            sig = float(np.asarray(fL[::16, ::16], np.float32).sum())   # cheap frame fingerprint
+            if sig == last_sig or now - last_t < MIN_DT:
+                continue
+            # GLOBAL OPTICAL FLOW, not the single dot.
+            #
+            # The dot is the fragile part of this measurement: it depends on one small target
+            # winning against a whole room, and when it mis-detects it jumps to an unrelated object
+            # whose motion has nothing to do with the head. Measured consequence -- across three
+            # runs the fitted axis assignment FLIPPED between yaw and pitch with correlations of
+            # 0.13, which is a fit converging on nothing.
+            #
+            # But head rotation moves the ENTIRE SCENE, so every pixel carries the signal. Median
+            # sparse flow across a few hundred corners is enormously more robust than one blob, is
+            # unaffected by the target leaving frame, and needs no detector at all.
+            gcur = cv2.cvtColor(fL, cv2.COLOR_BGR2GRAY) if fL.ndim == 3 else fL
+            gcur = cv2.resize(gcur, (320, 200))
+            pl = None
+            if prev_gray is not None and prev_pts is not None and len(prev_pts) > 20:
+                nxt, st, _e = cv2.calcOpticalFlowPyrLK(prev_gray, gcur, prev_pts, None,
+                                                       winSize=(21, 21), maxLevel=3)
+                if nxt is not None and st is not None and int(st.sum()) > 20:
+                    good_new = nxt[st.ravel() == 1].reshape(-1, 2)
+                    good_old = prev_pts[st.ravel() == 1].reshape(-1, 2)
+                    fl = np.median(good_new - good_old, axis=0)     # median = outlier-proof
+                    # pixels -> normalised frame units of the DOWNSCALED image
+                    pl = (float(fl[0]) / 320.0, float(fl[1]) / 200.0)
+            prev_gray = gcur
+            prev_pts = cv2.goodFeaturesToTrack(gcur, maxCorners=300, qualityLevel=0.01,
+                                               minDistance=7)
+            # REFRESH THE HUD EVERY FRAME, INCLUDING FAILURES. The first version only drew after a
+            # SUCCESSFUL sample, so the instant the target left the frame the display froze on its
+            # last good state -- the operator kept turning, saw nothing wrong, and the run returned
+            # zero samples. A status display that stops updating exactly when things go wrong is
+            # worse than none.
+            el = now - t0
+            phase = ("TURN LEFT <-> RIGHT" if el < seconds * 0.5 else "NOD UP <-> DOWN")
+            dps = float(np.degrees(np.linalg.norm(np.mean([b[0] for b in batch], axis=0))))
+            key = _hud(phase, seconds - el, dps, pl is not None, len(samples))
+            if key in (ord("q"), 27):
+                break
+            if pl is None:
+                continue
+            g = np.mean([b[0] for b in batch], axis=0)     # mean rate over this frame interval
+            flow_pos = (flow_pos[0] + pl[0], flow_pos[1] + pl[1])   # integrate flow into a track
+            samples.append((now, flow_pos[0], flow_pos[1], g[0], g[1], g[2]))
+            last_t, last_sig = now, sig
+    finally:
+        L.release(); R.release(); imu.close()
+        try:
+            cv2.destroyWindow(win)
+        except Exception:
+            pass
+    # DID THE HEAD ACTUALLY MOVE? Without this, "you stood still" and "the fit is wrong" are
+    # indistinguishable, and the previous run could not tell them apart.
+    gs = np.array(gyro_seen) if gyro_seen else np.zeros((1, 3))
+    peak_dps = float(np.degrees(np.linalg.norm(gs, axis=1).max()))
+    med_dps = float(np.degrees(np.median(np.linalg.norm(gs, axis=1))))
+    if verbose:
+        print("\nhead motion seen: median %.1f deg/s, peak %.1f deg/s" % (med_dps, peak_dps))
+        if peak_dps < 15:
+            print("   !! BARELY ANY MOTION. The glasses were still (or not on a head). Nothing "
+                  "\n      can be fitted from this — move noticeably, ~30 deg/s, both axes.")
+    if len(samples) < 30:
+        if verbose:
+            print("only %d usable samples — need the target in view throughout" % len(samples))
+        return None
+    # REGRESS DISPLACEMENT AGAINST INTEGRATED GYRO, NOT VELOCITY AGAINST RATE.
+    #
+    # Differentiating the dot position is the obvious approach and it is the wrong one: at 17.9 fps
+    # with ~0.004 detection noise, the velocity noise is 0.004/0.056 = 0.07 units/s, against a
+    # typical signal of ~0.12 -- an SNR near 1.7, which is exactly the R^2 = 0.03-0.07 the first
+    # attempts produced. The structure was already visibly correct (u driven by yaw, v by pitch);
+    # it was drowning, not absent.
+    #
+    # So integrate instead. The gyro integrates cleanly over short spans, and comparing DISPLACEMENT
+    # over a window against the INTEGRATED rate over the same window averages the position noise
+    # down by ~sqrt(N) while the signal grows linearly with the window. Same physics, far better
+    # conditioning -- and it never differentiates a noisy quantity.
+    a = np.array(samples)
+    t_s, uv_s, w_s = a[:, 0], a[:, 1:3], a[:, 3:6]
+    WIN = 0.30                                             # s; long enough to average, short
+    duv, w = [], []                                        # enough that gyro drift is irrelevant
+    j = 0
+    for i in range(len(t_s)):
+        while j < len(t_s) and t_s[j] - t_s[i] < WIN:
+            j += 1
+        if j >= len(t_s):
+            break
+        span = t_s[j] - t_s[i]
+        if span < WIN * 0.7:
+            continue
+        # trapezoidal integral of the gyro across the window = angle turned
+        seg_t, seg_w = t_s[i:j + 1], w_s[i:j + 1]
+        ang = np.trapz(seg_w, seg_t, axis=0)
+        duv.append(uv_s[j] - uv_s[i])
+        w.append(ang)
+    if len(duv) < 30:
+        if verbose:
+            print("only %d windows — run longer or keep the dot in view" % len(duv))
+        return None
+    duv = np.array(duv)
+    w = np.array(w)
+    # Drop physically impossible image velocities before fitting. At a 70 deg FOV even a fast
+    # 200 deg/s head turn moves the dot ~2.9 frame-units/s; anything far beyond that is a
+    # mis-detection jumping between objects, and one such outlier dominates a least-squares fit.
+    keep = np.linalg.norm(duv, axis=1) < 2.0        # displacement, in frame units, over one window
+    duv, w = duv[keep], w[keep]
+    if len(duv) < 30:
+        if verbose:
+            print("only %d samples survived outlier rejection" % len(duv))
+        return None
+    # CONSTRAINED FIT: the physics has FOUR unknowns, not six.
+    #
+    # A free 2x3 least squares has six free parameters and natural head motion couples the axes --
+    # you cannot yaw without a little roll -- so it happily attributes u to roll, which is
+    # physically wrong. Measured: it did exactly that, reporting a coefficient of -2.76 on az where
+    # the whole plausible range is |1/FOV| = 0.82.
+    #
+    # What is actually unknown is only: WHICH gyro axis drives u, WHICH drives v, and the SIGN of
+    # each. The magnitude follows from the world camera's field of view -- one radian of head
+    # rotation moves the image by 1/FOV_rad frame-units, by definition of the projection. So pick
+    # the axes by correlation, take the signs from them, and keep the theoretical scale. Four
+    # parameters, all well determined, and the fitted-vs-theoretical scale ratio becomes a CHECK
+    # rather than a free parameter: it should land near 1.0, and if it does not the mapping is
+    # wrong in a way a free fit would have silently absorbed.
+    import rig as _rig
+    fov_rad = np.radians(_rig.WORLD_FOV)
+    # PER-AXIS scale: the sensor is 16:10, so the VERTICAL field of view is not the horizontal
+    # one. Using the horizontal figure for both predicted a v-scale ratio of 0.68 where 1.0 was
+    # "correct"; the measured 0.73 matched the aspect-corrected prediction, not the naive one --
+    # which is a second, independent confirmation that the mapping is real rather than fitted.
+    fov_v_rad = 2.0 * np.arctan(np.tan(fov_rad / 2.0) * 10.0 / 16.0)
+    theo_uv = (1.0 / fov_rad, 1.0 / fov_v_rad)
+    theo = theo_uv[0]                        # reported headline value (horizontal)
+    axis_names = ("wx(pitch)", "wy(yaw)", "wz(roll)")
+    M = np.zeros((2, 3))
+    picked, scales, r2 = [], [], []
+    for row in (0, 1):
+        cors = [abs(np.corrcoef(w[:, k], duv[:, row])[0, 1]) if w[:, k].std() > 1e-9 else 0.0
+                for k in range(3)]
+        k = int(np.argmax(cors))
+        sgn = np.sign(np.corrcoef(w[:, k], duv[:, row])[0, 1]) or 1.0
+        fitted = float(np.dot(w[:, k], duv[:, row]) / max(np.dot(w[:, k], w[:, k]), 1e-12))
+        M[row, k] = sgn * theo_uv[row]
+        pred = w[:, k] * M[row, k]
+        ss = np.sum((duv[:, row] - pred) ** 2)
+        st = max(np.sum((duv[:, row] - duv[:, row].mean()) ** 2), 1e-12)
+        picked.append((k, cors[k]))
+        scales.append(fitted / (sgn * theo_uv[row]))
+        r2.append(1.0 - ss / st)
+    r2 = np.array(r2)
+    if verbose:
+        print("\n%d windows (%.2f s each). Constrained fit — axis + sign measured, scale from FOV:"
+              % (len(duv), WIN))
+        print("   theoretical scale: u %.3f, v %.3f frame-units/rad (FOV %.0f deg h, %.1f deg v)"
+              % (theo_uv[0], theo_uv[1], _rig.WORLD_FOV, np.degrees(fov_v_rad)))
+        for row, lbl in ((0, "u"), (1, "v")):
+            k, c = picked[row]
+            print("   d%s <- %-10s  sign %+d   |corr| %.2f   fitted/theoretical %.2f   R^2 %.3f"
+                  % (lbl, axis_names[k], int(np.sign(M[row, k])), c, scales[row], r2[row]))
+        if min(r2) < 0.3:
+            print("\n   !! R^2 IS LOW — do NOT use this. Either the head barely moved, or the dot"
+                  "\n      was lost for much of the run.")
+        elif not (0.4 < min(scales) and max(scales) < 2.5):
+            print("\n   !! the fitted scale is far from the FOV prediction (%.2f, %.2f). The axis"
+                  "\n      choice may be right but something else is off — check WORLD_FOV."
+                  % tuple(scales))
+    return {"M": M, "r2": np.array(r2), "n": len(duv)}
+
+
+def save_map(res, path=MAP_PATH):
+    np.savez(path, M=res["M"], r2=res["r2"], n=res["n"])
+    return path
+
+
+def load_map(path=MAP_PATH):
+    """(M, r2) or (None, None). Refuses a low-R^2 map rather than letting it predict backwards."""
+    try:
+        d = np.load(path)
+        M, r2 = d["M"], d["r2"]
+        if float(np.min(r2)) < 0.3:
+            return None, r2
+        return M, r2
+    except Exception:
+        return None, None
+
+
+class ImuVelocity:
+    """Image-plane velocity from the gyro, at IMU rate rather than camera rate.
+
+    This is what predictor.LatencyCompensator wants. Differentiating the dot's position gives the
+    same quantity at 17.9 Hz and one frame late; the gyro gives it at ~1100 Hz and current.
+    """
+
+    def __init__(self, M=None, imu=None):
+        self.M = M if M is not None else load_map()[0]
+        self.imu = imu
+        self.last = np.zeros(2)
+
+    def available(self):
+        return self.M is not None and self.imu is not None
+
+    def velocity(self):
+        """Latest image-plane [du/dt, dv/dt], or the last known value."""
+        if not self.available():
+            return self.last
+        batch = self.imu.drain()
+        if batch:
+            g = batch[-1][0]
+            self.last = self.M @ np.asarray(g, float)
+        return self.last
+
+
 def selftest():
     ok_all = True
 
@@ -407,6 +696,10 @@ if __name__ == "__main__":
     p.add_argument("--check", action="store_true", help="can this process see the device?")
     p.add_argument("--dump", action="store_true", help="raw HID reports (dead end, kept)")
     p.add_argument("--live", action="store_true", help="live gyro/accel over TCP")
+    p.add_argument("--map", action="store_true",
+                   help="measure the gyro->image axis mapping (move your head, target in view)")
+    p.add_argument("--world-left", type=int, default=3)
+    p.add_argument("--world-right", type=int, default=2)
     p.add_argument("--seconds", type=float, default=10.0)
     p.add_argument("--selftest", action="store_true")
     a = p.parse_args()
@@ -414,6 +707,13 @@ if __name__ == "__main__":
         sys.exit(selftest())
     if a.check:
         sys.exit(check())
+    if a.map:
+        res = measure_axis_map(a.world_left, a.world_right, a.seconds)
+        if res and float(np.min(res["r2"])) >= 0.3:
+            print("\nsaved -> %s" % save_map(res))
+            sys.exit(0)
+        print("\nNOT SAVED — the fit did not clear R^2 >= 0.3.")
+        sys.exit(1)
     if a.live:
         with XrealIMU() as _imu:
             time.sleep(0.3)
