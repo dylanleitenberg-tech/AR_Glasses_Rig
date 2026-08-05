@@ -231,8 +231,27 @@ is in this repo (`~/ar-eye-calibration`) or the persistent memory file.
 > 3. `git log --oneline | head -20` — the last three commits are this rig's hardware truth.
 >
 > ## SETTLED — do not re-derive, do not re-litigate
-> - **XREAL DISPLAY MODE MUST BE HEAD-FOLLOWING (0DoF), NEVER ANCHOR/LOCKED (3DoF).** Asked by
->   Dylan 2026-08-03 while calibrating; he had follow on, which is correct. The calibration learns
+> - **>>> CORRECTED 2026-08-04 — THE SENTENCE BELOW WAS WRONG ABOUT WHAT WAS ACTUALLY SET. <<<**
+>   It claimed Dylan "had follow on, which is correct" on 2026-08-03. **He had LOCKED on**, stated
+>   by him on 2026-08-04: *"it was in locked mode last session."* Nobody verified it at the time.
+>   **CONSEQUENCES, and they reach further than the note itself:**
+>   - **The 17 real calibration samples were captured in ANCHOR/3DoF mode** — the mode the argument
+>     below says corrupts the map. They are not a clean (features -> pixel) set.
+>   - **`DISPLAY_FOV_DEG = 48.25` was FITTED TO THOSE SAMPLES**, so it absorbed the glasses'
+>     internal stabiliser as well as everything else. This is a candidate explanation for why the
+>     wall measurement (46.71 deg) and the data fit (48.25 deg) never reconciled — a gap previously
+>     attributed to distortion and eye position alone.
+>   - **It also explains the 2026-08-04 regression.** Running in FOLLOW mode for the first time,
+>     Dylan: *"it followed my head movements instead of countering them."* That is correct
+>     behaviour for follow mode plus a 17.9 fps / 62 ms loop: last session the glasses' own
+>     stabiliser did the counter-rotation in hardware at near-zero latency, and this session the
+>     software had to do it. **Tracking felt better in locked mode because the hardware was doing
+>     the work — not because the calibration was better.**
+>   - The architectural conclusion is UNCHANGED and is now the thing to execute: keep FOLLOW and do
+>     low-latency rotation compensation with our OWN IMU (see RENDERING ARCHITECTURE below). The
+>     IMU is decoded and running; the reprojection is what is missing.
+> - **XREAL DISPLAY MODE MUST BE HEAD-FOLLOWING (0DoF), NEVER ANCHOR/LOCKED (3DoF).** The
+>   calibration learns
 >   a fixed map from (eye features + world dot) -> DISPLAY PIXEL, and that map only exists if a
 >   pixel corresponds to a FIXED direction relative to the glasses. Follow mode gives exactly that.
 >   Anchor mode has the glasses' own IMU shift the image *within* the optics to hold it world-fixed,

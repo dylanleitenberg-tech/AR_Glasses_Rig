@@ -322,7 +322,12 @@ def run_loop(cfg: Config, simulate: bool) -> int:
     # protocol, not modelling: geometry.eye_offset_mm can only be shown to help if the quantity it
     # corrects for -- the glasses' position on the face -- actually varies within the dataset.
     reseat_every = int(getattr(cfg, "reseat_every", 0) or 0)
-    seat_idx = 0
+    # A NEW RUN IS A NEW SEATING, ALWAYS. Samples already in the DB were captured on an earlier
+    # wearing of the glasses, so continuing at their seat index would merge two different seatings
+    # into one group and quietly destroy the between-seat contrast the whole protocol exists to
+    # create. Start after the highest one on record.
+    _prior = ds.load_seats()
+    seat_idx = int(_prior.max()) + 1 if len(_prior) else 0
     since_reseat = 0
     reseat_pending = False
     if reseat_every > 0:
