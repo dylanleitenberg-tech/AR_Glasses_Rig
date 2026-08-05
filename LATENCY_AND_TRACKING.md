@@ -24,7 +24,7 @@ literature 50 ms was considered typical for a mid-range 1990s system, and modern
 **under 20 ms motion-to-photon**. We were 10x off the modern target and calling it smoothing.
 
 **Consequence for us:** effort spent on calibration accuracy is wasted while latency dominates.
-Dylan's instinct, *"this must run perfectly before anything else can be done"*, matches the
+My instinct, that this must run perfectly before anything else can be done, matches the
 literature exactly.
 
 ---
@@ -90,8 +90,8 @@ comparisons ([arXiv 2108.01654](https://ar5iv.labs.arxiv.org/html/2108.01654)):
 | **[VINS-Mono / VINS-Fusion](https://github.com/HKUST-Aerial-Robotics/VINS-Mono)** | sliding-window optimisation | IMU pre-integration with bias correction, online extrinsic calibration, loop closure |
 | **Basalt** | graph-based | fastest of the three; best stereo accuracy |
 
-**This is the same conclusion the project already reached from the other direction.** `HANDOFF.md`
-records that `WorldTracker` builds 0 map points because stereo initialisation degrades under
+**This is the same conclusion the project already reached from the other direction.** My earlier
+notes record that `WorldTracker` builds 0 map points because stereo initialisation degrades under
 rotation-dominant motion with far landmarks, and that an IMU is the standard fix. The latency work
 and the SLAM work want *the same component*.
 

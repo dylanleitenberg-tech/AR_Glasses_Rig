@@ -1,6 +1,6 @@
 # RIG + XREAL CAPABILITY INVENTORY
 
-**Why this file exists.** Dylan, 2026-08-03: *"don't underutilize our resources."* Capability was
+**Why this file exists.** I was underutilizing what I had already built. Capability was
 scattered across 78 modules, `rig.py`, three hardware docs and several sessions' worth of
 measurements, so it was genuinely hard to know what the rig could already do. Every number here is
 either measured on this hardware or read from `rig.py` (the single source of truth), where
@@ -62,9 +62,9 @@ double-integrating acceleration, which drifts quadratically, metres within secon
 firmware. A 3DoF stabiliser therefore cancels rotation *exactly* and translation *not at all*.
 
 **Consequence (decided 2026-08-03):** keep the XREAL in **head-following (0DoF)**, never
-anchor/locked, and do low-latency rotation compensation with **our own IMU** as late as possible
+anchor/locked, and do low-latency rotation compensation with **my own IMU** as late as possible
 before drawing. Anchor mode inserts a transform we can neither query nor calibrate, which breaks
-the calibration *and* the rendering. Full reasoning in `HANDOFF.md` → RENDERING ARCHITECTURE.
+the calibration *and* the rendering.
 
 ---
 

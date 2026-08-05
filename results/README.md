@@ -1,7 +1,9 @@
 # Results: SIMULATION only
 
-Everything in this directory is a **simulation** result. The hardware is not built yet
-(no cameras, LEDs, or wiring); no number here is a hardware measurement.
+Everything in this directory is a **simulation** result: no number here is a hardware
+measurement. I generated these in July 2026, before the rig existed, to decide whether the
+approach was worth building. The hardware now exists and its measurements live in the dated
+session write-ups at the repository root, not here.
 
 - **`kappa_separation.png`**, the angle-kappa / perceptual-bias confound, and the
   multi-distance way around it. Generated 2026-07-13 by `python3 software/kappa.py`.

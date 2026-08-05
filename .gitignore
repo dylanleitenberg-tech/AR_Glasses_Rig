@@ -21,3 +21,4 @@ software/calib_shots/
 *.old_geom*
 *.old_fwd*
 .Rhistory
+HANDOFF.md

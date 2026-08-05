@@ -1,8 +1,8 @@
 # DOMAIN REFERENCE: eye anatomy, eye tracking, optics, and overlay mechanics
 
-Written 2026-08-03 at Dylan's request for depth across the fields this rig sits in. Organised
+Written 2026-08-03 to give myself depth across the fields this rig sits in. Organised
 around **what changes a decision here**, not around textbook completeness. Every section ends with
-what it implies for our hardware.
+what it implies for my hardware.
 
 Three findings up front, because they matter most:
 
@@ -81,7 +81,7 @@ thing standing between us and a calibration that expires the moment the rig shif
 ### 2.3 What a canthus tracker cannot do
 It gives **glasses-relative head geometry**, not gaze. So it cannot supply the entrance-pupil
 position for a given fixation (§3), cannot apply kappa, and cannot know where the user is looking.
-Dylan's own `eyetracker.py` study measured the consequence honestly: corner-only **9.9 px** vs
+My own `eyetracker.py` study measured the consequence honestly: corner-only **9.9 px** vs
 +pupil **10.1 px** for registration, i.e. **no registration gain from adding the pupil.** §3
 explains *why* that result is not surprising.
 
@@ -202,7 +202,7 @@ smallest terms.
 
 ## 7. HOW OTHERS FIX THE LIGHTING PROBLEM (researched 2026-08-03)
 
-Dylan's room is lit from one side, so `eyeL` shadows while `eyeR` does not, mean 94 vs 49, and
+My room is lit from one side, so `eyeL` shadows while `eyeR` does not, mean 94 vs 49, and
 `eyeL` fluctuating 94→39 within minutes. That is an ordinary operating condition, not a fault, and
 the field has three answers. We have implemented the cheapest; the other two are the real ones.
 

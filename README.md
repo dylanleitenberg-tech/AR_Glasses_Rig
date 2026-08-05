@@ -21,6 +21,14 @@ The rig is a 6-camera clip-on carrier for the XREAL One Pro AR glasses:
 - an IMU for slip and bump detection, all on one printed part that clamps to the glasses
   brow with padded jaws shaped to the measured curve of the frame
 
+I drew up two versions of this carrier, an eight-camera one that adds a stereo pair and the
+six-camera one above, and started with six. When the first cameras arrived I built a
+four-camera rig from them, the two forward and the two watching my eye corners, and every
+measurement in this repository so far was taken on those four. The fifth camera has arrived
+and the sixth is on its way; the near-infrared pupil pair is the last thing to go in. The
+parts lists still cost out the eight-camera version, which is where the sub-pixel work would
+go.
+
 Results so far, from a physics simulation built to be pessimistic about human error:
 
 - With a naive calibration interface, deployed accuracy is about 13 pixels. Most of that
@@ -223,6 +231,14 @@ filter, it is a different category of solution, and no amount of tuning would ha
 
 The eye-corner measurement idea came from our robotics coach, Kim. Much of the early
 speculation and problem-solving came out of design discussions with him.
+
+I built this with AI assistance, which is why several commits carry a co-author trailer.
+It wrote code alongside me and helped draft documentation. What it did not do is decide
+what to build or what the results mean: the architecture, the experiments, the decision to
+demote the IMU after an ablation showed it added nothing to registration, the negative
+results above, and the corrections I have had to make to my own earlier conclusions are
+mine. I have tried to write down the wrong turns as carefully as the working ones, because
+on a project like this those are the part worth reading.
 
 ## License
 
