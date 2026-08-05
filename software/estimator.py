@@ -1,15 +1,15 @@
-"""estimator.py — the deployable PHYSICS + PUPIL pixel estimator (the "better estimator").
+"""estimator.py, the deployable PHYSICS + PUPIL pixel estimator (the "better estimator").
 
 physics_preset.py proved the white-box approach (triangulate the dot, fit the 6-DOF pose,
-forward-compute the pixel) reaches the ~0.5 px true-geometry floor with the pupil feature —
+forward-compute the pixel) reaches the ~0.5 px true-geometry floor with the pupil feature , 
 far better than the polynomial. But run raw it has an ugly tail: a few degenerate-gaze solves
 diverged (max ~51 px) because the pupil term makes the Gauss-Newton chase a bad reading.
 
 This packages that solver into a clean, reusable estimator with two robustness guards, so it's
 deployable in the live loop instead of being an experiment:
-  1. QUALITY CHECK — after the solve, re-predict the eye features at the recovered pose; if the
+ 1. QUALITY CHECK, after the solve, re-predict the eye features at the recovered pose; if the
      fit residual is large or the pixel lands off-screen, the solve is untrustworthy.
-  2. ROBUST FALLBACK — on a bad solve, fall back to the CORNER-ONLY physics solve (no pupil),
+ 2. ROBUST FALLBACK, on a bad solve, fall back to the CORNER-ONLY physics solve (no pupil),
      which under-determines the pose a little (higher median) but is far more stable (tiny tail).
   Net: the low median of physics+pupil with the small tail of corner-only.
 
@@ -125,7 +125,7 @@ def selftest(n_test=10, seed=900, verbose=True):
         print("\n  robust fallback fired on %d samples (the degenerate-gaze solves)" % fellback)
         print("  median preserved: %s   |   tail cut >40%%: %s"
               % ("PASS" if median_ok else "FAIL", "PASS" if tail_ok else "FAIL"))
-        print("  =>", "ESTIMATOR OK — physics+pupil accuracy, robust tail ✅" if ok
+        print("  =>", "ESTIMATOR OK, physics+pupil accuracy, robust tail ✅" if ok
               else "review ⚠️")
     return 0 if ok else 1
 

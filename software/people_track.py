@@ -1,11 +1,11 @@
-"""people_track.py — find and TRACK people in the world cameras, and put each one in 3D.
+"""people_track.py, find and TRACK people in the world cameras, and put each one in 3D.
 
 For a world-locked "turn people into monkeys" overlay we need, every frame, each visible person's
 stable identity and 3D world position (so the monkey stays glued to them as they AND the wearer's
 head move). This module:
 
   1. DETECT people in both world cameras (pluggable detector; the default `CvPeopleDetector` uses
-     OpenCV's built-in HOG pedestrian detector + Haar face cascade — no model downloads. A YOLO /
+     OpenCV's built-in HOG pedestrian detector + Haar face cascade, no model downloads. A YOLO /
      MediaPipe detector drops into the same `detect(frame) -> [Detection]` seam for quality).
   2. STEREO-MATCH the left/right detections of the same person (rectified: matching image rows,
      positive disparity) and TRIANGULATE the box centre -> depth -> a 3D point, then lift it to the
@@ -50,7 +50,7 @@ class TrackedPerson:
         self.vel = np.zeros(3)                       # world velocity (mm/frame)
         self.height = float(height_mm)
         self.facing = np.array([0.0, 0.0, -1.0])     # unit horizontal facing (toward -z default)
-        self._head_ema = None                        # face-derived head (world), EMA — if detected
+        self._head_ema = None                        # face-derived head (world), EMA, if detected
         self.hits = 1
         self.misses = 0
         self.age = 0
@@ -193,7 +193,7 @@ class PeopleTracker:
         return self.confirmed()
 
     def _head_from_face(self, dl, world_centroid, pose):
-        """3D world point of the detected FACE centre, at the person's depth — a more accurate
+        """3D world point of the detected FACE centre, at the person's depth, a more accurate
         head anchor than the body-box top (which floats above raised arms etc.)."""
         R_cw, C = pose
         Z = (R_cw @ (np.asarray(world_centroid, float) - np.asarray(C, float)))[2]
@@ -218,7 +218,7 @@ class PeopleTracker:
 
 
 # --------------------------------------------------------------------------
-#  Real detector (OpenCV built-ins) — the only hardware/vision-model part
+#  Real detector (OpenCV built-ins): the only hardware/vision-model part
 # --------------------------------------------------------------------------
 class CvPeopleDetector:
     """People via HOG + faces via Haar (both bundled with opencv-python; no downloads). Returns
@@ -340,7 +340,7 @@ def selftest(verbose=True):
     checks.append(("anchor points sane (head above feet, height %.0f mm)" % t.height,
                    head_up and hgt_ok))
     # (6) face-aligned head: the head anchor lands on the true head (from the face box, not the
-    #     body-box top) — the quality lever that puts the monkey's face on the real face
+    #     body-box top): the quality lever that puts the monkey's face on the real face
     herr = []
     for pi, tp in enumerate(truth):
         near = min(final, key=lambda t: np.linalg.norm(t.pos - tp), default=None)
@@ -353,7 +353,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "PEOPLE TRACK OK — stereo 3D + stable IDs + dropout coasting ✅"
+        print("  =>", "PEOPLE TRACK OK, stereo 3D + stable IDs + dropout coasting ✅"
               if ok else "PROBLEM ⚠️")
         print("  default detector = OpenCV HOG+Haar (no downloads); swap in YOLO/MediaPipe at the")
         print("  detect() seam for better recall/pose. Geometry+tracking here are model-independent.")

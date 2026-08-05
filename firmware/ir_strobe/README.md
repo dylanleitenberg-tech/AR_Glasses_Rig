@@ -1,22 +1,22 @@
-# firmware/ir_strobe — IR strobe + safety interlock MCU
+# firmware/ir_strobe: IR strobe + safety interlock MCU
 
 Reference firmware for the strobe MCU (**Seeed XIAO** RP2040/SAMD21, or any Arduino) that
 drives the 940 nm IR LED rings and **enforces the eye-safety envelope**. It is the concrete
 implementation of the interlocks documented in `WIRING.md` and `EYE_TRACKING.md §3`.
 
-## What it does (all fail-safe — default IR OFF)
+## What it does (all fail-safe: default IR OFF)
 
 | Interlock | How |
 |---|---|
 | **Strobe in sync with the shutter** | IR fires only as a bounded **pulse** on a host `P <us>` command issued at each exposure |
-| **USB/host drop kills IR** | heartbeat watchdog — no host line within `HB_TIMEOUT_MS` forces both gates low (and aborts a pulse mid-flight) |
+| **USB/host drop kills IR** | heartbeat watchdog, no host line within `HB_TIMEOUT_MS` forces both gates low (and aborts a pulse mid-flight) |
 | **Voltage safeguard** | the 5 V rail is read every loop; outside `[VMIN,VMAX]` IR is disabled |
 | **IR cutoff on blinks** | host `B L|R|0` flags a closed eye; that ring is held off |
 | **Dose / duty caps** | pulse clamped to `MAX_PULSE_US`; `MIN_OFF_US` enforces a low duty cycle |
 | **Any anomaly / reset → OFF** | gates default LOW + an external **100 k gate pull-down** guarantees OFF through power-up and MCU reset |
 
 The **300 mA PTC polyfuse** (overcurrent) and the **TVS clamp** (transients) are hardware on
-the IR branch — see `WIRING.md`. The MOSFET is a **2N7002** (logic-level, not a 2N2222 BJT).
+the IR branch, see `WIRING.md`. The MOSFET is a **2N7002** (logic-level, not a 2N2222 BJT).
 
 ## Host serial protocol (115200 baud, newline-terminated)
 
@@ -31,7 +31,7 @@ Any recognized line also refreshes the heartbeat. The host loop: send `EN` once,
 camera frame send `P <exposure_us>` right before grabbing, send `HB` if idle, and send `B …`
 from `software/blink.py`. On exit send `DIS` (and just closing the port trips the watchdog).
 
-## Wiring (summary — full topology in WIRING.md)
+## Wiring (summary: full topology in WIRING.md)
 
 - `IR_GATE_L/R` → 2N7002 gates (each with a **100 k pull-down to GND**); LED ring sources on
   the drains, rings to the 5 V rail **through the 300 mA polyfuse**.

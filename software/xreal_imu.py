@@ -1,4 +1,4 @@
-"""xreal_imu.py — read the XREAL One Pro's OWN IMU. No soldering, no extra hardware.
+"""xreal_imu.py, read the XREAL One Pro's OWN IMU. No soldering, no extra hardware.
 
 WHY THIS AND NOT A SEPARATE IMU
     The CAD has a mount for a XIAO-based IMU (see imu_serial.py), and that is real hardware work:
@@ -19,7 +19,7 @@ WHAT IT IS FOR
     2. WorldTracker's 0 map points, which HANDOFF records as a geometry problem needing an IMU
        (stereo init degrades under rotation-dominant motion). Same component, two problems.
 
-PROTOCOL — REVERSED AND CONFIRMED ON THIS DEVICE 2026-08-03. It is NOT HID.
+PROTOCOL, REVERSED AND CONFIRMED ON THIS DEVICE 2026-08-03. It is NOT HID.
     The glasses present as a USB NETWORK device. On this Mac they came up as `en8` with the host
     at 169.254.2.10 and the glasses at **169.254.2.1**, serving a binary stream on **TCP 52998**.
     (The HID interfaces exist -- VendorID 0x3318, usage pages 0x41 and 0x0c -- and can be opened,
@@ -104,7 +104,7 @@ def check():
         print("\n  >>> THE GLASSES ARE NOT ENUMERATING AT ALL. Check the USB-C cable and hub;")
         print("      this is the same failure mode as the cameras dropping off the bus.")
         return 3
-    print("\n  ACCESS OK — %d interface(s) readable. Use --dump to capture raw reports." % len(devs))
+    print("\n  ACCESS OK, %d interface(s) readable. Use --dump to capture raw reports." % len(devs))
     return 0
 
 
@@ -114,7 +114,7 @@ def open_imu():
     if devs is None:
         return None, "hidapi not installed (pip install hidapi)"
     if not devs:
-        return None, ("no XREAL HID interface visible — run --check; on macOS this is almost "
+        return None, ("no XREAL HID interface visible, run --check; on macOS this is almost "
                       "always the Input Monitoring permission")
     import hid
     # Prefer the vendor-defined usage page, which is where the community drivers find the IMU.
@@ -259,7 +259,7 @@ def dump(seconds=10.0, max_reports=40):
     h.close()
     print("\n%d reports in %.1fs; length histogram: %s" % (n, time.time() - t0, lens))
     if n == 0:
-        print("NO REPORTS. The interface opened but produced nothing — likely the wrong one of the "
+        print("NO REPORTS. The interface opened but produced nothing, likely the wrong one of the "
               "several HID interfaces, or the device needs an enable command first (the nrealAir "
               "drivers send one). Compare against the prior art listed in this module's docstring.")
     return 0
@@ -295,7 +295,7 @@ class GyroIntegrator:
         return self.angle.copy()
 
     def correct(self, angle_rad=None):
-        """Absolute correction from the cameras — the slow half closing the loop."""
+        """Absolute correction from the cameras, the slow half closing the loop."""
         if angle_rad is not None:
             self.angle = np.asarray(angle_rad, float).copy()
         self.since_correction = 0.0
@@ -354,7 +354,7 @@ def measure_axis_map(world_left=3, world_right=2, seconds=20.0, verbose=True):
     # cannot read a console while the rig is on their face, so a run that needs them to DO
     # something must say so on the display. It also shows live gyro rate and dot lock, so a bad
     # run is obvious while it is happening rather than 20 s later.
-    win = "IMU axis map — follow the instruction.  q aborts"
+    win = "IMU axis map, follow the instruction.  q aborts"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
 
     def _hud(phase, remain, dps, locked, n):
@@ -372,7 +372,7 @@ def measure_axis_map(world_left=3, world_right=2, seconds=20.0, verbose=True):
         return cv2.waitKey(1) & 0xFF
 
     for c in range(3, 0, -1):                      # let them settle and read the first phase
-        _hud("GET READY — look at the target", c, 0.0, False, 0)
+        _hud("GET READY, look at the target", c, 0.0, False, 0)
         time.sleep(1.0)
     # SAMPLE ONLY ON A GENUINELY NEW FRAME.
     # Camera.read() happily returns the same buffered frame again, and dividing a ~zero position
@@ -458,10 +458,10 @@ def measure_axis_map(world_left=3, world_right=2, seconds=20.0, verbose=True):
         print("\nhead motion seen: median %.1f deg/s, peak %.1f deg/s" % (med_dps, peak_dps))
         if peak_dps < 15:
             print("   !! BARELY ANY MOTION. The glasses were still (or not on a head). Nothing "
-                  "\n      can be fitted from this — move noticeably, ~30 deg/s, both axes.")
+                  "\n      can be fitted from this, move noticeably, ~30 deg/s, both axes.")
     if len(samples) < 30:
         if verbose:
-            print("only %d usable samples — need the target in view throughout" % len(samples))
+            print("only %d usable samples, need the target in view throughout" % len(samples))
         return None
     # REGRESS DISPLACEMENT AGAINST INTEGRATED GYRO, NOT VELOCITY AGAINST RATE.
     #
@@ -495,7 +495,7 @@ def measure_axis_map(world_left=3, world_right=2, seconds=20.0, verbose=True):
         w.append(ang)
     if len(duv) < 30:
         if verbose:
-            print("only %d windows — run longer or keep the dot in view" % len(duv))
+            print("only %d windows, run longer or keep the dot in view" % len(duv))
         return None
     duv = np.array(duv)
     w = np.array(w)
@@ -549,7 +549,7 @@ def measure_axis_map(world_left=3, world_right=2, seconds=20.0, verbose=True):
         r2.append(1.0 - ss / st)
     r2 = np.array(r2)
     if verbose:
-        print("\n%d windows (%.2f s each). Constrained fit — axis + sign measured, scale from FOV:"
+        print("\n%d windows (%.2f s each). Constrained fit, axis + sign measured, scale from FOV:"
               % (len(duv), WIN))
         print("   theoretical scale: u %.3f, v %.3f frame-units/rad (FOV %.0f deg h, %.1f deg v)"
               % (theo_uv[0], theo_uv[1], _rig.WORLD_FOV, np.degrees(fov_v_rad)))
@@ -558,11 +558,11 @@ def measure_axis_map(world_left=3, world_right=2, seconds=20.0, verbose=True):
             print("   d%s <- %-10s  sign %+d   |corr| %.2f   fitted/theoretical %.2f   R^2 %.3f"
                   % (lbl, axis_names[k], int(np.sign(M[row, k])), c, scales[row], r2[row]))
         if min(r2) < 0.3:
-            print("\n   !! R^2 IS LOW — do NOT use this. Either the head barely moved, or the dot"
+            print("\n   !! R^2 IS LOW, do NOT use this. Either the head barely moved, or the dot"
                   "\n      was lost for much of the run.")
         elif not (0.4 < min(scales) and max(scales) < 2.5):
             print("\n   !! the fitted scale is far from the FOV prediction (%.2f, %.2f). The axis"
-                  "\n      choice may be right but something else is off — check WORLD_FOV."
+                  "\n      choice may be right but something else is off, check WORLD_FOV."
                   % tuple(scales))
     return {"M": M, "r2": np.array(r2), "n": len(duv)}
 
@@ -616,7 +616,7 @@ def selftest():
     def chk(name, cond, detail=""):
         nonlocal ok_all
         ok_all = ok_all and bool(cond)
-        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, ("  — " + detail) if detail else ""))
+        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, (", " + detail) if detail else ""))
 
     # --- integrator ---
     gi = GyroIntegrator()
@@ -712,7 +712,7 @@ if __name__ == "__main__":
         if res and float(np.min(res["r2"])) >= 0.3:
             print("\nsaved -> %s" % save_map(res))
             sys.exit(0)
-        print("\nNOT SAVED — the fit did not clear R^2 >= 0.3.")
+        print("\nNOT SAVED, the fit did not clear R^2 >= 0.3.")
         sys.exit(1)
     if a.live:
         with XrealIMU() as _imu:

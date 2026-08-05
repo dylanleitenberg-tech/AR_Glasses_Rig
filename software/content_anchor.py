@@ -1,8 +1,8 @@
-"""content_anchor.py — PLACE generated content on a real surface and keep it there.
+"""content_anchor.py, PLACE generated content on a real surface and keep it there.
 
 `anchor.py` answers "given a 3D world point, where on the display does it land right now?" It
 cannot answer the question that comes first for generated content: *which* 3D point? Today the
-only anchors the runtime produces come from `people_track` — content can be stuck to a detected
+only anchors the runtime produces come from `people_track`, content can be stuck to a detected
 person and nothing else. There is no way to put an image on a wall, a label on a table, or a
 panel in mid-air and have it stay.
 
@@ -12,12 +12,12 @@ This module closes that gap with four pieces:
                  `raycast_mesh` intersects that ray with the live Delaunay surface from
                  `world_mesh.visible_mesh`. Point the rig at a spot, get the 3D point on the real
                  surface plus its normal. Placement is done in the WORLD-CAMERA frame, not the
-                 display frame, so it needs no inverse of the learned calibrator — the mesh and
+                 display frame, so it needs no inverse of the learned calibrator, the mesh and
                  the cameras already share a frame.
 
   2. ORIENTATION `SurfaceAnchor` holds a position, a surface normal and an up-hint, and emits four
                  world-space corners. The content therefore lies ON the surface and keeps the
-                 surface's orientation — it is not a camera-facing billboard like `avatar.py`.
+                 surface's orientation, it is not a camera-facing billboard like `avatar.py`.
                  Walk around a poster anchored to a wall and it foreshortens correctly.
 
   3. OCCLUSION   `is_occluded` casts from the camera centre toward the anchor and reports whether
@@ -26,7 +26,7 @@ This module closes that gap with four pieces:
 
   4. PERSISTENCE `AnchorStore` round-trips anchors to JSON so a placement survives the session.
 
-Projection stays with `anchor.AnchorProjector` — the corners are ordinary world points, so they
+Projection stays with `anchor.AnchorProjector`, the corners are ordinary world points, so they
 inherit the parallax-correct, calibrated path already proven there.
 
 Pure numpy + stdlib; `--selftest` runs headless with no cameras and no cv2.
@@ -48,7 +48,7 @@ EPS = 1e-9
 
 
 # --------------------------------------------------------------------------
-#  1. Placement — world-camera pixel -> world ray -> surface hit
+#  1. Placement: world-camera pixel -> world ray -> surface hit
 # --------------------------------------------------------------------------
 def ray_from_world_cam(uv, pose, f=DEFAULT_F, res=WORLD_RES):
     """World-camera pixel -> (origin, unit direction) in the WORLD frame.
@@ -131,7 +131,7 @@ def fit_plane(points):
 
 
 # --------------------------------------------------------------------------
-#  2. Orientation — a quad that lies ON the surface
+#  2. Orientation: a quad that lies ON the surface
 # --------------------------------------------------------------------------
 def surface_basis(normal, up_hint=(0.0, 1.0, 0.0)):
     """Orthonormal (right, up) spanning the plane of `normal`.
@@ -158,7 +158,7 @@ def surface_basis(normal, up_hint=(0.0, 1.0, 0.0)):
 class SurfaceAnchor:
     """Generated content pinned to a real surface: a world-space quad with the surface's pose.
 
-    Unlike the person billboards in avatar.py this does NOT face the camera — it keeps the
+    Unlike the person billboards in avatar.py this does NOT face the camera, it keeps the
     orientation of the surface it was placed on, so it foreshortens as you move, which is what
     sells it as being part of the scene.
     """
@@ -174,7 +174,7 @@ class SurfaceAnchor:
         self.meta = dict(meta or {})
 
     def corners(self):
-        """4 world points, order TL, TR, BR, BL — matching avatar.compose's quad convention."""
+        """4 world points, order TL, TR, BR, BL, matching avatar.compose's quad convention."""
         right, up = surface_basis(self.normal, self.up_hint)
         w = right * (self.width / 2.0)
         h = up * (self.height / 2.0)
@@ -210,7 +210,7 @@ def place_on_surface(anchor_id, uv, pose, verts, faces, width, height,
     """THE placement call: aim a world-camera pixel at a real surface, get an anchor.
 
     `patch_radius` > 0 fits a plane to the mesh vertices within that radius of the hit instead of
-    using the single triangle's normal — steadier orientation on a noisy reconstruction.
+    using the single triangle's normal, steadier orientation on a noisy reconstruction.
     Returns None when the ray misses the mesh (nothing real to stick to).
     """
     orig, dirn = ray_from_world_cam(uv, pose)
@@ -230,12 +230,12 @@ def place_on_surface(anchor_id, uv, pose, verts, faces, width, height,
 
 
 # --------------------------------------------------------------------------
-#  3. Occlusion — is real geometry in front of the content?
+#  3. Occlusion: is real geometry in front of the content?
 # --------------------------------------------------------------------------
 def is_occluded(point, pose, verts, faces, tol=5.0):
     """True when the mesh blocks the line of sight from the camera centre to `point`.
 
-    `tol` (mm) keeps a surface from occluding content placed ON it — the hit and the anchor are
+    `tol` (mm) keeps a surface from occluding content placed ON it, the hit and the anchor are
     the same location, so without slack every surface anchor would occlude itself.
     """
     _, C = pose
@@ -253,7 +253,7 @@ def is_occluded(point, pose, verts, faces, tol=5.0):
 # --------------------------------------------------------------------------
 class AnchorStore:
     """Anchors that outlive the session. Coordinates are in the world frame the mesh built, so
-    a store is only meaningful against that same map — `world_id` records which one."""
+    a store is only meaningful against that same map, `world_id` records which one."""
 
     def __init__(self, anchors=None, world_id=""):
         self.anchors = list(anchors or [])
@@ -300,10 +300,10 @@ class AnchorStore:
 
 
 # ==========================================================================
-#  Self-test — headless, no cameras, no cv2
+#  Self-test: headless, no cameras, no cv2
 # ==========================================================================
 def _wall_mesh(z=1500.0, half=600.0, n=5):
-    """A flat wall at depth z, triangulated into a grid — stands in for world_mesh output."""
+    """A flat wall at depth z, triangulated into a grid, stands in for world_mesh output."""
     xs = np.linspace(-half, half, n)
     ys = np.linspace(-half, half, n)
     verts, faces = [], []

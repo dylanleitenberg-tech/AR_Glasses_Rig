@@ -1,4 +1,4 @@
-"""Geometry identification by SIGNATURE MATCHING — the database idea, tested honestly.
+"""Geometry identification by SIGNATURE MATCHING, the database idea, tested honestly.
 
 The approach: build a database of simulated faces whose eye geometry we KNOW
 (including the hard-to-image internals: entrance-pupil depth, globe radius, angle kappa).
@@ -11,7 +11,7 @@ This is nearest-neighbour inversion of the geometry -> fingerprint map. It recov
 parameter only to the extent that parameter leaves a SEPARABLE mark on the fingerprint
 (identifiability). This script measures, per parameter:
   * recovery error (MAE in native units and as % of the population spread), and
-  * the neighbour SPREAD (how tightly the matched faces agree) — a direct read on
+ * the neighbour SPREAD (how tightly the matched faces agree), a direct read on
     identifiability: a big spread means many different eyes share the fingerprint.
 
 It also runs the IMU ablation: does adding the glasses tilt sensor ("level") to the
@@ -22,10 +22,10 @@ fingerprint improve recovery? Compared feature sets:
     inacc+eyecam+imu(comp)        + level, head pose compensated out
 
 Why the IMU might help geometry ID specifically: pupil-depth and globe-radius are PARALLAX
-terms — they shift the inaccuracy as the glasses tilt. The eye-corner cameras sense tilt
+terms, they shift the inaccuracy as the glasses tilt. The eye-corner cameras sense tilt
 only indirectly; a level senses it directly, so it can pin the pantoscopic tilt and let the
 matcher attribute the rest of the inaccuracy to parallax. Whether that beats the noise floor
-is an empirical question — this answers it.
+is an empirical question, this answers it.
 
 Run:  python3 match.py        (or:  python3 main.py --match)
 """

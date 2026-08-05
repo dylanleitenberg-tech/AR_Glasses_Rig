@@ -5,24 +5,24 @@
 //  the bonded carrier now holds all 6 cameras, the IR rings, AND the IMU
 //  (module imu_mount). The XREAL One Pro's OWN padded nose pads carry the face. This
 //  file is kept as an OPTIONAL accessory (a separate clip-on nose/IMU support if you'd
-//  rather not put the IMU on the carrier) — it is legacy and not part of the canonical
+// rather not put the IMU on the carrier), it is legacy and not part of the canonical
 //  single-part build.
 // =====================================================================
 //  ⚠️ NOT A CAMERA MODULE. The 6-camera BINOCULAR build keeps ALL cameras on the single
-//  bonded carrier in cad/xreal_one_mount.scad — including the TWO NIR pupil cameras
+// bonded carrier in cad/xreal_one_mount.scad, including the TWO NIR pupil cameras
 //  (pupil_cam, one per eye) and the IR LED rings around BOTH eyes (ir_leds), at the
 //  software/rig.py positions (the ONE source of truth for camera geometry). The old
 //  camera modules in THIS file have been removed from the assembly to avoid a stray cam.
 //
 //  This file is the NON-camera nose support: the bridge body, soft (PADDED) nose pads, the
-//  bridge clip, and the IMU shelf (tilt/slip + the Kalman drift filter — see imu.py /
+// bridge clip, and the IMU shelf (tilt/slip + the Kalman drift filter, see imu.py /
 //  WIRING.md). cam_holder()/ir_unit()/cam_arm() are kept only as reference and are NOT
 //  rendered. Same Z-up frame as xreal_one_mount.scad:
 //    +x = right, +y = FORWARD (world), +z = UP, origin at the optic center. mm.
 //
 //  ⚠️ MEASURE + tune the bridge-clip thickness and nose-pad fit. Print in a STIFF material
 //    (SLA resin or PC / nylon-CF, NOT plain PETG/PLA), 0.2 mm. The nose pads carry a soft
-//    silicone/foam pad in the recess — no bare hard plastic on the nose.
+// silicone/foam pad in the recess, no bare hard plastic on the nose.
 //    openscad -D 'part="all"' -o bridge_support.stl eye_tracking_bridge.scad
 //    openscad -D 'part="all"' -o bridge_support.stl eye_tracking_bridge.scad
 // =====================================================================
@@ -43,7 +43,7 @@ ov_w = 9;  ov_h = 9;  ov_d = 6;   // module footprint + depth (tune to your cam)
 lens_d = 3.6;                     // lens clear-aperture hole
 wall   = 1.6;                     // thin walls = light on the nose
 
-// (REFERENCE ONLY — not rendered.) These old bridge-camera offsets are STALE; the live NIR
+// (REFERENCE ONLY, not rendered.) These old bridge-camera offsets are STALE; the live NIR
 // pupil-camera geometry is software/rig.py PUPIL_POS (now [24, -30, 6]) realised on the bonded
 // carrier in xreal_one_mount.scad. Do not treat the numbers below as current.
 cam_nasal_in = 6;    // |x| inset toward the nose from the pupil (so x = 26 at ipd 64)
@@ -51,7 +51,7 @@ cam_fwd      = 6;    // in front of the optic plane  (sim z = 6)
 cam_below    = 14;   // below the optic center        (sim y = -14)
 arm_w        = 6;    // camera-arm thickness (thicker = stiffer; rigidity matters, see flex.log)
 
-// ---------- IR LEDs (940 nm, low power — see EYE_TRACKING.md safety) ---
+// ---------- IR LEDs (940 nm, low power, see EYE_TRACKING.md safety) ---
 led_d     = 3.2;     // 3 mm LED + clearance (use SMD pockets if smaller)
 led_wall  = 1.0;
 led_depth = 4.5;
@@ -65,8 +65,8 @@ pad_w = 9;  pad_h = 13;  pad_t = 3;
 
 // ---------- IMU (6/9-axis MEMS breakout: tilt/slip detection, NOT geometry ID) ----
 //  Rigidly mounted to the body (which clips to the frame), so it reads the GLASSES'
-//  pitch/roll vs gravity. Its job is robustness — bump/re-seat detection + inter-frame
-//  motion + a gravity "down" reference — NOT identifying eye geometry (the sim showed a
+// pitch/roll vs gravity. Its job is robustness, bump/re-seat detection + inter-frame
+// motion + a gravity "down" reference, NOT identifying eye geometry (the sim showed a
 //  level adds ~0 there). Mount FLAT with the board's X along +x and Y along +y so the
 //  reading maps directly to pose dev[0] (pantoscopic pitch) / dev[2] (roll); see imu.py.
 imu_w = 21;  imu_h = 18;  imu_t = 2.0;   // typical 9-DoF breakout PCB (e.g. ICM-20948/BNO055)
@@ -143,7 +143,7 @@ module bridge_body() {
 }
 
 // Soft, broad nose pads. The face-contacting side is a RECESS sized to seat a stick-on
-// SILICONE / foam pad (pad_soft_t thick) so the nose never touches bare hard plastic — required
+// SILICONE / foam pad (pad_soft_t thick) so the nose never touches bare hard plastic, required
 // padding for every printed face-contact surface (EYE_TRACKING.md §2 comfort). Broad + canted to
 // spread pressure; rounded edges.
 pad_soft_t = 1.6;   // thickness of the soft pad that drops into the recess

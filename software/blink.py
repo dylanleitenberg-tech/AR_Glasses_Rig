@@ -1,4 +1,4 @@
-"""blink.py — detect eye closure (blinks) so the live pipeline DISCOUNTS bad eye reads.
+"""blink.py, detect eye closure (blinks) so the live pipeline DISCOUNTS bad eye reads.
 
 A blink or a half-closed eye gives garbage canthus + pupil readings (the lids and lashes
 occlude the eye), so feeding them into the feature vector would corrupt the calibration.
@@ -79,9 +79,9 @@ def selftest(n=60, seed=0, verbose=True):
     if verbose:
         print("  region heuristic: open<10%% & closed>80%%  -> %s" % ("PASS" if region_ok else "FAIL"))
         print("  pupil signal:     open<10%% & closed>50%%  -> %s" % ("PASS" if pupil_ok else "FAIL"))
-        print("  =>", "BLINK DETECTOR OK — closures flagged, open eyes pass ✅" if ok
+        print("  =>", "BLINK DETECTOR OK, closures flagged, open eyes pass ✅" if ok
               else "WEAK ⚠️")
-        print("  note: dark_thresh is the pupil-vs-rest NIR cut — CALIBRATE on real footage; the")
+        print("  note: dark_thresh is the pupil-vs-rest NIR cut, CALIBRATE on real footage; the")
         print("  pupil-camera signal (tracker !ok) is the robust primary, the region heuristic is")
         print("  the fallback for corner cams that don't image the pupil.")
     return 0 if ok else 1

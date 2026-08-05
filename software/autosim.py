@@ -2,7 +2,7 @@
 
 It mirrors the real rig (camera placement comes from `rig.py`, which mirrors the printed
 bracket). For a subject, a glasses pose, and a world point it returns:
-  * features (8,) = [worldL dot xy, worldR dot xy, eyeL corner xy, eyeR corner xy] — the
+ * features (8,) = [worldL dot xy, worldR dot xy, eyeL corner xy, eyeR corner xy], the
     exact readings the four bracket cameras produce, and
   * the TRUE display pixel that registers the overlay for the display (right) eye.
 
@@ -35,7 +35,7 @@ class Simulator:
         self.use_pupil = use_pupil          # append the NIR pupil-centre feature
         self.use_stereo = use_stereo        # append the 2nd eye-corner (stereo) features
         # which canthus the eye-corner cams aim at AND track: "outer" (the built design) or
-        # "inner" (the medial-canthus variant — see landmark_test.py). Feature ORDER and count
+        # "inner" (the medial-canthus variant: see landmark_test.py). Feature ORDER and count
         # are unchanged; only which facial point those 4 numbers report.
         self.landmark = landmark
         # Per-capture soft-tissue motion of the tracked landmark. None => rig.SOFT_TISSUE_SD
@@ -49,7 +49,7 @@ class Simulator:
     def _apply_unit_tolerance(self):
         """One printed unit: fixed camera extrinsic + intrinsic errors, display distortion,
         and a display-to-camera misregistration. Constant per device, so it is LEARNABLE
-        — it shapes the mapping the calibrator fits, it does not add per-attempt noise."""
+, it shapes the mapping the calibrator fits, it does not add per-attempt noise."""
         d = np.random.default_rng(rig.DEVICE_SEED)
 
         def perturb(cam, g):
@@ -203,7 +203,7 @@ class Simulator:
     def ground_truth(self, subject, dev, P):
         """Deterministic, noise-free version of `observe`: for one eye `subject`, one
         glasses pose `dev`, and one world dot `P`, return the CLEAN camera features and
-        the EXACT display pixel that registers the overlay — i.e. *where the pixel should
+        the EXACT display pixel that registers the overlay, i.e. *where the pixel should
         be displayed*. Returns (features (8,), true_px (2,)) or None if the dot lands off
         the display. Same physics as `observe`, with every per-attempt random term removed
         (no blink/head-motion/jitter/pupil-size/tracker noise), so it is repeatable."""
@@ -252,7 +252,7 @@ class Simulator:
     # ---- BINOCULAR groundwork (2026-07-03): the LEFT eye's clean pixel ----------------
     # The XREAL One Pro is binocular (a display per eye); the validated pipeline registers
     # the RIGHT/display eye. These ADDITIVE methods compute the left eye's registration
-    # pixel with the same physics (e=0, optic_l, horizontal kappa sign mirrored — kappa is
+    # pixel with the same physics (e=0, optic_l, horizontal kappa sign mirrored: kappa is
     # nasal-ward in both eyes). Features are shared (the cameras see one scene), so per-eye
     # calibrators consume the SAME feature vector with per-eye labels.
     # NOTE: ep_dist/kappa are per-SUBJECT here; per-eye asymmetry is a future anatomy
@@ -282,7 +282,7 @@ class Simulator:
         return true_px
 
     def ground_truth_both(self, subject, dev, P):
-        """(clean features, right px, left px|None) — the binocular oracle."""
+        """(clean features, right px, left px|None), the binocular oracle."""
         g = self.ground_truth(subject, dev, P)
         if g is None:
             return None

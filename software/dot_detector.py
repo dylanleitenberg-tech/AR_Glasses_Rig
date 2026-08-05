@@ -4,7 +4,7 @@ Assumption (matches your workflow): a dark dot drawn with pen/marker on a light,
 mostly blank page. We find the most dot-like dark blob and return its centroid as
 normalized (x, y) in [0, 1] of the frame, plus the annotated frame for display.
 
-If you later want AI/segmentation instead of classic CV, swap detect() — the rest
+If you later want AI/segmentation instead of classic CV, swap detect(), the rest
 of the pipeline only needs a normalized (x, y).
 """
 from typing import Optional, Tuple

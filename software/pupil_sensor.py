@@ -1,14 +1,14 @@
-"""NIR pupil / iris sensor model — the sensor that breaks the identifiability wall.
+"""NIR pupil / iris sensor model, the sensor that breaks the identifiability wall.
 
 WHY this exists
 ---------------
 The fingerprint-matching study (`match.py`) found two eye parameters that the eye-corner
 cameras + guess inaccuracy CANNOT recover:
 
-  * entrance-pupil depth `ep_dist` — it IS in the physics (the entrance pupil sits
+ * entrance-pupil depth `ep_dist`, it IS in the physics (the entrance pupil sits
     `ep_dist` ahead of the center of rotation and drives parallax), but its imprint on the
     registration error is tiny, so it stays buried in noise (~80% of population spread).
-  * eyeball radius `globe_r` — it is in the anatomy descriptor but has NO effect on any
+ * eyeball radius `globe_r`, it is in the anatomy descriptor but has NO effect on any
     current observable, so it is non-identifiable BY CONSTRUCTION (recovery ~= guessing the
     mean). A sensor can only recover it once the model gives it a physical effect.
 
@@ -26,7 +26,7 @@ observables that make those parameters identifiable:
 
 The camera is modelled separately from rig.build so the validated registration pipeline is
 untouched; it only adds NEW observables for identification. Magnitudes are PLACEHOLDERS at
-plausible values — replace with the measured OV9281 + IR-LED rig once built.
+plausible values, replace with the measured OV9281 + IR-LED rig once built.
 """
 import numpy as np
 

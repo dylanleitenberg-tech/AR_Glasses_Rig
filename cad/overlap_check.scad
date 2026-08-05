@@ -1,5 +1,5 @@
 // =====================================================================
-//  overlap_check.scad — pairwise solid-intersection harness for the clip-on carrier
+// overlap_check.scad, pairwise solid-intersection harness for the clip-on carrier
 //  Driven by software/cad_overlap.py:
 //      openscad -D 'part="none"' -D 'compA="worldR"' -D 'compB="glasses"' \
 //               --export-format binstl -o pair.stl overlap_check.scad
@@ -24,7 +24,7 @@ module comp(name) {
     else if (name == "pupilR")   pupil_cam(1);
     else if (name == "pupilL")   pupil_cam(-1);
     // split components: each camera's BOOM vs its own HOLDER / physical-PCB keep-out
-    // (inside one module these were never checkable — the ball-end-through-plate bug hid here)
+    // (inside one module these were never checkable, the ball-end-through-plate bug hid here)
     else if (name == "worldR_boom") world_cam(1, render = "boom");
     else if (name == "worldR_hold") world_cam(1, render = "holder");
     else if (name == "worldR_pcb")  world_cam(1, render = "pcbzone");

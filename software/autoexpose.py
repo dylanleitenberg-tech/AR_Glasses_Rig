@@ -1,14 +1,14 @@
-"""autoexpose.py — continuous, per-role exposure/gain control so the cameras keep a usable
+"""autoexpose.py, continuous, per-role exposure/gain control so the cameras keep a usable
 image as light changes (the "the cams constantly track and adjust the image" requirement).
 
 WHY per-role, not the driver's auto-exposure:
   * The NIR PUPIL cams must stay DARK-PUPIL with crisp, UN-saturated glints (the PCCR corner
     signal). Driver auto-exposure hunts for a mid-gray whole-frame average and blows the glints
     out. We instead target a high PERCENTILE (the glints) just below clipping and keep the field
-    dark — the opposite of consumer AE.
+    dark, the opposite of consumer AE.
   * The EYE-CORNER cams want the canthus mid-toned for stable template matching.
   * The WORLD cams want a mid-gray scene, but exposure CAPPED so motion stays sharp (short
-    integration on a global shutter) — the world-mesh tracker needs crisp corners, not a bright
+    integration on a global shutter), the world-mesh tracker needs crisp corners, not a bright
     but smeared frame.
   * All cameras must adapt SLOWLY and STABLY (no oscillation) while the pipeline runs every frame.
 
@@ -58,7 +58,7 @@ def frame_metric(frame, metric):
 
 class ExposureController:
     """One camera's closed loop. `actuator` is an abstract brightness command in [0,1] that the
-    loop splits into exposure (0..expo_cap) then gain (the remainder) — exposure is preferred
+    loop splits into exposure (0..expo_cap) then gain (the remainder), exposure is preferred
     because gain adds sensor noise. Call update(frame) every frame; it returns the new actuator
     and (when a `cap`/backend is attached) pushes it to the device."""
 
@@ -208,7 +208,7 @@ def selftest(verbose=True):
     pf = sensors["pupilR"].frame(bank.ctl["pupilR"].a)
     field_dark = frame_metric(pf, "mean") < 0.25
     glint_hot = frame_metric(pf, "p99") > 0.7
-    checks.append(("pupil cam: glints hot (p99>0.7) but field dark (mean<0.25) — dark-pupil",
+    checks.append(("pupil cam: glints hot (p99>0.7) but field dark (mean<0.25), dark-pupil",
                    field_dark and glint_hot))
 
     # (3) stability: once settled, the actuator barely moves (no oscillation)
@@ -244,7 +244,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "AUTOEXPOSE OK — per-role targeting, converges, stable, keeps adjusting ✅"
+        print("  =>", "AUTOEXPOSE OK, per-role targeting, converges, stable, keeps adjusting ✅"
               if ok else "PROBLEM ⚠️")
     return 0 if ok else 1
 

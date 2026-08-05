@@ -1,4 +1,4 @@
-"""geometry.py — compute where the overlay pixel MUST go, from distance and direction. No training.
+"""geometry.py, compute where the overlay pixel MUST go, from distance and direction. No training.
 
 Dylan, 2026-08-03, after watching a trained model throw the dot across the display on the smallest
 head movement: *"use distance and angle of rotation to calculate how much the dot has to move in
@@ -88,7 +88,7 @@ import rig
 # no lever arm is barely constrained. Since 2 degrees costs 18 px, this constant carries about as
 # much uncertainty as the residual it was credited with removing.
 #
-# KEEP THE VALUE — everything above still holds, and removing the four bad samples moves the fit
+# KEEP THE VALUE: everything above still holds, and removing the four bad samples moves the fit
 # from 48.20 to 49.00, deep inside the interval, so contamination did not bias it. But do not quote
 # 48.25 as if it were nailed down, and RE-FIT IT AFTER A RUN THAT SPANS THE FIELD.
 DISPLAY_FOV_DEG = 48.25
@@ -163,7 +163,7 @@ _CANTH_L = rig.nominal_inner_canthus()[0]
 _CANTH_R = rig.nominal_inner_canthus()[1]
 _EYECAM_L = np.array([-rig.EC_X, rig.EC_UP, rig.EC_FWD], float)
 _EYECAM_R = np.array([+rig.EC_X, rig.EC_UP, rig.EC_FWD], float)
-# distance from each eye camera to its nominal canthus — the scale that converts image
+# distance from each eye camera to its nominal canthus: the scale that converts image
 # displacement into millimetres
 CANTH_DIST_L = float(np.linalg.norm(_CANTH_L - _EYECAM_L))
 CANTH_DIST_R = float(np.linalg.norm(_CANTH_R - _EYECAM_R))
@@ -305,7 +305,7 @@ def geometric_pixel_raw(features, depth_mm=None, display_fov_deg=DISPLAY_FOV_DEG
     if x.size < 4 or not np.all(np.isfinite(x[:4])):
         return np.array([0.5, 0.5])
 
-    # 1. DIRECTION — mean of the two world cams. Averaging halves per-camera noise and stays
+    # 1. DIRECTION: mean of the two world cams. Averaging halves per-camera noise and stays
     #    stable when disparity is tiny (distant targets), where each cam alone is still accurate
     #    in direction even though depth has collapsed.
     dL = direction_from_frame(x[0], x[1])
@@ -316,7 +316,7 @@ def geometric_pixel_raw(features, depth_mm=None, display_fov_deg=DISPLAY_FOV_DEG
         return np.array([0.5, 0.5])
     d = d / n
 
-    # 2. PARALLAX — the cams are not at the eye. Convert the direction into a point at `depth_mm`
+    # 2. PARALLAX: the cams are not at the eye. Convert the direction into a point at `depth_mm`
     #    in the camera frame, move to the eye's origin, and re-normalise. At large depth the shift
     #    vanishes automatically, which is the correct behaviour and needs no special case.
     if depth_mm is None:
@@ -358,7 +358,7 @@ def selftest():
     def chk(name, cond, detail=""):
         nonlocal ok_all
         ok_all = ok_all and bool(cond)
-        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, ("  — " + detail) if detail else ""))
+        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, (", " + detail) if detail else ""))
 
     # --- the tangent correction, which is the bug this replaces ---
     k_lin, k_tan = 70.0 / 50.0, _k_tan(70.0, 50.0)
@@ -420,7 +420,7 @@ def selftest():
             "%.1f mm (cap %.0f)" % (np.hypot(big[0], big[1]), _G.MAX_EYE_SHIFT_MM))
     finally:
         _G.EYE_SHIFT_GAIN = _g0
-    chk("DEFAULT gain is 0 — built and tested, NOT yet validated as an improvement",
+    chk("DEFAULT gain is 0, built and tested, NOT yet validated as an improvement",
         _G.EYE_SHIFT_GAIN == 0.0)
 
     # --- OFF-SCREEN DETECTION, written against the four REAL samples it was built from --------
@@ -434,7 +434,7 @@ def selftest():
         "%d/4, off-axis %s deg" % (sum(off_hits),
                                    "/".join("%.0f" % offaxis_deg(list(w) + NOM)
                                             for w in POISONED)))
-    chk("...and the clipped pixel hid it — geometric_pixel returns an ordinary edge pixel",
+    chk("...and the clipped pixel hid it, geometric_pixel returns an ordinary edge pixel",
         all(np.all(geometric_pixel(list(w) + NOM) <= 1.0 + 1e-9) for w in POISONED))
     chk("...while the RAW pixel shows how far outside they were",
         all(geometric_pixel_raw(list(w) + NOM)[0] > 1.1 for w in POISONED),

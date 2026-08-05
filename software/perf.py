@@ -1,25 +1,25 @@
-"""perf.py — keep the FULL pipeline inside a frame budget: cameras + mesh + overlay.
+"""perf.py, keep the FULL pipeline inside a frame budget: cameras + mesh + overlay.
 
 bank_bringup proved the *capture* layer is cheap (4 cams ≈ 4% of 16 cores). The expensive part
 is what runs on top of it: ORB/LK world tracking, mesh maintenance, people tracking, and the
 avatar compositor. `live_rig`/`augment_rig` call those every frame in an unthrottled loop, so
-when they are all switched on together the loop consumes whatever the machine will give it —
+when they are all switched on together the loop consumes whatever the machine will give it , 
 and on an Intel i9 that means fans, then thermal de-rating, then a slower loop anyway.
 
 This module is the answer, in three parts:
 
-  * **Profiler** — per-STAGE timing (`with prof.stage("mesh"): ...`). You cannot budget what you
+ * **Profiler**, per-STAGE timing (`with prof.stage("mesh"): ...`). You cannot budget what you
     cannot attribute; a single "fps" number never says whether to cut features or resolution.
     Reports mean/p95 ms per stage and each stage's share of the frame.
 
-  * **QualityController** — one LEVEL (full..min) mapping to the concrete knobs that actually
+ * **QualityController**, one LEVEL (full..min) mapping to the concrete knobs that actually
     cost time: ORB feature count, mesh update stride, and overlay render scale. It steps DOWN
     when frames overrun the budget or the CPU guard complains, and back UP only after sustained
     headroom, with hysteresis so it settles instead of oscillating. Degrading quality is what
     keeps the loop real-time; the alternative is a "high quality" setting that misses every
     deadline and looks worse.
 
-  * **FrameBudget** — target fps -> ms per frame, and the honest verdict on whether the last
+ * **FrameBudget**, target fps -> ms per frame, and the honest verdict on whether the last
     window met it.
 
 Everything is pure logic over injected timings, so `--selftest` proves the control behaviour
@@ -128,7 +128,7 @@ class Profiler:
         return float(np.percentile(s, pct)) if s else 0.0
 
     def report(self):
-        """{stage: {mean, p95, share}} — share is the fraction of the median frame."""
+        """{stage: {mean, p95, share}}, share is the fraction of the median frame."""
         frame = self.frame_ms(50) or 1e-9
         out = {}
         for name, s in self.samples.items():
@@ -153,7 +153,7 @@ class QualityController:
 
     Down-steps are fast (a missed deadline is already visible); up-steps need SUSTAINED headroom
     so the loop settles rather than oscillating between two levels. The CPU guard can force a
-    down-step even when frame time looks fine — that catches the case where the loop is meeting
+    down-step even when frame time looks fine, that catches the case where the loop is meeting
     its deadline only because it is burning every core to do it."""
 
     def __init__(self, budget=None, level=0, down_after=3, up_after=45, levels=None,
@@ -185,7 +185,7 @@ class QualityController:
 
         EFFECTIVENESS PROBE (added after the 2026-08-01 full-load run): degrading quality only
         helps when the frame time is dominated by the work these knobs control. On this rig it
-        was not — 27% of the frame was USB wait and the CPU sat at 9% — so the controller walked
+        was not, 27% of the frame was USB wait and the CPU sat at 9%, so the controller walked
         straight to `min` and held it for 45 s while frame time barely moved (91 -> 77 ms). That
         is a pure quality loss. So after each down-step we WATCH: if the next `settle` frames do
         not improve by `min_gain`, the step is reverted and further degrading is frozen. Real CPU
@@ -201,7 +201,7 @@ class QualityController:
             if left <= 0:
                 gain = (ms_before - frame_ms) / ms_before if ms_before > 0 else 0.0
                 if gain < self.min_gain and not cpu_pressed:
-                    self.level = lvl_before          # it did not help — take the quality back
+                    self.level = lvl_before          # it did not help, take the quality back
                     self.frozen = True
                     self.frozen_reason = ("degrading gained only %.0f%% (%.1f -> %.1f ms); "
                                           "frame time is not bound by these knobs"
@@ -307,7 +307,7 @@ def selftest(verbose=True):
 
     # (3) QualityController steps DOWN under sustained overrun and clamps at the floor.
     #     The load here RESPONDS to the knobs (frame time scales with the ORB budget), which is
-    #     the case degrading is meant for — so every step earns its keep and it walks to `min`.
+    #     the case degrading is meant for: so every step earns its keep and it walks to `min`.
     #     (A load that does NOT respond is covered by check 5b, where it must freeze instead.)
     q = QualityController(FrameBudget(30.0), down_after=3, settle=5, min_gain=0.10)
     start = q.name
@@ -342,7 +342,7 @@ def selftest(verbose=True):
     checks.append(("CPU 'throttle' outranks a met deadline (level %d)" % q3.level, q3.level == 1))
 
     # (5b) THE REGRESSION FROM THE REAL RIG (2026-08-01): an I/O-bound loop, 73 ms/frame against
-    #      a 33 ms budget, but only 9% CPU — degrading did nothing (91 -> 77 ms over 45 s) yet the
+    #      a 33 ms budget, but only 9% CPU: degrading did nothing (91 -> 77 ms over 45 s) yet the
     #      controller pinned itself at `min`. It must now revert and freeze instead.
     q_io = QualityController(FrameBudget(30.0), down_after=3, settle=10, min_gain=0.10)
     for _ in range(3):
@@ -386,7 +386,7 @@ def selftest(verbose=True):
     over_at_start = None
     for i in range(400):
         with lm.stage("mesh"):
-            # cost scales with the ORB knob — the controller's lever actually does something
+            # cost scales with the ORB knob: the controller's lever actually does something
             t["now"] += costs["mesh"] * (lm.quality.settings["orb_feat"] / 400.0)
         frame_ms, _ = lm.end_frame()
         if i == 0:
@@ -400,7 +400,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "PERF OK — stages attributed, budget held by adaptive quality ✅"
+        print("  =>", "PERF OK, stages attributed, budget held by adaptive quality ✅"
               if ok else "PROBLEM ⚠️")
     return 0 if ok else 1
 

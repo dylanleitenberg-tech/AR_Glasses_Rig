@@ -1,14 +1,14 @@
-"""imu_serial.py — the XIAO -> USB serial IMU feed (Phase 4), testable with no hardware.
+"""imu_serial.py, the XIAO -> USB serial IMU feed (Phase 4), testable with no hardware.
 
 PROTOCOL (the XIAO firmware side is mechanical to write from this):
   115200 baud, one CSV line per sample at ~100-200 Hz:
       millis,ax,ay,az,gx,gy,gz\\n
-  accel in g (board X->+x right, Y->+y forward, Z->+z up — the imu_mount tower orientation),
+ accel in g (board X->+x right, Y->+y forward, Z->+z up, the imu_mount tower orientation),
   gyro in deg/s. Lines starting with '#' are ignored (boot banners). Malformed lines are
-  dropped and counted, never raised — USB serial glitches.
+ dropped and counted, never raised, USB serial glitches.
 
 WHAT IT FEEDS: imu.ImuFilter (accel tilt + gyro rate -> filtered pantoscopic/roll tilt) for
-slip/bump detection + gravity-down reference — ROBUSTNESS only, not geometry ID (validated
+slip/bump detection + gravity-down reference, ROBUSTNESS only, not geometry ID (validated
 in sim: IMU marginal ~0 for ID/registration).
 
 USAGE:
@@ -82,7 +82,7 @@ class ImuSerial:
     def __init__(self, port=None, simulate=False, on_sample=None, baud=115200, seed=0,
                  on_raw=None):
         self.on_sample = on_sample
-        self.on_raw = on_raw            # optional callback(t_ms, accel_g[3], gyro_dps[3]) — raw,
+        self.on_raw = on_raw            # optional callback(t_ms, accel_g[3], gyro_dps[3]), raw,
         self.filter = imu.ImuFilter()   #  used by GyroIntegrator to integrate a rotation increment
         self.bad_lines = 0
         self.n = 0
@@ -93,7 +93,7 @@ class ImuSerial:
             if port is None or "*" in (port or ""):
                 hits = glob.glob(port or "/dev/tty.usbmodem*")
                 if not hits:
-                    raise RuntimeError("no XIAO serial port found — is it plugged in?")
+                    raise RuntimeError("no XIAO serial port found, is it plugged in?")
                 port = hits[0]
             self.src = serial.Serial(port, baud, timeout=1)
 
@@ -146,7 +146,7 @@ class GyroIntegrator:
     """Integrates the 3-axis gyro into a rotation INCREMENT the world-mesh tracker can consume.
 
     The mesh needs, each camera frame, an estimate of how the head (and thus the camera) rotated
-    since the last frame — used as a prior and to carry the pose through a visual dropout. The
+    since the last frame, used as a prior and to carry the pose through a visual dropout. The
     gyro gives body angular velocity (deg/s); this composes each sample's incremental rotation
     (Rodrigues of omega*dt) into an accumulator, and consume_rotation() hands back the net
     rotation since the previous call and resets. Runs the ImuSerial pump on a background thread so

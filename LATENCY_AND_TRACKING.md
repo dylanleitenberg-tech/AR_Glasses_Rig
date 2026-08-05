@@ -1,9 +1,9 @@
-# HOW EVERYONE ELSE SOLVES THIS — and what it means for our rig
+# HOW EVERYONE ELSE SOLVES THIS: and what it means for our rig
 
 Written 2026-08-03 after a session spent fighting overlay lag and jitter by tuning filters. The
 short version: **filtering is the wrong class of tool for latency, and the field has known this
 since the 1990s.** A filter can only trade lag against jitter. The standard answer is to
-**predict forward, then reproject late** — which removes lag *without* adding jitter, because it
+**predict forward, then reproject late**, which removes lag *without* adding jitter, because it
 adds information rather than smoothing it away.
 
 Our measured numbers are in §6. Everything before that is what other people do.
@@ -14,7 +14,7 @@ Our measured numbers are in §6. Everything before that is what other people do.
 
 Holloway's *Registration Error Analysis for Augmented Reality* (Presence 6, 1997) did the
 end-to-end error budget for an optical see-through HMD and found **system delay is the largest
-single contributor to registration error** — larger than tracker noise, larger than calibration
+single contributor to registration error**, larger than tracker noise, larger than calibration
 error, larger than optical distortion. The reason is simple and applies exactly to us: every other
 error is roughly constant, while the latency error is **proportional to head angular velocity**.
 Stand still and a laggy system looks perfect. Turn your head and it is the only error you can see.
@@ -24,7 +24,7 @@ literature 50 ms was considered typical for a mid-range 1990s system, and modern
 **under 20 ms motion-to-photon**. We were 10x off the modern target and calling it smoothing.
 
 **Consequence for us:** effort spent on calibration accuracy is wasted while latency dominates.
-Dylan's instinct — *"this must run perfectly before anything else can be done"* — matches the
+Dylan's instinct, *"this must run perfectly before anything else can be done"*, matches the
 literature exactly.
 
 ---
@@ -36,20 +36,20 @@ Two distinct mechanisms, usually stacked. Neither is a filter.
 ### 2a. POSE PREDICTION (removes lag before rendering)
 Estimate where the head **will be** when the photons actually land, and render *that* pose. The
 look-ahead equals the measured end-to-end latency. This is why every XR runtime's tracking API
-takes a **target display time** rather than "now" — OpenXR's `xrLocateViews` is explicitly
+takes a **target display time** rather than "now", OpenXR's `xrLocateViews` is explicitly
 predictive, and the runtime is expected to extrapolate.
 
 The reference open implementation to read is **[`fraunhoferhhi/pred6dof`](https://github.com/fraunhoferhhi/pred6dof)**
 (Gül et al., ACM MM 2020), which is a Kalman-filter 6DoF head-motion predictor evaluated at
 **20/40/60/80/100 ms** look-ahead against an autoregressive baseline and a no-prediction baseline,
 over 14 real HoloLens motion traces. Reported: the Kalman predictor beats autoregression by
-**~0.5° at 60 ms look-ahead**. Structure is small and readable — `runners.py` holds the predictors,
+**~0.5° at 60 ms look-ahead**. Structure is small and readable, `runners.py` holds the predictors,
 `evaluator.py` the MAE/RMSE metrics, and the traces are resampled to 200 Hz.
 
 The critical property, and the reason this beats filtering: **prediction removes lag without
 adding jitter.** A filter must smooth to reduce noise, and smoothing *is* lag. A predictor
-extrapolates, so it can be simultaneously smooth and current. It fails differently — badly at
-turn onsets and reversals, where extrapolation overshoots — which is why the recent work
+extrapolates, so it can be simultaneously smooth and current. It fails differently, badly at
+turn onsets and reversals, where extrapolation overshoots, which is why the recent work
 ([Predictability-Aware Motion Prediction, arXiv 2507.13179](https://arxiv.org/html/2507.13179))
 is about knowing *when* the motion is predictable and backing off when it is not.
 
@@ -66,7 +66,7 @@ rotation and the last completed frame. That is precisely the structure that make
 loop acceptable.
 
 Open-source runtime to read: **[Monado](https://monado.freedesktop.org/)**, the FOSS OpenXR
-runtime — `src/xrt/compositor` is where distortion and reprojection live, `src/xrt/auxiliary` has
+runtime, `src/xrt/compositor` is where distortion and reprojection live, `src/xrt/auxiliary` has
 the tracking/filtering utilities. It is the most directly readable production implementation of
 this whole stack.
 
@@ -92,14 +92,14 @@ comparisons ([arXiv 2108.01654](https://ar5iv.labs.arxiv.org/html/2108.01654)):
 
 **This is the same conclusion the project already reached from the other direction.** `HANDOFF.md`
 records that `WorldTracker` builds 0 map points because stereo initialisation degrades under
-rotation-dominant motion with far landmarks — and that an IMU is the standard fix. The latency work
+rotation-dominant motion with far landmarks, and that an IMU is the standard fix. The latency work
 and the SLAM work want *the same component*.
 
 ---
 
 ## 4. FILTERING: what it is legitimately for
 
-Filtering is not useless — it is for **sensor noise on an interaction signal**, not for latency.
+Filtering is not useless, it is for **sensor noise on an interaction signal**, not for latency.
 
 The One Euro filter (Casiez, Roussel & Vogel, CHI 2012) is the standard here and is what we now
 use: `cutoff = min_cutoff + beta * |velocity|`, smoothing hard when still and opening up when
@@ -112,16 +112,16 @@ process a frame. No causal filter can. That is what §2 is for.
 
 ## 5. THE CALIBRATION SIDE, for completeness
 
-- **SPAAM** (Tuceryan & Navab) — align a marker to a single 3D point from many viewpoints, solve
+- **SPAAM** (Tuceryan & Navab), align a marker to a single 3D point from many viewpoints, solve
   the projection. This is what our calibration loop is. Known weakness: user alignment noise, and
   the need for varied viewpoint *and distance*.
-- **INDICA** (Itoh & Klinker, 3DUI 2014) — split calibration into an **offline display part** and
+- **INDICA** (Itoh & Klinker, 3DUI 2014), split calibration into an **offline display part** and
   an **online eye-position part**, so a re-seat does not require recalibration. Directly relevant
   to our zip-tied, non-repeatable mount.
-- **Corneal-imaging calibration** (Itoh & Klinker, TVCG 2015) — uses the display's reflection on
+- **Corneal-imaging calibration** (Itoh & Klinker, TVCG 2015), uses the display's reflection on
   the cornea, removing landmark tracking entirely.
 - **Parallax-free OST-HMD work** ([PMC7806030](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7806030/))
-  — conditions under which short-focal-distance OST displays mitigate parallax registration error.
+, conditions under which short-focal-distance OST displays mitigate parallax registration error.
 
 ---
 
@@ -152,7 +152,7 @@ point where reducing jitter costs lag back.
    (`SamiMitwalli/One-Pro-IMU-Retriever-Demo`, `adidoes/xrealair-sdk-macos`). An IMU at 100–1000 Hz
    against our 17.9 fps loop is exactly the fast/slow split in §3. **This is the piece that makes
    the slow camera loop stop mattering.**
-3. **THEN the camera loop speed is nearly irrelevant** — which is the whole point of the
+3. **THEN the camera loop speed is nearly irrelevant**, which is the whole point of the
    architecture. Do not optimise the vision pipeline for latency before doing 1 and 2.
 
 ### What we should stop doing

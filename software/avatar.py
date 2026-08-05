@@ -1,4 +1,4 @@
-"""avatar.py — turn a tracked person into a MONKEY drawn on the AR display.
+"""avatar.py, turn a tracked person into a MONKEY drawn on the AR display.
 
 Given a TrackedPerson (people_track) with 3D world anchor points + the world-locked AnchorProjector
 (anchor.py), this poses a monkey over them and produces a DrawItem the compositor paints onto the
@@ -9,7 +9,7 @@ stays glued to the person as both the person and the wearer's head move.
     with a width from their build; it shrinks with distance automatically (the projected head–feet
     span is smaller when they're farther), and the billboard's width axis tracks the view direction
     so it always faces the wearer. (A rigged 3D monkey articulated to body keypoints is the upgrade
-    path — feed pose keypoints as extra anchor points; the billboard is the runnable default.)
+    path, feed pose keypoints as extra anchor points; the billboard is the runnable default.)
   * OCCLUSION: DrawItems carry a depth; the compositor paints far→near (painter's algorithm) so a
     nearer monkey correctly covers a farther one.
   * ASSET: `make_monkey_texture()` procedurally builds an RGBA monkey (brown fur, face, ears, eyes)
@@ -18,7 +18,7 @@ stays glued to the person as both the person and the wearer's head move.
 
 Rendering uses cv2 for the perspective warp; the geometry (posing the billboard, depth sort) is
 plain numpy. `--selftest` proves the monkey covers the person, scales with distance, sorts by
-depth (occlusion), and composites to an otherwise-transparent (black) canvas — no hardware.
+depth (occlusion), and composites to an otherwise-transparent (black) canvas, no hardware.
 """
 import argparse
 import sys
@@ -35,7 +35,7 @@ def make_monkey_texture(size=256):
     """RGBA monkey sprite: transparent outside the silhouette, head at the TOP row of the image.
     Warm brown fur with soft radial shading, a tan face + muzzle, and eyes with highlights so it
     reads as a monkey rather than a flat blob. (Still a placeholder for a real art asset / 3D
-    render — MonkeyAvatar(texture=<PNG>) swaps it out.)"""
+    render, MonkeyAvatar(texture=<PNG>) swaps it out.)"""
     import cv2
     s = size
     img = np.zeros((s, s, 4), np.uint8)
@@ -77,7 +77,7 @@ def make_monkey_texture(size=256):
 class RenderSmoother:
     """Per-person EMA on the projected billboard quad to kill on-screen jitter (detection noise
     survives the world-space tracker as small quad wobble). Keyed by track id so identities don't
-    bleed; `alpha` in (0,1] — lower = smoother but laggier."""
+    bleed; `alpha` in (0,1], lower = smoother but laggier."""
 
     def __init__(self, alpha=0.5):
         self.alpha = alpha
@@ -151,7 +151,7 @@ def compose(items, display_w=1920, display_h=1080, render_scale=1.0):
 
     COST (the reason this is written the way it is): the obvious implementation warps each texture
     into a FULL display-sized buffer and alpha-blends the WHOLE canvas per item, so a monkey 80 px
-    tall costs exactly as much as one filling the screen — O(items x 1920 x 1080) float ops either
+    tall costs exactly as much as one filling the screen, O(items x 1920 x 1080) float ops either
     way. Two changes keep it real-time:
 
       * BOUNDING BOX: warp and blend only inside the quad's clipped bbox. Pixel-identical to the
@@ -229,7 +229,7 @@ def selftest(verbose=True):
     checks.append(("RenderSmoother reduces frame-to-frame jitter (%.4f -> %.4f)" % (raw_j, sm_j),
                    sm_j < raw_j * 0.6))
 
-    # two people ~1.7 m tall (2.5 m and 4 m away — full body inside the world-cam FOV)
+    # two people ~1.7 m tall (2.5 m and 4 m away: full body inside the world-cam FOV)
     near = TrackedPerson(0, np.array([0.0, 0.0, 2500.0]), 1700.0)
     far = TrackedPerson(1, np.array([250.0, 0.0, 4000.0]), 1700.0)
 
@@ -317,7 +317,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "AVATAR OK — monkey posed/scaled/oriented, depth-occluded, world-locked ✅"
+        print("  =>", "AVATAR OK, monkey posed/scaled/oriented, depth-occluded, world-locked ✅"
               if ok else "PROBLEM ⚠️")
         print("  the procedural sprite is a placeholder; MonkeyAvatar(texture=<PNG>) or a rigged 3D")
         print("  model + body keypoints gives 'realistic'. Registration/tracking are asset-agnostic.")

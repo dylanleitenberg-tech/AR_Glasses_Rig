@@ -1,11 +1,11 @@
-"""connect.py — plug the 6 rig cameras into the Mac and map each to its ROLE, once.
+"""connect.py, plug the 6 rig cameras into the Mac and map each to its ROLE, once.
 
 The whole pipeline addresses cameras by ROLE (worldL/R, eyeL/R, pupilL/R), but macOS hands out
 opaque UVC indices in arbitrary order, so something has to decide which index is which camera.
 This module does that and PERSISTS it to data/rig_cameras.json, so every other tool
 (sync_capture, rig_test, snapshot, capture) just loads the map.
 
-CLASSIFY (no user input): each camera is probed and its frame measured —
+CLASSIFY (no user input): each camera is probed and its frame measured , 
   * COLOR vs MONO   : real chroma (mean |channel spread|) → the 2 AR0234 world cams are color,
                       the 4 OV9281 eye/pupil cams are mono (NoIR).
   * RESOLUTION      : the world boards report 1280-class, the OV9281s 640-class.
@@ -13,7 +13,7 @@ That splits the 6 into {2 world} + {4 eye/pupil} automatically.
 
 DISAMBIGUATE within a class (needs the human or the LEDs, briefly):
   * world L vs R and eye vs pupil, L vs R can't be told from a static frame. Two ways:
-      - IR-STROBE test: pulse the IR LEDs (firmware/ir_strobe) — only the 2 PUPIL cams see a
+      - IR-STROBE test: pulse the IR LEDs (firmware/ir_strobe), only the 2 PUPIL cams see a
         bright jump (they point at the IR-lit eye); that separates pupil from eye.
       - assisted: `--identify` shows each camera live, labeled, and you press the role key.
   * The final L/R split uses the assisted step or the physical USB order you confirm.
@@ -36,7 +36,7 @@ CORE_ROLES = ("worldL", "worldR", "eyeL", "eyeR", "pupilL", "pupilR")
 
 
 # --------------------------------------------------------------------------
-#  Frame classification (pure numpy — the testable core)
+#  Frame classification (pure numpy: the testable core)
 # --------------------------------------------------------------------------
 def classify_frame(frame):
     """Describe one probed frame: {is_color, res_class, chroma, brightness, w, h}.
@@ -121,7 +121,7 @@ def validate_map(role_index):
 
 
 # --------------------------------------------------------------------------
-#  Hardware paths (opencv) — auto-classify + assisted identify
+#  Hardware paths (opencv): auto-classify + assisted identify
 # --------------------------------------------------------------------------
 def _probe_indices(max_index=10):
     """Open each UVC index, grab a frame, classify it. Returns {index: (frame, desc)}."""
@@ -161,7 +161,7 @@ def auto_map(max_index=10, verbose=True):
     # or separate_pupils(). Assign the mono pool provisionally by index order.
     if len(mono) >= 4:
         role_index.update(dict(zip(("eyeL", "eyeR", "pupilL", "pupilR"), mono[:4])))
-        notes.append("mono cams assigned by index order — verify eye vs pupil with --strobe or --identify")
+        notes.append("mono cams assigned by index order, verify eye vs pupil with --strobe or --identify")
     else:
         notes.append("found %d mono (NoIR/640) cams, need 4" % len(mono))
     if verbose:
@@ -183,7 +183,7 @@ def identify_interactive(max_index=10):
     keymap = {"1": "worldL", "2": "worldR", "3": "eyeL", "4": "eyeR", "5": "pupilL", "6": "pupilR"}
     print("keys: " + "  ".join("%s=%s" % (k, v) for k, v in keymap.items()) + "   n=next  s=save  q=quit")
     role_index = {}
-    win = "connect — assign roles"
+    win = "connect, assign roles"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     pos = 0
     while True:
@@ -279,7 +279,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "CONNECT OK — auto-classify + IR-strobe pupil split + persistence ✅"
+        print("  =>", "CONNECT OK, auto-classify + IR-strobe pupil split + persistence ✅"
               if ok else "PROBLEM ⚠️")
         print("  on hardware: `python3 connect.py --auto` then `--identify` to confirm L/R, then")
         print("  every tool loads data/rig_cameras.json via connect.load_map().")

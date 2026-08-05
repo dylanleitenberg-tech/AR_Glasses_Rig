@@ -31,7 +31,7 @@ class Camera:
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         except Exception:
             pass
-        # VERIFY THE MODE ACTUALLY TOOK — a rejected mode is SILENT.
+        # VERIFY THE MODE ACTUALLY TOOK: a rejected mode is SILENT.
         #
         # UVC does not error on an unsupported size; it hands back the native one. Asking an
         # AR0234 for 640x400 returns 1920x1200, which is 7.5x the pixels, and four of those on one
@@ -42,7 +42,7 @@ class Camera:
         self.actual = (int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
                        int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)))
         if self.actual != self.requested and self.actual != (0, 0):
-            print("!! %s: asked %dx%d, got %dx%d — the mode was IGNORED. That is %.1fx the "
+            print("!! %s: asked %dx%d, got %dx%d, the mode was IGNORED. That is %.1fx the "
                   "pixels and will starve the shared USB bus. See cameras.ROLE_MODE."
                   % (self.name, self.requested[0], self.requested[1],
                      self.actual[0], self.actual[1],
@@ -108,8 +108,8 @@ ROLE_RES = {"worldL": 1280, "worldR": 1280, "eyeL": 640, "eyeR": 640,
 # and 10/16 made the world cams silently run native and starve half the bank (only 2 of 4 cameras
 # delivered frames).
 ROLE_MODE = {
-    "worldL": (640, 480), "worldR": (640, 480),          # AR0234 — 640x400 is ignored
-    "eyeL":   (640, 400), "eyeR":   (640, 400),          # OV9281 — 640x480 is a crop
+    "worldL": (640, 480), "worldR": (640, 480),          # AR0234, 640x400 is ignored
+    "eyeL":   (640, 400), "eyeR":   (640, 400),          # OV9281, 640x480 is a crop
     "pupilL": (640, 400), "pupilR": (640, 400),
     "eye2L":  (640, 400), "eye2R":  (640, 400),
 }

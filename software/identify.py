@@ -1,7 +1,7 @@
 """Few-shot facial-geometry identification (numpy + stdlib).
 
-Given a few calibration attempts from a new user — each an (8 camera features, 2 corrected
-pixel) pair — infer the person's eye/face geometry descriptor
+Given a few calibration attempts from a new user, each an (8 camera features, 2 corrected
+pixel) pair, infer the person's eye/face geometry descriptor
 (anatomy.DESCRIPTOR_NAMES = IPD, globe_r, ep_dist, OCD, ICD, canthal_tilt, kappa_x, kappa_y).
 
 Method (amortized inference): summarize the K attempts into a fixed-length vector and
@@ -12,7 +12,7 @@ against the population pixel prior (which exposes the parallax/kappa terms).
 
 Honest identifiability: not every parameter is recoverable from outside the eye. We report
 each parameter's error AGAINST its population spread, so it is explicit which are pinned
-down by a few attempts and which (e.g. angle kappa) are near-unobservable — the truthful
+down by a few attempts and which (e.g. angle kappa) are near-unobservable, the truthful
 result a serious evaluator needs.
 """
 import numpy as np
@@ -77,7 +77,7 @@ def evaluate(db_path, shots=(4, 8, 16, 32), seed=0, verbose=True):
     ntr = int(0.8 * len(subs)); tr, te = idx[:ntr], idx[ntr:]
     pop_sd = desc.std(0)        # baseline: knowing nothing, you'd guess the mean (err≈SD)
 
-    # population pixel prior for the residual features — fit on TRAIN subjects only,
+    # population pixel prior for the residual features: fit on TRAIN subjects only,
     # so a held-out user is genuinely unseen (no leakage; matches deployment).
     Xtr = np.vstack([subs[i][1] for i in tr])
     Ytr = np.vstack([subs[i][2] for i in tr])
@@ -113,13 +113,13 @@ def evaluate(db_path, shots=(4, 8, 16, 32), seed=0, verbose=True):
             pct = 100.0 * results[Kbest][j] / max(pop_sd[j], 1e-9)
             verdict = ("well identified" if pct < 35 else
                        "partially identified" if pct < 70 else
-                       "weak — needs more sensing")
+                       "weak, needs more sensing")
             print("  %-12s %6.2f %-3s   pop SD %5.2f   -> %s"
                   % (names[j], results[Kbest][j], units[j], pop_sd[j], verdict))
         print("\nHonest read of what THIS sensor suite (2 world + 2 outer-canthus cams) can do:")
         print("  * OCD is read almost directly (cameras image the outer canthi).")
         print("  * angle kappa is recovered from the calibration RESIDUAL (a constant")
-        print("    per-user pixel offset) — identifiable from a few corrected attempts.")
+        print("    per-user pixel offset), identifiable from a few corrected attempts.")
         print("  * IPD / ICD come only via the face-size correlation -> partial.")
         print("  * ep_dist and canthal_tilt are weak: precise IPD/pupil depth needs")
         print("    PUPIL/IRIS imaging, and inner-canthus geometry needs a NOSE-BRIDGE")

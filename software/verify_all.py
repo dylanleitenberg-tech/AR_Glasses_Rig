@@ -1,4 +1,4 @@
-"""verify_all.py — THE RELEASE GATE: one command that verifies the whole device design.
+"""verify_all.py, THE RELEASE GATE: one command that verifies the whole device design.
 
 Runs every check the project has (code, simulation contracts, CAD geometry, doc consistency)
 and fails loudly on any regression. Run before every print, order, or release:
@@ -29,7 +29,7 @@ FAILS = []
 
 
 def check(name, ok, detail=""):
-    print("  [%s] %s%s" % ("PASS" if ok else "FAIL", name, ("  — " + detail) if detail else ""))
+    print("  [%s] %s%s" % ("PASS" if ok else "FAIL", name, (", " + detail) if detail else ""))
     if not ok:
         FAILS.append(name)
     return ok
@@ -97,7 +97,7 @@ def main(fast=False):
         ("binocular oracle", "python3 main.py --binocular-test", "BINOCULAR PHYSICS OK"),
         ("tracked-landmark switch (outer/inner)", "python3 landmark_test.py --selftest",
          "landmark_test selftest: PASS"),
-        # hardware bring-up layer (headless selftests — no cameras needed)
+        # hardware bring-up layer (headless selftests: no cameras needed)
         ("partial-bank bring-up + CPU budget", "python3 bank_bringup.py --selftest",
          "BANK BRINGUP OK"),
         ("frame budget + adaptive quality", "python3 perf.py --selftest", "PERF OK"),

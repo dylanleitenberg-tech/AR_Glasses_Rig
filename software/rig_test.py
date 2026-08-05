@@ -1,4 +1,4 @@
-"""rig_test.py — one-command hardware BRING-UP test for the 6-camera rig.
+"""rig_test.py, one-command hardware BRING-UP test for the 6-camera rig.
 
 Run this right after plugging the rig into the Mac (and after `connect.py --auto/--identify`).
 It opens the whole role-mapped bank through the synchronized capture layer and reports, per role
@@ -22,7 +22,7 @@ import numpy as np
 
 
 # --------------------------------------------------------------------------
-#  Metrics (pure numpy — testable without cameras)
+#  Metrics (pure numpy: testable without cameras)
 # --------------------------------------------------------------------------
 def focus_score(frame):
     """Sharpness = variance of a discrete Laplacian. Higher = crisper focus. Grayscale-agnostic,
@@ -105,7 +105,7 @@ def run(seconds=3.0, budget_ms=3.0, strobe=None, fps=100, verbose=True):
     from sync_capture import SyncBank
     role_index = load_map()
     if not role_index:
-        print("no role map — run:  python3 connect.py --auto   (then --identify)")
+        print("no role map, run:  python3 connect.py --auto   (then --identify)")
         return 1
     probs = validate_map(role_index)
     if probs:
@@ -153,7 +153,7 @@ def run(seconds=3.0, budget_ms=3.0, strobe=None, fps=100, verbose=True):
             print(r.line())
         print("  sync jitter (median): %.2f ms  (budget %.1f ms)  [%s]"
               % (jitter_ms, budget_ms, "OK" if jitter_ms <= budget_ms else "TOO LOOSE"))
-        print("  =>", "RIG READY ✅" if overall else "NOT READY — see CHECK rows ⚠️")
+        print("  =>", "RIG READY ✅" if overall else "NOT READY, see CHECK rows ⚠️")
     return 0 if overall else 1
 
 
@@ -167,7 +167,7 @@ def _checker(n=64, cell=4):
 
 
 def _defocused(n=64, rng=None):
-    """A badly out-of-focus / lens-capped frame: near-uniform, no high-frequency detail — what a
+    """A badly out-of-focus / lens-capped frame: near-uniform, no high-frequency detail, what a
     defocused lens actually delivers. Should fall UNDER the focus floor."""
     rng = rng or np.random.default_rng(0)
     return np.clip(128 + rng.normal(0, 0.5, (n, n)), 0, 255).astype(np.uint8)
@@ -216,7 +216,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "RIG_TEST OK — enumerate/fps/jitter/IR/focus metrics validated ✅"
+        print("  =>", "RIG_TEST OK, enumerate/fps/jitter/IR/focus metrics validated ✅"
               if ok else "PROBLEM ⚠️")
         print("  on hardware:  python3 rig_test.py --run   (after connect.py maps the cameras)")
     return 0 if ok else 1

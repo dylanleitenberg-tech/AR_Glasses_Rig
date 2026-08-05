@@ -10,14 +10,14 @@ the wearer's HEAD pose:
 So a raw level reading is the useful slip term BURIED UNDER the head pitch/roll, which
 changes constantly as the user looks around. Two readings are modelled:
 
-  * raw          — head confound included (what a bare accelerometer gives in the wild);
-  * compensated  — head pose removed (what you get if a world camera or AHRS estimates head
+ * raw, head confound included (what a bare accelerometer gives in the wild);
+ * compensated, head pose removed (what you get if a world camera or AHRS estimates head
                    pose, or the user holds the head level during a capture). This isolates
                    the pantoscopic-tilt slip term the calibration actually wants.
 
 `tilt_on_face` uses the rig's rest pantoscopic tilt (`rig.PANTO_DEG`) plus the per-pose
 deviation, so the IMU is consistent with the same pose `dev` the cameras and oracle see.
-All magnitudes are PLACEHOLDERS at plausible values — replace with measured IMU specs.
+All magnitudes are PLACEHOLDERS at plausible values, replace with measured IMU specs.
 """
 import numpy as np
 
@@ -55,7 +55,7 @@ def imu_tilt(dev, rng, compensated=False):
 #  the accel angle, so the fused tilt keeps the gyro's smoothness while the bias
 #  state actively estimates and cancels the drift. A light exponential smoother on
 #  the output is the "active temporal filtering" that further suppresses residual
-#  drift artifacts/spikes. numpy/stdlib only — ports straight to the XIAO firmware.
+#  drift artifacts/spikes. numpy/stdlib only: ports straight to the XIAO firmware.
 # ===========================================================================
 class TiltKalman:
     """2-state (angle, gyro-bias) Kalman tilt filter for ONE axis (pitch or roll).
@@ -169,7 +169,7 @@ def selftest(n=4000, seed=0, verbose=True):
         print("  raw gyro-integration drift RMS : %7.2f deg  (unbounded -> grows with time)" % raw_rms)
         print("  raw accel-only noise RMS       : %7.2f deg  (drift-free but noisy)" % accel_rms)
         print("  Kalman fused tilt error RMS    : %7.2f deg  (smooth AND drift-free)" % kal_rms)
-        print("  =>", "IMU FILTER OK — drift cancelled, accel noise smoothed ✅" if ok
+        print("  =>", "IMU FILTER OK, drift cancelled, accel noise smoothed ✅" if ok
               else "WEAK ⚠️")
     return 0 if ok else 1
 

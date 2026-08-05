@@ -1,19 +1,19 @@
 """Two measured answers about angle kappa (see KAPPA.md for the full study).
 
-1) convergence() — "why can't we have 3 px?"  Overlay error vs the number of the user's OWN
+1) convergence(), "why can't we have 3 px?" Overlay error vs the number of the user's OWN
    corrections, reported TWO ways:
-     * vs geometric truth  — floored by the perceptual bias (kappa/bias confound);
-     * vs perceived alignment (truth + the user's own consistent offset) — floored only by
+     * vs geometric truth, floored by the perceptual bias (kappa/bias confound);
+     * vs perceived alignment (truth + the user's own consistent offset), floored only by
        how well the model fits, so it drops toward 0 as corrections accumulate.
    The honest point: against what the user actually SEES on target, sub-3 px is reachable;
    the geometric-truth number is inflated by a bias the user doesn't perceive as error.
 
-2) vergence_separation() — a concrete WAY AROUND kappa (KAPPA.md §5 method 7). The
+2) vergence_separation(), a concrete WAY AROUND kappa (KAPPA.md §5 method 7). The
    perceptual offset has two pieces with different signatures: angle kappa (constant with
    viewing distance) and the vergence-accommodation bias (scales with 1/d - 1/d_virtual,
    and is ZERO at the virtual image plane). Calibrating at ONE distance cannot tell them
    apart, so it fails to transfer to other distances. Calibrating across distances (or at
-   the virtual plane) regresses them apart and restores accuracy everywhere — kappa
+ the virtual plane) regresses them apart and restores accuracy everywhere, kappa
    separated from the bias with NO new hardware.
 
 Run:  python3 kappa.py        (or:  python3 main.py --kappa)
@@ -44,7 +44,7 @@ def convergence(n_users=30, Ks=(2, 4, 8, 16, 32, 64), seed_base=6000, verbose=Tr
         geo, perc = [], []
         for i in range(n_users):
             s = autosim.Simulator(seed_base + i); subj = s.new_subject()
-            # the user's own corrections (noisy, perceptually biased — all reality gives)
+            # the user's own corrections (noisy, perceptually biased: all reality gives)
             X, Y, dev, guard = [], [], s.seat(), 0
             while len(X) < K and guard < K * 6:
                 guard += 1; dev = s.slip(dev)
@@ -80,7 +80,7 @@ def convergence(n_users=30, Ks=(2, 4, 8, 16, 32, 64), seed_base=6000, verbose=Tr
         gfloor = rows[-1][1]; pfloor = rows[-1][2]
         print("\n   vs geometric truth floors at ~%.1f px (the perceptual bias = kappa confound)."
               % gfloor)
-        print("   vs PERCEIVED alignment reaches ~%.1f px (%s 3 px) — what the user sees on target."
+        print("   vs PERCEIVED alignment reaches ~%.1f px (%s 3 px), what the user sees on target."
               % (pfloor, "below" if pfloor < 3 else "approaching"))
         print("   So 'within 3 px' is gated by the user's own corrections + fixation noise,")
         print("   NOT by the database; the bias the geometric number penalizes isn't perceived.")
@@ -136,7 +136,7 @@ def vergence_separation(n_users=200, seed=0, verbose=True):
         print("\n   single-distance calibration carries a big error to OTHER distances (the")
         print("   vergence-accommodation bias it mistook for a constant kappa); regressing across")
         print("   distances separates kappa (the constant) from the vergence bias (the slope) and")
-        print("   stays accurate everywhere. The confound is broken by VARYING viewing distance —")
+        print("   stays accurate everywhere. The confound is broken by VARYING viewing distance , ")
         print("   no extra sensor. (A PCCR/imaging measurement removes the residual constant too.)")
     return es, em, ev
 

@@ -10,7 +10,7 @@ This replaces the black-box polynomial with the WHITE-BOX physics:
      KNOWN geometry;
   3. forward-compute the registered pixel with the oracle (`ground_truth`) at that pose/dot.
 
-There is no representational error — only the error in recovering pose + dot. The 2 eye
+There is no representational error, only the error in recovering pose + dot. The 2 eye
 corners UNDER-determine the 6-DOF pose, so 8 features leave an ambiguity; the NIR pupil-centre
 feature (10 features) fully determines it. This is the correct way to USE the pupil feature
 (it pins the pose for the solver, not as overfit polynomial terms).

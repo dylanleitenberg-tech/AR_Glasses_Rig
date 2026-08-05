@@ -12,7 +12,7 @@ The loop, with no human:
 Across many subjects we pool every (features -> true pixel) sample and the geometry
 descriptors into a SQLite meta-database, then fit a GLOBAL PRIOR. For a brand-new user
 the prior already predicts most of the mapping from their eye-corner geometry, so a
-warm-started calibrator needs far fewer samples than starting cold — that is the
+warm-started calibrator needs far fewer samples than starting cold, that is the
 streamlined-onboarding payoff, and the benchmark measures it.
 """
 import os
@@ -35,7 +35,7 @@ class WarmCalibrator:
     def __init__(self, prior: Calibrator, cfg: Config):
         self.prior = prior
         # Residual is a per-session correction fit on very few samples, so it must be
-        # strongly regularized — a high lambda floor keeps it ~a gentle offset and stops
+        # strongly regularized: a high lambda floor keeps it ~a gentle offset and stops
         # it overfitting/blowing up when K ≈ the feature count (the K≈8 failure mode).
         self.resid = Calibrator(cfg.n_features, degree=1, min_samples=2,
                                 lambdas=np.logspace(-1.0, 2.5, 15), robust_iters=1)
@@ -96,7 +96,7 @@ class MetaDB:
         self.conn.commit()
 
     def load_prior_samples(self):
-        """Pooled (features -> human label) — the prior is trained on labels."""
+        """Pooled (features -> human label), the prior is trained on labels."""
         rows = self.conn.execute("SELECT features, px, py FROM prior_samples").fetchall()
         if not rows:
             return np.empty((0, 8)), np.empty((0, 2))

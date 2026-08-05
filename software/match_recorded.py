@@ -1,8 +1,8 @@
-"""Identify eye geometry directly from the RECORDED sweep — the database in action.
+"""Identify eye geometry directly from the RECORDED sweep, the database in action.
 
 This consumes the artifacts the sweep wrote (no re-simulation):
-  * data/pixel_sweep_guesses.bin  — one row per guess (face, pose, pixel, guess#, dx, dy)
-  * data/pixel_sweep.npz          — per-face geometry descriptors (the labels)
+ * data/pixel_sweep_guesses.bin, one row per guess (face, pose, pixel, guess#, dx, dy)
+ * data/pixel_sweep.npz, per-face geometry descriptors (the labels)
 
 Each face's FIRST-guess inaccuracy (guess==1) across positions is its fingerprint; we
 leave-one-out k-NN match a held-out face to the rest and read off the recovered geometry.
@@ -10,7 +10,7 @@ This proves the recorded dataset is directly usable for the end goal: (glasses p
 guess inaccuracy) -> eye geometry.
 
 HONEST caveat: the sweep's guessing-AI LEARNS as it goes (it warms across faces), so the
-first-guess magnitude drifts from face to face — a confound absent in match.py, which uses a
+first-guess magnitude drifts from face to face, a confound absent in match.py, which uses a
 fixed population prior. We remove the per-face magnitude (standardize each fingerprint) so
 the geometry PATTERN drives the match, and report recovery honestly. For the clean,
 at-scale identifiability numbers use `match.py`; this shows the recorded data works.

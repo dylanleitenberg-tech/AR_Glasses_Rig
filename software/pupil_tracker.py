@@ -7,7 +7,7 @@ Purkinje images) are tiny, very bright spots. We:
      circle, because the nose-bridge camera views the eye obliquely),
   2. find the bright glints,
   3. output a compact gaze feature: the pupil center AND the pupil-center -> glint vector
-     (the "pupil-glint vector" used in video-oculography — it tracks gaze and is robust to
+     (the "pupil-glint vector" used in video-oculography, it tracks gaze and is robust to
      small shifts of the camera on the face).
 
 These per-eye features replace the eye-corner features in the calibration pipeline; the
@@ -133,7 +133,7 @@ class PupilTracker:
 
 
 # ----------------------------------------------------------------------
-#  Synthetic NIR eye (for the self-test) — dark pupil, gray iris, bright glints
+#  Synthetic NIR eye (for the self-test): dark pupil, gray iris, bright glints
 # ----------------------------------------------------------------------
 def synth_eye(W=400, H=300, pupil=(0.5, 0.5), pupil_r=0.11, iris_r=0.26,
               glints=((0.47, 0.47), (0.54, 0.49)), tilt_deg=0.0, lid=0.0,
@@ -194,7 +194,7 @@ def run_selftest(n=200, seed=0):
             clean_ok = found >= 0.95*n and med < 0.01
     print("  RESULT:", "PASS ✅ (clean solid; hard cases honestly flagged)" if clean_ok
           else "WEAK ⚠️")
-    print("  note: heavy occlusion is where EllSeg/RITnet-class CNNs are needed — see RESEARCH.md")
+    print("  note: heavy occlusion is where EllSeg/RITnet-class CNNs are needed, see RESEARCH.md")
     return 0 if clean_ok else 1
 
 
@@ -203,7 +203,7 @@ def run_cam(idx):
     if not cap.isOpened():
         print("could not open camera", idx); return 1
     trk = PupilTracker()
-    print("live pupil tracking on cam %d — press Q to quit" % idx)
+    print("live pupil tracking on cam %d, press Q to quit" % idx)
     while True:
         ok, frame = cap.read()
         if not ok:

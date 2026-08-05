@@ -1,8 +1,8 @@
-"""Run the trained canthus model — pure numpy, no torch. This is the RUNTIME half.
+"""Run the trained canthus model, pure numpy, no torch. This is the RUNTIME half.
 
 WHY NUMPY AND NOT TORCH
     Training happens once, offline, in .venv-train. The live loop must not inherit a 200 MB
-    dependency for a forward pass that is five convolutions — and on this Intel Mac torch 2.2.2
+    dependency for a forward pass that is five convolutions, and on this Intel Mac torch 2.2.2
     (the last available build) predates numpy 2 and breaks interop with the main venv outright.
     So canthus_train.py --export folds BatchNorm into plain scale/shift constants and writes
     .npz; everything below is arithmetic. verify_all stays self-contained.
@@ -13,7 +13,7 @@ WHAT IT REPLACES
     "i cant box every time." This is the thing that removes that step.
 
 WHAT IT OUTPUTS
-    (u, v, closed_prob, sharpness) — position normalised to the frame, the eye-state head, and
+    (u, v, closed_prob, sharpness), position normalised to the frame, the eye-state head, and
     how PEAKED the heatmap is. Sharpness matters: a flat heatmap means the model does not know,
     which is exactly the signal template matching could never give. A high correlation score on a
     flat patch is indistinguishable from a real lock; a flat heatmap is self-announcing.
@@ -61,7 +61,7 @@ class CanthusNet:
     def __init__(self, path=WEIGHTS):
         if not os.path.exists(path):
             raise FileNotFoundError(
-                "no weights at %s — train and export first:\n"
+                "no weights at %s, train and export first:\n"
                 "  source .venv-train/bin/activate\n"
                 "  python3 canthus_train.py --train && python3 canthus_train.py --export" % path)
         z = np.load(path)
@@ -223,7 +223,7 @@ class CanthusTracker:
     """Stateful wrapper: confidence gate + jump gate + smoothing. Use this in the live loop.
 
     WHY, from Dylan on hardware: the prediction "moved off when I open my eyes super wide or look
-    outside glasses frame". Both are OUT OF DISTRIBUTION — the seed set was normal-gaze frames, so
+    outside glasses frame". Both are OUT OF DISTRIBUTION, the seed set was normal-gaze frames, so
     the model has never seen an eye held wide or rotated to an extreme. The real fix is seed points
     covering those poses; this makes the failure SAFE in the meantime, which matters because a
     silently wrong landmark is worse than an admitted gap.
@@ -234,7 +234,7 @@ class CanthusTracker:
     flatten it. Measured on eyeL: confident frames (including all 30 seeds) sit at 0.018-0.022,
     the whole-corpus 5th percentile is 0.0152, and a blank frame bottoms out at 0.0084. Below
     ~0.017 the model does not know, and the honest move is to say so rather than emit a number.
-    Template matching had no equivalent — it scored ~1.0 on featureless skin.
+    Template matching had no equivalent, it scored ~1.0 on featureless skin.
 
     JUMP GATE. The inner canthus is FACE-fixed: it does not move when gaze moves, and it cannot
     teleport between frames. A large inter-frame jump is therefore a detection error by
@@ -246,7 +246,7 @@ class CanthusTracker:
 
     `state` is 'ok' | 'held' | 'lost'. HELD means the last good position is being reused; LOST
     means there is no trustworthy estimate at all. The calibration loop should refuse to record a
-    sample unless state == 'ok' — recording during a blink or an off-distribution pose is exactly
+    sample unless state == 'ok', recording during a blink or an off-distribution pose is exactly
     the bad sample rig.py's blink-dropout model exists to describe.
     """
 
@@ -377,7 +377,7 @@ def selftest(verbose=True):
         print("== canthus_net self-test (numpy runtime) ==")
     checks = []
     if not os.path.exists(WEIGHTS):
-        print("  [SKIP] no exported weights yet — train first")
+        print("  [SKIP] no exported weights yet, train first")
         return 0
     net = CanthusNet()
     import cv2
@@ -409,7 +409,7 @@ def selftest(verbose=True):
             checks.append(("numpy runtime reproduces the seed landmark, median err %.3f "
                            "frame units" % med, med < 0.12))
 
-    # 3) A flat/blank frame must yield a FLAT heatmap — low sharpness. This is the property
+    # 3) A flat/blank frame must yield a FLAT heatmap: low sharpness. This is the property
     #    template matching never had: it scored ~1.0 on featureless skin and could not say
     #    "I don't know". A model that spreads its probability IS saying it.
     blank = np.full((400, 640), 128, np.uint8)
@@ -565,13 +565,13 @@ def selftest(verbose=True):
         prod_ok = False
         prod_detail = "%s: %s" % (type(e).__name__, e)
     checks.append(("PRODUCTION PATH: CanthusTracker(mirrored=...).track() survives 15 frames%s"
-                   % ("  — " + prod_detail if prod_detail else ""), prod_ok))
+                   % (", " + prod_detail if prod_detail else ""), prod_ok))
 
     ok = all(x for _, x in checks)
     if verbose:
         for name, x in checks:
             print("  [%s] %s" % ("PASS" if x else "FAIL", name))
-        print("  =>", "CANTHUS NET OK — numpy runtime matches training ✅" if ok else "PROBLEM ⚠️")
+        print("  =>", "CANTHUS NET OK, numpy runtime matches training ✅" if ok else "PROBLEM ⚠️")
     return 0 if ok else 1
 
 
@@ -584,7 +584,7 @@ def live(cam=0, seconds=None):
     cap = cv2.VideoCapture(cam, getattr(cv2, "CAP_AVFOUNDATION", 0))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 800)
-    win = "canthus model — live  |  q quits"
+    win = "canthus model, live  |  q quits"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     t0, n, tot = time.time(), 0, 0.0
     while True:

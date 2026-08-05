@@ -1,4 +1,4 @@
-"""display_calib.py — measure the REAL XREAL optics (FOV + K1/K2) so the sim stops guessing.
+"""display_calib.py, measure the REAL XREAL optics (FOV + K1/K2) so the sim stops guessing.
 
 `rig.py` currently uses placeholder display optics: fov_deg=50, k1=0.06, k2=0.02. Now that the
 glasses are in hand you can MEASURE them. This is the device-side counterpart to the caliper
@@ -37,7 +37,7 @@ FILL = 0.85           # board spans this fraction of the display (big = good dis
 
 
 # ----------------------------------------------------------------------
-#  FOV — wall method
+#  FOV: wall method
 # ----------------------------------------------------------------------
 def fov_from_wall(distance_mm, width_mm):
     """Horizontal FOV (deg) from the display's full width W projected on a wall at distance D."""
@@ -45,7 +45,7 @@ def fov_from_wall(distance_mm, width_mm):
 
 
 # ----------------------------------------------------------------------
-#  Distortion fit — recover (k1, k2) + (scale, center) mapping ideal grid -> observed
+#  Distortion fit: recover (k1, k2) + (scale, center) mapping ideal grid -> observed
 # ----------------------------------------------------------------------
 def ideal_grid(cols, rows):
     """Inner-corner positions in DISPLAY-normalized coords [-1,1]^2 (x right, y DOWN to match the
@@ -61,7 +61,7 @@ def ideal_grid(cols, rows):
 def fit_distortion(observed, cols, rows, iters=80):
     """Fit observed = scale*ideal*(1 + k1 r2 + k2 r2^2) + center for the optic's radial distortion.
 
-    JOINT Gauss-Newton over (scale, cx, cy, k1, k2) — a joint fit is essential: an alternating
+    JOINT Gauss-Newton over (scale, cx, cy, k1, k2), a joint fit is essential: an alternating
     fit lets `scale` absorb the average radial expansion and biases k1 toward 0. Returns
     dict(k1, k2, scale, cx, cy, rms_px). numpy only."""
     ideal = ideal_grid(cols, rows)
@@ -119,7 +119,7 @@ def detect_checkerboard(photo_path):
                              (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01))
             corners = c.reshape(-1, 2)
     if corners is None:
-        print("checkerboard NOT found — the WHOLE board (all corners) must be in frame with a "
+        print("checkerboard NOT found, the WHOLE board (all corners) must be in frame with a "
               "black margin. Retake: center it, back off a bit, straight-on, sharp.")
         return None
     return BOARD[0], BOARD[1], corners
@@ -200,7 +200,7 @@ def selftest(verbose=True):
         print("  true  k1=%.4f k2=%.4f" % (true_k1, true_k2))
         print("  fit   k1=%.4f k2=%.4f   (scale=%.1f, center=%.0f,%.0f, rms=%.2f px)"
               % (fit["k1"], fit["k2"], fit["scale"], fit["cx"], fit["cy"], fit["rms_px"]))
-        print("  =>", "FIT OK — recovers known distortion ✅" if ok else "FAIL ⚠️")
+        print("  =>", "FIT OK, recovers known distortion ✅" if ok else "FAIL ⚠️")
     return 0 if ok else 1
 
 
@@ -235,7 +235,7 @@ def main(argv=None):
         print("Detected %d corners. Fitted optic distortion:" % len(pts))
         print("  k1=%.4f  k2=%.4f  (fit rms %.2f px)" % (fit["k1"], fit["k2"], fit["rms_px"]))
         if fit["rms_px"] > 4.0:
-            print("  ⚠️ high rms — retake the photo (straight-on, board upright, fill the frame, sharp).")
+            print("  ⚠️ high rms, retake the photo (straight-on, board upright, fill the frame, sharp).")
         write_calib(k1=fit["k1"], k2=fit["k2"]); return 0
     p.print_help(); return 0
 

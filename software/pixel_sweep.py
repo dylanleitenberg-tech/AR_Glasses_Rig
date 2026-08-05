@@ -1,4 +1,4 @@
-"""Pixel-by-pixel calibration sweep — the protocol stated in plain terms.
+"""Pixel-by-pixel calibration sweep, the protocol stated in plain terms.
 
 Goal (the protocol, stated precisely):
 
@@ -6,7 +6,7 @@ Goal (the protocol, stated precisely):
     100 glasses positions on each face, walk the AR display PIXEL BY PIXEL. For each
     pixel a "guessing AI" proposes a point in the world that lies on the straight line
     through (a) the pixel, (b) where light enters the eye (the entrance pupil), and
-    (c) the real-world dot that pixel must register on — i.e. a point on the eye's
+    (c) the real-world dot that pixel must register on, i.e. a point on the eye's
     chief ray for that pixel. A "user AI" (which knows the physics ground truth)
     judges the guess and, when it is wrong, corrects the guessing AI. We repeat on the
     SAME pixel until the guessing AI is right TWICE IN A ROW, then step to the next
@@ -249,7 +249,7 @@ class GuessingAI:
         captures this face's irreducible bias (angle kappa) and its pose-dependent warp
         (it can see the corner features, which move with the glasses).
     Both are ridge regressions on the same degree-2 design; guess = (prior+residual).
-    Starts at ZERO — no pre-existing data.
+    Starts at ZERO, no pre-existing data.
     """
 
     def __init__(self, n_in=6, lam_prior=8.0, lam_resid=3.0):
@@ -327,7 +327,7 @@ class UserAI:
 
 
 # ======================================================================
-#  Validation — runs BEFORE any sweep
+#  Validation: runs BEFORE any sweep
 # ======================================================================
 def selftest(verbose=True):
     """Prove the simulator is faithful before spending hours generating data."""
@@ -404,7 +404,7 @@ def selftest(verbose=True):
               % ("PASS" if t4 else "FAIL", shift))
 
     if verbose:
-        print("  => SIM %s\n" % ("VALID — safe to run the sweep" if ok else "INVALID — DO NOT RUN"))
+        print("  => SIM %s\n" % ("VALID, safe to run the sweep" if ok else "INVALID, DO NOT RUN"))
     return ok
 
 
@@ -544,7 +544,7 @@ def inverse_surrogate(sim, subject, dev, ng=64, deg=3):
     """Fit a smooth pixel->world map from a GN-exact ng x ng grid, so we can place EVERY
     native pixel with one matrix multiply. Returns (Wsur, deg, fit_resid_mm) or None.
 
-    fit_resid_mm is the surrogate's own error vs the exact inverse, in mm at the page —
+    fit_resid_mm is the surrogate's own error vs the exact inverse, in mm at the page , 
     we assert it is far below the correctness tolerance before trusting it (keeps the
     every-pixel run as faithful as the exact grid run)."""
     uv = pixel_grid(ng)
@@ -721,7 +721,7 @@ def run_dense_grid(n_faces=100, n_poses=100, grid=48, tol_mm=2.5, seed=0,
     guess_counts[face, position, pixel] tensor to data/pixel_sweep.npz.
 
     If `record_guesses`, EVERY individual guess is streamed to data/pixel_sweep_guesses.bin
-    (GUESS_DTYPE: face, pose, pixel, guess#, signed inaccuracy dx,dy in mm) — the dataset is
+    (GUESS_DTYPE: face, pose, pixel, guess#, signed inaccuracy dx,dy in mm), the dataset is
     one row PER GUESS, so its length is exactly the total data-piece count. Streamed to disk
     per round so memory stays bounded even at hundreds of millions of guesses."""
     if validate and not selftest(verbose=verbose):

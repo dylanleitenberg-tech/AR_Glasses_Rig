@@ -1,10 +1,10 @@
 // =====================================================================
-//  AR Calibration Rig — REMOVABLE 6-camera BINOCULAR clip-on carrier for XREAL One Pro
+// AR Calibration Rig, REMOVABLE 6-camera BINOCULAR clip-on carrier for XREAL One Pro
 //  (6-cam CORE; +2 stereo = 8-cam FULL future upgrade via build_stereo)
 //  Fits XREAL One Pro (default), XREAL One, and Rokid Max / Max 2 (set `target`)
 // =====================================================================
 //  Your glasses ARE the display + frame (Path A). You print this carrier and CLAMP it onto the top
-//  brow with the removable PADDED brow clamps (no glue, no marks — pops off clean). It holds the cameras as REAL board
+// brow with the removable PADDED brow clamps (no glue, no marks, pops off clean). It holds the cameras as REAL board
 //  modules (not abstract stand-ins). BINOCULAR: the XREAL One Pro has a display PER EYE, so both
 //  eyes are registered. Build/test the 6-cam CORE first (build_stereo=false):
 //      world  x2 : ELP AR0234 USB, 38x38 mm board + M12 lens   (brow, looks forward; SHARED)
@@ -37,13 +37,13 @@
 // =====================================================================
 
 // PRINTABLE by default: `part="carrier"` renders ONLY the clip-on (rail + padded brow clamps +
-// camera holders/booms + IMU pocket) as one connected solid — no glasses, no eye, no camera-module
+// camera holders/booms + IMU pocket) as one connected solid, no glasses, no eye, no camera-module
 // stand-ins. The IR ring is a SEPARATE print (`part="ir_ring"`) since it mounts at the lens rim.
 // Set part="preview" to see everything (glasses + eye + bought modules) for checking the fit.
 part = "carrier";        // "carrier"(print) | "ir_ring"(print) | "imu_mount" | "board_cam" | "preview" | "bond_pads"
-show_glasses = false;    // translucent glasses stand-in — OFF for a clean printable view
-show_eye     = false;    // translucent eyeball + canthus + cone — OFF for print
-show_cams    = false;    // the camera MODULES (PCB+lens) you BUY — OFF (you don't print those)
+show_glasses = false; // translucent glasses stand-in, OFF for a clean printable view
+show_eye = false; // translucent eyeball + canthus + cone, OFF for print
+show_cams = false; // the camera MODULES (PCB+lens) you BUY, OFF (you don't print those)
 build_stereo = false;    // false = 6-cam BINOCULAR CORE (2 world + 2 eye-corner + 2 NIR pupil,
                          // ~1.4px/eye); build + test this FIRST. true = add the 2 stereo
                          // eye-corner cams -> 8-cam FULL future upgrade (<1px).
@@ -82,7 +82,7 @@ ipd       = 67;
 //  rig.py positions (sim mm, IPD 67):  world ±[33.5,44,22]  eye-corner ±[69.5,-5,-6]
 //                                      stereo eye2 ±[69.5,-16,-10]   NIR pupil [25.5,-33,6]
 //  (positions are WEARABLE: the real 36-38 mm boards clear the cone, the eyeball, AND the face,
-//   so the glasses still rest normally — verified by software/wearable.py + cad_fit.py.)
+// so the glasses still rest normally, verified by software/wearable.py + cad_fit.py.)
 // ===========================================================================
 OPTIC_DROP = 25.3;       // MEASURED: brow rail top -> lens/optic center (was 17 nominal; deeper on this unit)
 function sim2cad(s) = [s[0], s[2], s[1] - OPTIC_DROP];
@@ -92,7 +92,7 @@ WORLD_SIM = [ipd/2,    49, 22];      // brow, looks forward. RAISED 44->49 (2026
                                      // mounting screws clear the rail/boom behind them. Earlier
                                      // 30->44 (2026-07-02): at 30 the
                                      // 38 mm board's lower standoffs + PCB edge sat INSIDE the
-                                     // glasses brow band (z<-2.6) — caught by cad_overlap.py; at 44
+                                     // glasses brow band (z<-2.6), caught by cad_overlap.py; at 44
                                      // the whole module clears ABOVE the brow top (+2.3 mm) and the
                                      // cone margin grows to ~+20. Matches rig.py WC_UP. FWD 5->12
                                      // (2026-07-02): the corrected holder stack (PCB@-10.8 + 4mm
@@ -115,9 +115,9 @@ CANTH_SIM = [44.5, 3.160, -17.673];  // = rig.nominal_outer_canthus()[1], EYE_BE
 disp_ipd  = 68.13;                   // rig.py DISPLAY_IPD (pupil cams aim at OPTIC + T0)
 COR_SIM   = [disp_ipd/2, 0, -28.5];  // right eye nominal CoR (pupil-cam aim; = OPTIC_R + T0)
 // EYE-CORNER cam AIM BIAS (2026-07-26): mounted eye cam framed the outer corner low+inboard, so
-// re-aim DOWN + OUTWARD to centre the canthus. Mirrored via `side`. AIM ONLY — EYE_SIM position +
+// re-aim DOWN + OUTWARD to centre the canthus. Mirrored via `side`. AIM ONLY, EYE_SIM position +
 // CANTH_SIM (parity) unchanged. Matches rig.py EC_AIM_DOWN/EC_AIM_OUT. Tune if it over/undershoots.
-// RE-AIM REMOVED 2026-07-27 (both were 6 / 3) — mirrors rig.py; see the rationale there. The
+// RE-AIM REMOVED 2026-07-27 (both were 6 / 3), mirrors rig.py; see the rationale there. The
 // mounted photo's edge-riding is a ~45 deg LENS (magnification) effect, not an aim error, and
 // the un-biased aim frames the canthus closer to centre with more slip margin.
 EC_AIM_DOWN = 6;                     // sim +y is up -> lower the aim point = tilt cam down (~11 deg)
@@ -152,35 +152,35 @@ plate_t = 2.6;  standoff_h = 4;  m2_d = 2.5;  m2_boss = 5.5;  boom_w = 9;   // b
 // m2_d WIDENED 1.8 -> 2.3 -> 2.5 (2026-07-23): at 1.8 the printed holes came out nearly CLOSED (a small
 // vertical hole shrinks/bridges shut in FDM). 2.3 prints open ~2.0 so an M2 self-tapping screw
 // threads straight in and bites the walls; boss widened 5 -> 5.5 to keep a ~1.5 mm wall.
-cf_rod_d = 1.5;        // glued-in carbon rod through each boom leg (0 = none) — stiffness
+cf_rod_d = 1.5; // glued-in carbon rod through each boom leg (0 = none), stiffness
 // ---------- PRINT MANUFACTURABILITY (2026-07-27) ---------------------------------
 // Added to make the carrier printable with FEWER SUPPORTS, printed resting on the FRONT
-// (world) boom. These ONLY ADD material — no camera position, aim, angle, board size or
+// (world) boom. These ONLY ADD material, no camera position, aim, angle, board size or
 // mount pitch changes, so CAD<->rig parity is untouched (verified by verify_all).
 //   front_boom_out : the front boom grows in +y ONLY (outward, away from the face) into a
 //                    flat-faced slab -> a broad first-layer footprint to print on. The round
 //                    profile is unchanged in x and z; nothing grows toward the face.
-//   boss_flare     : a cone gusset where a boom's boss meets its holder plate — increases the
+// boss_flare : a cone gusset where a boom's boss meets its holder plate, increases the
 //                    fused contact area at the joint that carries the camera, and being a
 //                    <=45 deg widening it is self-supporting.
-//   solid_rail     : the brow bar is FILLED — the wire groove and the 4 tabs that bridged it are
+// solid_rail : the brow bar is FILLED, the wire groove and the 4 tabs that bridged it are
 //                    gone, so the rail prints as one solid bar (the tabs were the only true
 //                    bridges on it) and gets stiffer. The zip-tie through-slots are KEPT: with no
 //                    internal channel they become the anchor points for routing the 6 USB cables
 //                    along the OUTSIDE of the rail. External dimensions are unchanged.
 solid_rail     = true;  // fill the brow bar's wire groove (false = the old channelled rail)
-//   ir_boom_out    : the IR (NIR pupil) boom's MAST — the long x=0 column down the nose-bridge
-//                    corridor, y=18.83, z +10.5..-77.5 — grows in +y ONLY into a flat face, out
+// ir_boom_out : the IR (NIR pupil) boom's MAST, the long x=0 column down the nose-bridge
+// corridor, y=18.83, z +10.5..-77.5, grows in +y ONLY into a flat face, out
 //                    to y=31.05 so it lands COPLANAR with the pupil plates' outward faces. That
 //                    turns an 88 mm spine + the two plates into the print's flat bottom.
 //                    Clearance: the two see-through cones do not close on x=0 until y=44.6, so
-//                    stopping at 31.05 keeps 13.5 mm of margin. Applied to the DROP leg only —
+// stopping at 31.05 keeps 13.5 mm of margin. Applied to the DROP leg only , 
 //                    the riser/out legs sit back at y=2.5 by the rail and must not grow forward.
 //                    NOTE: this was first wired (wrongly) to the WORLD boom, which sits BEHIND
 //                    its own plate (face y 4.6..7.2); growing it +y drove the slab to y=10, into
 //                    the board keep-out (7.2..12.8). The world boom cannot thicken outward at all.
 ir_boom_out    = 7.72;  // mm the IR boom's mast extends outward -> flat, coplanar with the plates
-boss_flare     = 6.0;   // mm radial flare of the boom-to-plate gusset — fills the gap between the
+boss_flare = 6.0; // mm radial flare of the boom-to-plate gusset, fills the gap between the
 boss_flare_h   = 6.0;   // plate and the boom (d 11 -> 23 at the plate); 45 deg = self-supporting
 // L-ROUTED booms (2026-07-02): the old straight diagonals cut through the brow
 // clamps, the glasses brow, and each other. Each boom now rises from the rail top, runs OUT
@@ -204,21 +204,21 @@ clip_w = 20;  wall = 2.6;  screw_d = 2.8;   // clamp width 20; M3 self-threads i
 // cannot pass over them).
 rail_half = 64;  rail_t = 12;  rail_h = 6;   // h 4->6 (2026-07-04: structural integrity)
 // ---- WIRE CHANNEL: open groove along the rail top's REAR half + retaining bridge tabs ----
-//  REALITY CHECK (2026-07-02): stock USB module cables are ~3.5-4 mm thick — SIX of them cannot
+// REALITY CHECK (2026-07-02): stock USB module cables are ~3.5-4 mm thick, SIX of them cannot
 //  hide in any groove this rail can carry. Routing plan: THIN leads (IMU, IR strobe, re-terminated
 //  30 AWG) live IN the groove under the tabs; the FAT stock USB bundle LIES ON TOP of the rail's
 //  rear edge, lashed down by zip ties through the through-slots below (thin 2.5 mm ties pass
-//  under the rail — there's a 2.1 mm gap above the brow top). Boom legs cross 2.5 mm above the
+// under the rail, there's a 2.1 mm gap above the brow top). Boom legs cross 2.5 mm above the
 //  groove so nothing pinches at the crossings.
 wire_ch_y = -3;   wire_ch_w = 3;   wire_ch_d = 2.5;    // groove: y -4.5..-1.5, z 1.0..3.5
 wire_slot_xs = [-25, -8, 8, 25];   // zip-tie through-slots (clear of risers ±13/±43.5, clamps ±28..48,
                                    // tabs ±18/±35, and the IMU pedestal's front-half base)
 wire_tab_t = 1.2; wire_tab_w = 4;  wire_tab_xs = [-35, -18, 18, 35];  // bridge tabs retaining the
-                                   // wires (none at x=0 — the IMU tower pedestal roots there)
-// ---- REMOVABLE PADDED brow clamp — rebuilt to the MEASURED side profile (IMG_1233, 2026-07-06) ----
-//  Cross-section at the grip spot: front-to-back 19.4 mm (LARGEST ~19.75 — the slip-on must clear
+                                   // wires (none at x=0, the IMU tower pedestal roots there)
+// ---- REMOVABLE PADDED brow clamp, rebuilt to the MEASURED side profile (IMG_1233, 2026-07-06) ----
+// Cross-section at the grip spot: front-to-back 19.4 mm (LARGEST ~19.75, the slip-on must clear
 //  this); the TOP STEPS DOWN toward the face: 8.9 tall over the front ~5 mm -> 8.2 -> 6.6 -> 3.6
-//  at the back edge (heights above the brow base line). The old jaws assumed a 15 mm brow — too
+// at the back edge (heights above the brow base line). The old jaws assumed a 15 mm brow, too
 //  narrow to seat. Grip = padded FRONT jaw on the tall 8.9 face + padded SHALLOW rear jaw on the
 //  3.6 back ledge + the flat ceiling bearing on the tall front section (the top falls away
 //  rearward, so a flat ceiling naturally bears only there). Extra front clearance for easy
@@ -236,12 +236,12 @@ slip_front  = -0.2;       // TIGHTENED 1.5 mm total (2026-07-23, was 1.2): the d
 slip_rear   =  0.0;        //  loose. Front now slightly interferes (screw + pad take it up), rear
                           //  face rides right on the brow back. Total slot 1.5 mm smaller.
 
-// ---------- NIR illumination (940 nm rings around BOTH eyes — binocular) ----
+// ---------- NIR illumination (940 nm rings around BOTH eyes, binocular) ----
 ir_n = 6;  ir_ring_r = 13;  ir_led_d = 3.2;  ir_led_h = 3.0;   // 940 nm LEDs (EYE_TRACKING.md §3)
 // ---- IR BLOCKING / KEEP-OUT (safety): each LED sits recessed in a baffle so the EMITTER never
 //      gets close to the eye, and a hard standoff rim keeps the assembly >= ir_min_standoff mm
 //      from the cornea (the retina can't feel IR, so this mechanical block backs up the
-//      electrical current/strobe limits — see EYE_TRACKING.md §3 / WIRING.md).
+// electrical current/strobe limits, see EYE_TRACKING.md §3 / WIRING.md).
 ir_baffle_wall = 1.2;   // shroud wall around each LED
 ir_recess      = 1.2;   // LED tip set this far BEHIND the baffle's eye-facing rim (no exposed near emitter)
 ir_min_standoff = 10;   // mm minimum LED-rim-to-eye clearance the geometry must preserve
@@ -250,20 +250,20 @@ ir_min_standoff = 10;   // mm minimum LED-rim-to-eye clearance the geometry must
 // toward the eye, so it cannot reduce that clearance.
 ir_cornea_clear = 12;
 assert(ir_cornea_clear >= ir_min_standoff,
-       "IR ring too close to the eye — increase standoff (see EYE_TRACKING.md §3)");
+       "IR ring too close to the eye, increase standoff (see EYE_TRACKING.md §3)");
 
-// ---------- IMU (ICM-20948 9-DoF) — rigid pocket ON THE CARRIER ----
+// ---------- IMU (ICM-20948 9-DoF), rigid pocket ON THE CARRIER ----
 //  The carrier clamps onto the frame, so an IMU pocket here is rigidly coupled to the glasses
-//  (this is why the whole build needs only THIS one printed part — the IMU rides the carrier, not a
+// (this is why the whole build needs only THIS one printed part, the IMU rides the carrier, not a
 //  separate bridge). Board FLAT in the x-y plane, X -> +x (right), Y -> +y (forward), so its tilt
-//  maps to pose dev[0] (pantoscopic) / dev[2] (roll) exactly as software/imu.py models — the input
+// maps to pose dev[0] (pantoscopic) / dev[2] (roll) exactly as software/imu.py models, the input
 //  the Kalman drift filter consumes.
 imu_w = 21;  imu_h = 18;  imu_t = 2.0;  imu_wall = 1.6;  imu_screw_d = 2.2;
 
 // ---------- face-contact padding provision ----
 //  The carrier mounts to the GLASSES brow (the XREAL One Pro's OWN nose pads carry the face), so no
 //  printed surface normally touches skin. brow_pad_t recesses any brow-rest contact for a soft
-//  silicone/foam pad anyway — "pad all printed face-contact surfaces" (EYE_TRACKING.md §2).
+// silicone/foam pad anyway, "pad all printed face-contact surfaces" (EYE_TRACKING.md §2).
 brow_pad_t = 1.6;
 
 // ---------- glasses stand-in (visual only) ----
@@ -316,25 +316,25 @@ module camera_module(board, ov_conn = false) {   // the part you BUY (visual sta
 }
 // MINIMAL camera holder (Iter 1): no board-sized rim/tray. Just a thin backing PLATE sized to the
 // standoff pattern (the PCB cantilevers slightly past it, which is fine), 4 M2 standoffs the PCB
-// screws onto, and a LENS SHROUD tube from behind the PCB to a front collar — the shroud connects
+// screws onto, and a LENS SHROUD tube from behind the PCB to a front collar, the shroud connects
 // the plate to the collar AND baffles stray light. The slim front means adjacent holders no longer
 // collide. Local +z = optical axis; projection centre at the origin.
 // NO lens shroud (2026-07-02): the old shroud tube started 3.2 mm in FRONT of the backing plate
-// (the PCB seats between them) so it was a FLOATING solid connected to NOTHING — every camera
+// (the PCB seats between them) so it was a FLOATING solid connected to NOTHING, every camera
 // holder printed a loose tube (caught by the STL shell count; it imported into OnShape as
 // separate bodies). It was only a stray-light baffle: baffle instead with a slip-on collar or
 // matte tape around the M12 barrel after assembly (matters for the NIR eye cams).
 // MOUNT GEOMETRY (fixed 2026-07-02): the PCB's BACK face sits at z = -(BACK+0.8) (sensor ~BACK mm
-// behind the projection centre at the local origin — that's what lands the lens on the rig.py
+// behind the projection centre at the local origin, that's what lands the lens on the rig.py
 // position). The old standoffs topped at -6 = 4.8 mm IN FRONT of that plane, so the boards could
 // not screw on at the right depth (the lens would sit ~4 mm forward of the validated geometry).
 // Standoffs now run plate -> exactly the PCB-back plane, standoff_h tall for back-side components.
 // HOLDING THE CAM (2026-07-03): primary = 4 self-tapping M2 screws into the
 // standoffs; backup/positive retention = 2 ZIP TIES over the PCB through the 4 through-slots
-// (works even if the real board's mount pitch differs from the assumed 28 mm — the ties clamp
+// (works even if the real board's mount pitch differs from the assumed 28 mm, the ties clamp
 // the board onto the standoff tops regardless). Slots are pure material removal, so every
 // verified cone/face/glasses clearance is untouched. The BOSS on the plate's back face is the
-// boom's attachment pad — the boom's end sphere seats inside it and never crosses the plate's
+// boom's attachment pad, the boom's end sphere seats inside it and never crosses the plate's
 // front face (the old attachment bulged 2.8 mm into the PCB back-component zone).
 module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = false, boss_depth = 0,
                      led_pad = 0) {
@@ -345,7 +345,7 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = 
         union() {
             // rounding MUST be < half the thickness: rbox hulls corner spheres, so r=2 on a
             // 2.6 plate silently made it 5.4 thick (bulging 1.4 into the PCB clearance AND
-            // 1.4 backward — found via the eye wing's vanished gap, 2026-07-04)
+            // 1.4 backward, found via the eye wing's vanished gap, 2026-07-04)
             translate([0, 0, zt]) rbox(bp, bp, 2.6, 1.2);                     // thin backing plate
             for (sx=[-1,1]) for (sy=[-1,1])                                    // 4 standoffs: plate -> PCB back
                 translate([sx*pitch/2, sy*pitch/2, zt]) cylinder(d = m2_boss, h = standoff_h + 1.3);
@@ -387,10 +387,10 @@ module camera_holder(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = 
     //  loose-looking pins with no function; zip-tie the cable to a rail tab instead.)
     // LED-BRACKET MOUNT (2026-07-23): a lateral tab beyond the plate with 2 M2 self-tap holes.
     // The separate `led_bracket` part screws here and points baffled 940 nm LEDs at the eye from
-    // BELOW / off-axis (out of the see-through field). The tab is a flat interface only — the LED
+    // BELOW / off-axis (out of the see-through field). The tab is a flat interface only, the LED
     // aim/positions (the one thing needing real hardware) live on the iterable bracket, not this
     // final print. `led_pad` is +1 / -1 to send the tab to the TEMPLE side of each holder (the
-    // left holder is mirrored, so its temple side is local -x — pass led_pad = side to follow it).
+    // left holder is mirrored, so its temple side is local -x, pass led_pad = side to follow it).
     if (led_pad != 0)
         difference() {
             hull() {
@@ -406,7 +406,7 @@ module board_cam(board, pitch, boss_off = [0, 0], ov_conn = false, wcable = fals
     color("orange") camera_holder(board, pitch, boss_off, ov_conn, wcable, boss_depth, led_pad);
 }
 // PCB KEEP-OUT solid (checks only, never printed): the physical board + its back-side
-// component zone — plate front face (-BACK-0.8-standoff_h) to PCB front face (-BACK+0.8).
+// component zone, plate front face (-BACK-0.8-standoff_h) to PCB front face (-BACK+0.8).
 // `u_keep` trims the modeled zone in local x: [u0, u1]. The pupil cams exclude the board's
 // NASAL 5 mm edge strip (outside the 28 mm mount holes = the screw/washer margin, kept bare
 // by board-design practice) so the nose-bridge drop leg may pass it. ⚠️ VERIFY on the real
@@ -419,19 +419,19 @@ module pcb_zone(board, u_keep = [-99, 99]) {
 }
 // Place a board cam: optical centre at C, lens aimed at `target`, held by an L-ROUTED boom
 // (2026-07-02: booms extend directly out, then drop straight down). Route:
-//   riser: straight UP from the rail top (anchor, front half — clear of the wire groove)
-//   OUT leg: horizontal at zt = max(BOOM_ELEV, case-back z) to above/below the case back —
+// riser: straight UP from the rail top (anchor, front half, clear of the wire groove)
+// OUT leg: horizontal at zt = max(BOOM_ELEV, case-back z) to above/below the case back , 
 //            passes OVER the brow, clamps, hinge bump, IMU shelf and wire channel
 //   DOWN leg: straight vertical drop to case-back height, held at y >= Y_CLEAR when the drop
 //             goes below the brow top so it falls in open air, not through the glasses
 //   in-jog: short horizontal run onto the holder's back
 // Straight legs each carry a CF-rod channel; elbows get reinforcing spheres. Sub-pixel tracking
-// still needs camera-to-frame motion < 0.2 mm (data/flex.log, sim) — the L-boom is less stiff
+// still needs camera-to-frame motion < 0.2 mm (data/flex.log, sim), the L-boom is less stiff
 // than a straight diagonal, so keep legs thick + rods glued in; the bonded carrier stays the
 // final answer for rigidity.
 // `drop_x` (optional) overrides the drop leg's lateral position when a straight drop above the
-// case-back would fall inside the see-through cone (the pupil cams need this — see pupil_cam).
-// BOOM END RETREATED (2026-07-03 — the ball ends interfered with the cam holders): the
+// case-back would fall inside the see-through cone (the pupil cams need this, see pupil_cam).
+// BOOM END RETREATED (2026-07-03, the ball ends interfered with the cam holders): the
 // old attachment point sat MID-plate, so the end sphere (r=boom_w/2) bulged
 // 2.8 mm through the plate's FRONT face into the PCB back-component zone. The end now seats
 // inside the boss on the plate's BACK face (att = 2.5 mm behind the plate's back surface;
@@ -473,10 +473,10 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
         capsule(p2, att, boom_w);                                         // in-jog into the boss
         // FLAT OUTWARD FACE to print on: the DROP leg only (the long mast that hangs in open
         // air). The riser/OUT legs sit back at the rail and the in-jog already runs +y into the
-        // boss — growing either of those drives material into a plate or its board keep-out.
+        // boss, growing either of those drives material into a plate or its board keep-out.
         if (out_thick > 0) out_slab(p1, p2, boom_w, out_thick);
         if (elbow_fill) {                                                 // ROUND the turn-down corners
-            if (elbow_top) translate(top) sphere(boom_w/2 + 1);           //  (rail-side elbow — SKIP for
+            if (elbow_top) translate(top) sphere(boom_w/2 + 1);           //  (rail-side elbow, SKIP for
             translate(p1)  sphere(boom_w/2 + 1);                          //   world: its riser is right
             translate(p2)  sphere(boom_w/2 + 1);                          //   behind the plate) + turn-down
         }                                                                //   elbow + base of the down-leg
@@ -494,11 +494,11 @@ module cam_at(anchor, C, target, board, pitch, drop_x, render = "all", att_off =
 }
 
 // =====================================================================
-//  THE CAMERAS — 6-cam CORE (2 world + 2 eye-corner + 2 NIR pupil) + 2 stereo (8-cam FULL)
+// THE CAMERAS, 6-cam CORE (2 world + 2 eye-corner + 2 NIR pupil) + 2 stereo (8-cam FULL)
 //  (optical centres at sim2cad(rig.py); see software/cad_fit.py for the fit)
 // =====================================================================
-// BOOM FEET (2026-07-04 — ball ends removed): the risers' capsule end-spheres
-// used to poke below the rail bottom and out its front face — anything proud of the rail's
+// BOOM FEET (2026-07-04, ball ends removed): the risers' capsule end-spheres
+// used to poke below the rail bottom and out its front face, anything proud of the rail's
 // surfaces offsets how the carrier seats on the glasses. Each riser now stands on a FLAT
 // rectangular FOOT contained entirely inside the rail envelope (y 2.25 +-3.5: clear of the
 // wire groove at -1.5 and flush inside the front face at +6; bottom at -0.3, above the rail
@@ -508,7 +508,7 @@ FOOT_Y = 2.25;  FOOT_W_EXTRA = 2;   // foot width = boom_w + 2
 module boom_foot(x) {
     translate([x, FOOT_Y, 4.35]) rbox(boom_w + FOOT_W_EXTRA, 7, 9.3, 1.5);
 }
-// FOOT WING (2026-07-04): the SIDE (eye) booms are the longest cantilevers — extend
+// FOOT WING (2026-07-04): the SIDE (eye) booms are the longest cantilevers, extend
 // their connection surface INWARD along the rail top for a much larger fused root. The wing's
 // section is slimmer than the foot so it threads the mid-rail obstacles: y <= 4.1 clears the
 // world cam's plate (y >= 4.6), z >= 0.5 clears the clamp tops (z <= 0), rear edge -1.25
@@ -539,7 +539,7 @@ module eye_cam(side, render = "all") {
     C = sim2cad([side*EYE_SIM[0], EYE_SIM[1], EYE_SIM[2]]);
     // anchor at x=57: outboard of the world riser (43.5) AND of the world holder's deeper
     // standoffs (they reach x=50 since the 2026-07-02 holder fix; at x=52 the riser hit one)
-    // boss offset [0,10]: toward the plate's top edge, where the drop leg arrives — the
+    // boss offset [0,10]: toward the plate's top edge, where the drop leg arrives, the
     // centred boss forced the jog through the board's keep-out (4.2 mm^3, split-check)
     cam_at([side*58, ANCHOR_Y, ANCHOR_Z], C,
            sim2cad([side*(CANTH_SIM[0]+EC_AIM_OUT), CANTH_SIM[1]-EC_AIM_DOWN, CANTH_SIM[2]]),
@@ -552,29 +552,29 @@ module eye_cam(side, render = "all") {
 module eye_cam2(side) {
     // FUTURE 8-cam FULL upgrade only (build_stereo). NOTE (2026-07-02): its drop leg lands ~2 mm
     // from the primary eye cam's drop leg AND cad_fit shows the stereo/primary boards overlapping
-    // -18.8 mm — the stereo layout needs its own deconfliction pass before building FULL.
+    // -18.8 mm, the stereo layout needs its own deconfliction pass before building FULL.
     C = sim2cad([side*EYE2_SIM[0], EYE2_SIM[1], EYE2_SIM[2]]);
     cam_at([side*(ipd/2+13), ANCHOR_Y, ANCHOR_Z], C,
            sim2cad([side*CANTH_SIM[0], CANTH_SIM[1], CANTH_SIM[2]]), OV_BOARD, OV_PITCH);
 }
-module pupil_cam(side, render = "all") {    // NIR eye-tracking cam — ONE PER EYE (binocular)
+module pupil_cam(side, render = "all") { // NIR eye-tracking cam, ONE PER EYE (binocular)
     C = sim2cad([side*PUPIL_SIM[0], PUPIL_SIM[1], PUPIL_SIM[2]]);
     // DROP AT THE NOSE BRIDGE (drop_x=±6, 2026-07-02): a straight drop above the case-back
-    // (x≈23.5) falls INSIDE the see-through cone — a visible post in the wearer's forward view
+    // (x≈23.5) falls INSIDE the see-through cone, a visible post in the wearer's forward view
     // (603 mm^3 vs the elliptical cone, caught by cad_overlap.py; the old diagonal boom had the
     // same flaw unchecked). At the drop plane (y=14.6, 43 mm in front of the eye's CoR) the
-    // right-eye cone starts at |x|=13.4, and the LEFT eye's cone at x=-13.4 — so the only clear
+    // right-eye cone starts at |x|=13.4, and the LEFT eye's cone at x=-13.4, so the only clear
     // vertical corridor is the nose-bridge gap between them. The leg drops there and jogs out to
     // the holder back below the cone. Left/right legs sit 12 mm apart at the midline.
     // riser at x=±13 (not over the holder): at ±25.5 the riser + elbow passed through the WORLD
-    // cam's lens shroud (56.7 mm^3) and grazed its lower standoff — x<=±18 clears both
+    // cam's lens shroud (56.7 mm^3) and grazed its lower standoff, x<=±18 clears both
     // boss offset toward the NASAL plate edge (local +u ~ world +x on both sides, so the
     // offset flips with side): the centred boss put the 16 mm jog straight through the
     // board's keep-out zone (119 mm^3, split-check)
     // UNITED CENTRAL MAST (2026-07-04): both pupil booms share ONE drop column at
     // x=0 (drop_x=0 both sides -> coincident legs union into a single column, dead centre of
     // the nose-bridge corridor, 13.4 mm from either eye's FOV cone and clear of both boards'
-    // nasal edges — the strict FULL-board keep-out passes again, no edge-strip exemption).
+    // nasal edges, the strict FULL-board keep-out passes again, no edge-strip exemption).
     // Risers at x=±7 fuse INTO the IMU tower pedestal: pedestal + risers + column = one mast.
     cam_at([side*7, ANCHOR_Y, ANCHOR_Z], C, sim2cad([side*COR_SIM[0], COR_SIM[1], COR_SIM[2]]),
            OV_BOARD, OV_PITCH, drop_x = 0, render = render, att_off = [-13*side, 0], ov_conn = true,
@@ -583,7 +583,7 @@ module pupil_cam(side, render = "all") {    // NIR eye-tracking cam — ONE PER 
                                                                       // filled; + LED-bracket mount shelf
 }
 // =====================================================================
-//  LED ILLUMINATOR BRACKET — separate print, 2 baffled 940 nm LEDs PER EYE
+// LED ILLUMINATOR BRACKET, separate print, 2 baffled 940 nm LEDs PER EYE
 // =====================================================================
 //  Bolts to the pupil holder's LED shelf (2 M2) and reaches FORWARD toward the lens plane so the
 //  LEDs sit ~46 mm from the cornea (vs ~70 mm at the shelf itself) and ~31 deg off the camera axis
@@ -632,7 +632,7 @@ module pupil_led(side) {                            // the bracket placed on its
 // is RECESSED behind the eye-facing cap, and the cap has only a small beam aperture. So no emitter
 // sits close to the eye, close-range/off-axis direct paths are blocked, and the eye-facing rim
 // (at the ring plane) preserves the >= ir_min_standoff clearance (the bare LED used to poke toward
-// the eye and cut into it). 940 nm, low current, strobed — the mechanical block backs the electrical limits.
+// the eye and cut into it). 940 nm, low current, strobed, the mechanical block backs the electrical limits.
 module ir_led_baffle(pos) {
     translate(pos) rotate([-90, 0, 0]) {                 // local +z now points +y, AWAY from the eye
         difference() {
@@ -658,14 +658,14 @@ module ir_leds(side) {                       // 940 nm ring around one eye's ape
 module rail() {
     difference() {
         translate([0, 0, rail_h/2 - 0.5]) rbox(2*rail_half, rail_t, rail_h, 1.5);
-        if (!solid_rail)                        // FILLED by default (2026-07-27) — see solid_rail
+        if (!solid_rail)                        // FILLED by default (2026-07-27), see solid_rail
             translate([0, wire_ch_y, rail_h - 0.5]) // groove: full length minus the ends, opens up
                 cube([2*rail_half - 8, wire_ch_w, 2*wire_ch_d], center = true);
-        for (x = wire_slot_xs)                  // zip-tie through-slots (for the fat USB bundle) —
+        for (x = wire_slot_xs)                  // zip-tie through-slots (for the fat USB bundle) , 
             translate([x, wire_ch_y, rail_h/2 - 0.5]) cube([4, 2, rail_h + 2], center = true);
     }                                           //  KEPT when solid: they anchor the cables OUTSIDE
     if (!solid_rail)                            // the tabs only exist to retain cables IN the groove
-        for (x = wire_tab_xs)                   // retaining tabs bridging the groove — DIP INTO the
+        for (x = wire_tab_xs)                   // retaining tabs bridging the groove, DIP INTO the
             translate([x, wire_ch_y, rail_h - 0.5])  // rail (2026-07-23): centred on the rail top so the
                 cube([wire_tab_w, wire_ch_w + 3, wire_tab_t + 1.4], center = true);  // tab OVERLAPS the rail
                                                 //  at its y-ends (was a coincident face that floated off)
@@ -673,7 +673,7 @@ module rail() {
 // Removable PADDED brow clamp: a C that drops onto the brow rail; jaw opening = brow + silicone
 // pads + clearance; a thumbscrew through the front jaw tightens it. No adhesive, no marks.
 // Jaw depths: FRONT stops at -11.5 (full grip of the 8.9 face, still under the vertical-FOV
-// line ~-12.8, cone-checked); REAR at -11.0 (the 3.6 back ledge's face spans -7.9..-11.5 —
+// line ~-12.8, cone-checked); REAR at -11.0 (the 3.6 back ledge's face spans -7.9..-11.5 , 
 // a deeper rear jaw would hang past the ledge toward the forehead for nothing).
 front_jaw_z = 11.5;  rear_jaw_z = 16.5;   // rear DOWN 5 mm (2026-07-23, 11.5 -> 16.5): the back
                                           // clamp piece reaches further down behind the brow for a
@@ -694,7 +694,7 @@ module brow_hook() {
     fs = brow_front_y + clamp_pad_t + slip_front;                    // slot front plane (+8.5)
     rs = brow_front_y - brow_depth_max - clamp_pad_t - slip_rear;    // slot rear plane (-15.55)
     // SMOOTH curve (2026-07-17): the measured steps were sampling stations of the
-    // brow's smooth top — the underside is now a Catmull-Rom spline through the station
+    // brow's smooth top, the underside is now a Catmull-Rom spline through the station
     // midpoints. The tall-front section stays FLAT at the -2.6 datum (seated height / the
     // OPTIC_DROP reference is preserved) and a progressive 0..0.3 mm relief grows toward the
     // back so the clamp registers at the front and cannot rock; pads + the screw make it snug.
@@ -728,10 +728,10 @@ module bond_pads() {                        // 3 epoxy hard-points to bond the c
         }
 }
 
-// Rigid IMU pocket — a TOWER on the rail-top midline (2026-07-02 redesign). The old forward
+// Rigid IMU pocket, a TOWER on the rail-top midline (2026-07-02 redesign). The old forward
 // shelf hung 25 mm over the brow at the midline: its gusset dipped into the glasses brow AND the
 // shelf blocked the nose-bridge corridor the pupil booms now drop through. The board now sits
-// FLAT (X->+x, Y->+y unchanged — the axis contract software/imu.py assumes) on a short gusseted
+// FLAT (X->+x, Y->+y unchanged, the axis contract software/imu.py assumes) on a short gusseted
 // tower at z=16..21: above the transit legs (z<=15 incl. elbow spheres), clear of the drop
 // corridors (they start y>=9.6; shelf reaches ~10.6 with z-separation), and far above the FOV
 // cone. The lead drops straight to the wire groove. 2 M2 corner bores; pocket opens UP.
@@ -739,7 +739,7 @@ module imu_mount() {
     ow = imu_w + 2*imu_wall;  od = imu_h + 2*imu_wall;
     tower_top = 16;
     // pedestal: rooted in the rail top's FRONT half (the rear half carries the wire groove),
-    // tapering up to the shelf — a stiff short column
+    // tapering up to the shelf, a stiff short column
     hull() {
         translate([0, 1.5, rail_h - 0.7]) cube([16, 5, 0.2], center = true);
         translate([0, 0, tower_top]) cube([10, 5, 0.2], center = true);
@@ -756,7 +756,7 @@ module imu_mount() {
 }
 
 // =====================================================================
-//  EYE / FACE STAND-IN (preview only — positions straight from rig.py via sim2cad)
+// EYE / FACE STAND-IN (preview only, positions straight from rig.py via sim2cad)
 // =====================================================================
 module eye_standin() {
     for (s = [-1, 1]) {
@@ -781,7 +781,7 @@ module glasses_dummy() {
             rotate([-90,0,0]) cylinder(h = g_visor_th+14, d = 2*g_nose_h, center=true);
     }
     color([0.13,0.13,0.16,0.92]) {
-        // brow: MEASURED profile (IMG_1233) as the REAL SMOOTH CURVE — the steps in the
+        // brow: MEASURED profile (IMG_1233) as the REAL SMOOTH CURVE, the steps in the
         // sketch were sampling stations; the top is a Catmull-Rom through their corners
         // (front face +6, back edge -13.4, base -8.9). The clamp's underside is the same
         // curve with its 0..0.3 mm progressive relief, so they mate as in reality.
@@ -817,7 +817,7 @@ module carrier() {
     pupil_cam(1);  pupil_cam(-1);                        // 2 NIR eye-track (one per eye) = 6-cam BINOCULAR CORE
     if (build_stereo) { eye_cam2(1); eye_cam2(-1); }    // +2 stereo -> 8-cam FULL (the <1px upgrade)
     color("seagreen") imu_mount();                      // 9-DoF IMU rides the carrier (no separate bridge)
-    // NO bond_pads / NO epoxy: fully REMOVABLE — held by the padded brow clamps. IR ring is part="ir_ring".
+    // NO bond_pads / NO epoxy: fully REMOVABLE, held by the padded brow clamps. IR ring is part="ir_ring".
 }
 
 // IR ring as its own PRINTABLE part: the baffles joined by a thin arc into one loop per eye, so it

@@ -4,14 +4,14 @@ The product question: once a user is calibrated, how close to on-the-pixel does 
 land at every glasses position, for every face? This builds the [face x position] accuracy
 grid and compares three calibrations:
 
-  * population prior         — generic, no per-user info (the cold baseline)
-  * geometry preset          — identify the eye from a few inaccuracy answers (eye-corner
+ * population prior, generic, no per-user info (the cold baseline)
+ * geometry preset, identify the eye from a few inaccuracy answers (eye-corner
                                cams only), rebuild it, sweep all poses (preset.py today)
-  * pupil-aided preset        — same, but geometry identified WITH the NIR pupil/iris sensor
+ * pupil-aided preset, same, but geometry identified WITH the NIR pupil/iris sensor
                                (which cracks ep_dist / IPD, the parallax terms)
 
 Error is the NOISE-FREE systematic miss vs the oracle (`Simulator.ground_truth`) in px @1080p
-— i.e. how well the calibrated model itself places the pixel, with per-attempt noise averaged
+, i.e. how well the calibrated model itself places the pixel, with per-attempt noise averaged
 out (that part is the irreducible floor, measured separately by the live loop).
 
 Run:  python3 accuracy_map.py        (or:  python3 main.py --accuracy-map)

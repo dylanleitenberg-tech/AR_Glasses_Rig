@@ -7,7 +7,7 @@ Averaging N fixations beats the per-attempt noise (microsaccades, tracker, head 
 fixations buy how much, and (b) exposes the systematic floor we must lower to reach a target.
 
 Goal of the campaign: get the real-life deviation under 0.75 px. That needs the SYSTEMATIC
-floor well under 0.75 px (averaging handles the rest) — pursued in successive experiments.
+floor well under 0.75 px (averaging handles the rest), pursued in successive experiments.
 
 Run:  python3 realtime.py        (or:  python3 main.py --realtime)
 """
@@ -160,7 +160,7 @@ def averaging_curve(n_users=15, Ns=(1, 2, 4, 8, 16, 32, 64), seed=0, verbose=Tru
         print("    " + "-" * 32)
         print("\n  averaging drives the per-attempt noise down ~1/sqrt(N) to the SYSTEMATIC floor")
         print("  (~%.2f px here). Real-life < 0.75 px therefore needs that systematic floor lowered" % floor)
-        print("  below ~0.6 px — the focus of the next experiments (complete geometry + physics).")
+        print("  below ~0.6 px, the focus of the next experiments (complete geometry + physics).")
     return res
 
 

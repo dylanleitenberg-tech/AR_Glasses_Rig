@@ -1,7 +1,7 @@
-"""safety_model.py — executable model of the IR strobe SAFETY ENVELOPE (mirrors ir_strobe.ino).
+"""safety_model.py, executable model of the IR strobe SAFETY ENVELOPE (mirrors ir_strobe.ino).
 
 The firmware's interlocks are the thing standing between the IR LEDs and your eye, so their
-LOGIC is validated HERE in Python — runnable today, no MCU/hardware needed. This is a faithful
+LOGIC is validated HERE in Python, runnable today, no MCU/hardware needed. This is a faithful
 port of the envelope in `ir_strobe.ino`; the self-test asserts that EVERY fault condition forces
 IR OFF and that IR turns on ONLY when every interlock passes. Keep this and the .ino in lockstep:
 if you change one, change the other, and re-run `python3 safety_model.py`.
@@ -84,7 +84,7 @@ class IrStrobe:
 
 
 # ===========================================================================
-#  SELF-TEST — assert every interlock forces IR OFF, and IR only fires when clean
+#  SELF-TEST: assert every interlock forces IR OFF, and IR only fires when clean
 # ===========================================================================
 def selftest(verbose=True) -> int:
     checks = []
@@ -142,7 +142,7 @@ def selftest(verbose=True) -> int:
         print("== IR strobe SAFETY-ENVELOPE self-test (mirrors ir_strobe.ino) ==")
         for name, c in checks:
             print("  [%s] %s" % ("PASS" if c else "FAIL", name))
-        print("  =>", "ALL INTERLOCKS HOLD — IR off on every fault, on only when clean ✅"
+        print("  =>", "ALL INTERLOCKS HOLD, IR off on every fault, on only when clean ✅"
               if passed else "INTERLOCK FAILURE ⚠️")
         print("  NOTE: this proves the LOGIC. On real hardware, bench-test the SAME conditions with")
         print("  a multimeter/scope + a visible-LED stand-in BEFORE connecting IR or going near an eye:")

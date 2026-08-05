@@ -1,4 +1,4 @@
-# Hardware bring-up — plugging the rig into the Mac
+# Hardware bring-up: plugging the rig into the Mac
 
 Everything below runs from `software/` in the venv:
 
@@ -17,8 +17,8 @@ The pipeline addresses cameras by **role**, not by USB index:
 
 | Role | Sensor | What it sees |
 |------|--------|--------------|
-| `worldL`, `worldR` | AR0234 color, 1280 | the real world (stereo) — the mesh + overlay register to this |
-| `eyeL`, `eyeR` | OV9281 mono NoIR, 640 | outer eye corner (canthus) — how the glasses sit on the face |
+| `worldL`, `worldR` | AR0234 color, 1280 | the real world (stereo), the mesh + overlay register to this |
+| `eyeL`, `eyeR` | OV9281 mono NoIR, 640 | outer eye corner (canthus), how the glasses sit on the face |
 | `pupilL`, `pupilR` | OV9281 mono NoIR, 640 | the IR-lit pupil + glints (dark-pupil / PCCR gaze) |
 
 ### 1. Map the cameras (once)
@@ -40,7 +40,7 @@ python3 rig_test.py --run        # enumerate · per-role fps · SYNC JITTER · I
 ```
 
 Watch for: every role **OK**, `fps ≥ 30`, **sync jitter under your budget** (default 3 ms), the
-2 pupil cams showing a positive **IRΔ** when strobed, and each `focus` high (set the lenses now —
+2 pupil cams showing a positive **IRΔ** when strobed, and each `focus` high (set the lenses now , 
 they're glued after). A `CHECK` row tells you which camera to fix.
 
 ### 3. Grab synchronized snapshots
@@ -58,7 +58,7 @@ calibration sample by mistake.
 
 `sync_capture.SyncBank` runs one background thread per camera parked on a shared **barrier**; a
 `sync_frame()` releases them together so all six `grab()` calls fire in the same window
-(global-shutter OV9281 + AR0234 ⇒ a genuinely comparable set). Every set reports `jitter_ms` —
+(global-shutter OV9281 + AR0234 ⇒ a genuinely comparable set). Every set reports `jitter_ms` , 
 the honest spread of capture instants. In the selftest the barrier holds ~0.2 ms vs ~60 ms for a
 naive one-at-a-time sweep. For tighter-than-software sync, strobe the IR LEDs
 (`firmware/ir_strobe`) inside the shared exposure window.
@@ -73,7 +73,7 @@ python3 sync_capture.py --probe  # open real cameras, print live jitter
 
 - **world** → mid-gray, exposure capped so motion stays sharp for the mesh tracker;
 - **eye-corner** → mid-toned canthus for stable template matching;
-- **pupil** → the *glints* (99th percentile) sit just under clipping while the field stays dark —
+- **pupil** → the *glints* (99th percentile) sit just under clipping while the field stays dark , 
   the opposite of consumer auto-exposure, which would blow the glints out.
 
 It keeps adjusting as the light changes and settles without hunting.
@@ -85,9 +85,9 @@ It keeps adjusting as the light changes and settles without hunting.
 1. **triangulate** ORB features matched across the stereo pair → 3D points (left-cam frame);
 2. **track** them frame-to-frame (optical flow) and solve the rigid **camera motion** with a
    robust Kabsch fit (RANSAC + Tukey-IRLS rejects mismatched features);
-3. **fuse the IMU** — `imu_serial.GyroIntegrator` integrates the gyro into a per-frame rotation
+3. **fuse the IMU**, `imu_serial.GyroIntegrator` integrates the gyro into a per-frame rotation
    increment, used as a prior and to carry the pose through a visual dropout;
-4. **maintain the mesh** — a growing cloud of world map points + a Delaunay surface over the
+4. **maintain the mesh**, a growing cloud of world map points + a Delaunay surface over the
    visible ones. This is the frame the AR overlay locks onto as the head moves.
 
 The geometry is proven in numpy (`--selftest` recovers a known trajectory + map, survives 25%
@@ -110,7 +110,7 @@ image" driver.
 
 Six UVC streams need a **powered USB hub** and MJPG (already set) to fit the bandwidth; if a
 camera drops out under load, lower `fps` in `SyncBank` or the world resolution. Running 6 cameras
-+ the IMU is I/O-bound, not CPU-bound — it will not fry the Mac (the trackers are light; the mesh
++ the IMU is I/O-bound, not CPU-bound, it will not fry the Mac (the trackers are light; the mesh
 front-end is the heaviest and still runs comfortably at capture rate).
 
 ## One command to verify the whole software stack

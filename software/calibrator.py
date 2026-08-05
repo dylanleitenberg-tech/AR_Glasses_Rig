@@ -4,20 +4,20 @@ Model:  display_pixel = f(world_dot_x, world_dot_y, eyeL_x, eyeL_y, eyeR_x, eyeR
 
 f is a polynomial regression. The eye->display->world relationship is mildly
 nonlinear (lens distortion + parallax as the glasses shift on the face), and a
-degree-2 polynomial captures that with few parameters — which matters because every
+degree-2 polynomial captures that with few parameters, which matters because every
 sample costs you a manual nudge + approve.
 
 What makes this version reliable rather than just functional:
 
-  * Standardization — raw features and polynomial terms are centered/scaled, so the
+ * Standardization, raw features and polynomial terms are centered/scaled, so the
     fit is well-conditioned and the regularization strength means the same thing
     regardless of where on the screen / how your glasses sit.
-  * Auto-regularization (GCV) — the ridge penalty is chosen automatically by
+ * Auto-regularization (GCV), the ridge penalty is chosen automatically by
     Generalized Cross-Validation each refit, via one SVD. No hand-tuned constant,
     and it self-adjusts from 6 samples up to thousands.
-  * Robustness (Huber IRLS) — a single mis-tracked eye corner or a fat-fingered
+ * Robustness (Huber IRLS), a single mis-tracked eye corner or a fat-fingered
     approve no longer warps the whole map; gross outliers are down-weighted.
-  * Confidence weighting — samples carry the eye-tracker's match confidence, so
+ * Confidence weighting, samples carry the eye-tracker's match confidence, so
     crisp captures count more than marginal ones.
 
 Depends only on numpy + stdlib, so it runs headless with no cameras/display.
@@ -115,7 +115,7 @@ class Calibrator:
             self.W = None                    # not enough to trust a poly fit yet
             return
 
-        # TRAIN ON THE RESIDUAL, not the absolute pixel — predict() adds geometry back, so
+        # TRAIN ON THE RESIDUAL, not the absolute pixel: predict() adds geometry back, so
         # fitting Y directly here would double-count it. Subtracting geometry first also makes the
         # learning problem far easier: the target becomes a small, smooth correction (kappa, real
         # display FOV, distortion) instead of the full nonlinear direction mapping, which is

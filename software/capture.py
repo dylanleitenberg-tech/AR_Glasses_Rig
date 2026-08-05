@@ -1,10 +1,10 @@
-"""capture.py — the live multi-camera capture pipeline: real cameras OR --simulate.
+"""capture.py, the live multi-camera capture pipeline: real cameras OR --simulate.
 
 The real-sensor mirror of autosim.observe(). Each frame it:
   * reads the role-mapped camera bank (cameras.CameraBank),
-  * detects each feature — drawn dot in the 2 world cams (dot_detector), outer canthus in
+ * detects each feature, drawn dot in the 2 world cams (dot_detector), outer canthus in
     the 4 eye-corner cams (eye_tracker), pupil centre in the NIR cam (pupil_tracker),
-  * on a BLINK / closed eye (blink.py): does NOT drop the frame — it acknowledges the blink,
+ * on a BLINK / closed eye (blink.py): does NOT drop the frame, it acknowledges the blink,
     HOLDS that eye's last open-eye reading, and freezes eye-position tracking for that eye
     until it reopens (a fresh read then resumes tracking). The overlay stays steady through
     a blink instead of glitching, and the held frame is flagged NOT-fresh so it is never
@@ -12,7 +12,7 @@ The real-sensor mirror of autosim.observe(). Each frame it:
   * assembles the feature vector in the EXACT Config.feature_names order
     (live_features.assemble_features), holding per-eye features where blinking, and
   * degrades STEREO -> MONO when a 2nd eye-corner read is lost beyond the brief hold window
-    (sustained lash/track loss on the deeper cam) — a momentary loss is held, not dropped.
+    (sustained lash/track loss on the deeper cam), a momentary loss is held, not dropped.
 
 Robustness telemetry (ValidityStats): fraction of frames that are fresh (storable),
 blinking-but-held, stereo-available, mono-fallback, and not-ready (startup only). We never
@@ -61,7 +61,7 @@ class CaptureResult:
         self.fresh = fresh          # every used feature is fresh -> safe to store as a sample
         self.held = held            # some feature is a held value (blink / brief loss)
         self.blinking = blinking    # at least one eye is blinking (held), not dropped
-        self.no_target = no_target  # the world dot isn't on the display (nothing to register) —
+        self.no_target = no_target  # the world dot isn't on the display (nothing to register) , 
         #                             a distinct state from a blink (a blink holds; this waits)
         self.truth = truth          # sim-only geometric-truth pixel (fresh frames only)
 
@@ -146,8 +146,8 @@ class LiveCapture:
         """Update per-key hold state. World keys must be fresh (never held). An eye key is HELD
         at its last open-eye value ONLY while THAT eye is blinking (the whole eye is closed and
         frozen, so holding it is consistent), up to MAX_HOLD frames. An INDEPENDENT loss of a
-        single (e.g. deeper stereo) cam while the eye is open is NOT held — mixing a stale read
-        with the fresh primary is worse than dropping to mono — so it just becomes unavailable.
+        single (e.g. deeper stereo) cam while the eye is open is NOT held, mixing a stale read
+        with the fresh primary is worse than dropping to mono, so it just becomes unavailable.
         Returns (value{}, fresh{}, available set)."""
         val, fresh, avail = {}, {}, set()
         for k in _cfg_keys(self.cfg):
@@ -302,7 +302,7 @@ def selftest(n=5000, seed=0, verbose=True):
                      100*s["mono_fallback_frac"], 100*s["no_target_frac"], bad_len,
                      "PASS" if cfg_ok else "FAIL"))
     if verbose:
-        print("  =>", "CAPTURE OK — blinks HELD not dropped (blink-drops 0), contract length held, "
+        print("  =>", "CAPTURE OK, blinks HELD not dropped (blink-drops 0), contract length held, "
               "stereo->mono fallback fires ✅" if ok else "PROBLEM ⚠️")
         print("  note: a blink holds the frozen eye position (fresh=False, not stored) and resumes on")
         print("  reopen; 'no-target' (dot off-screen) is a separate wait state, not a drop. real CV needs HW.")
@@ -310,7 +310,7 @@ def selftest(n=5000, seed=0, verbose=True):
 
 
 def validate_fallback(seed=3, verbose=True):
-    """Deterministic synthetic dropped-frame injector — proves the hold / stereo->mono fallback /
+    """Deterministic synthetic dropped-frame injector, proves the hold / stereo->mono fallback /
     both-cams-valid metric WITHOUT real blinks (so the logic is validated now; the NIR dark_thresh
     only decides WHEN a blink is declared, not WHETHER the fallback works)."""
     cfg = Config(use_stereo=True)

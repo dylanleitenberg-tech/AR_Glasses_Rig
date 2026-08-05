@@ -1,13 +1,13 @@
-"""intrinsics.py — per-camera checkerboard calibration, ready for the day the cameras arrive.
+"""intrinsics.py, per-camera checkerboard calibration, ready for the day the cameras arrive.
 
 Each real camera's detections must be mapped into the canonical normalized PinholeCamera
 convention the sim/calibrator use (the P0 contract): that mapping IS the intrinsic calibration
 (fx fy cx cy + distortion). This tool captures checkerboard views per ROLE, solves with
-cv2.calibrateCamera, and stores the result in data/intrinsics.json — the piece device.py's
+cv2.calibrateCamera, and stores the result in data/intrinsics.json, the piece device.py's
 one-time factory calibration consumes for the camera side (extrinsics = the separate
 checkerboard-in-common-view step, Phase 3).
 
-USAGE (per camera, once, before mounting is fine — intrinsics don't change with position):
+USAGE (per camera, once, before mounting is fine, intrinsics don't change with position):
     python3 intrinsics.py --role eyeR --index 1            # live capture: SPACE=grab, C=calibrate
     python3 intrinsics.py --role eyeR --index 1 --auto     # auto-grab a view every ~1.5 s
     python3 intrinsics.py --board                          # write a printable checkerboard PNG
@@ -79,7 +79,7 @@ def calibrate_role(role, index, width=None, height=None, auto=False, min_views=1
     if height:
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
     if not cap.isOpened():
-        raise SystemExit("camera index %d did not open — run: python3 main.py --list-cams" % index)
+        raise SystemExit("camera index %d did not open, run: python3 main.py --list-cams" % index)
 
     objp = np.zeros((BOARD_ROWS * BOARD_COLS, 3), np.float32)
     objp[:, :2] = np.mgrid[0:BOARD_COLS, 0:BOARD_ROWS].T.reshape(-1, 2) * SQUARE_MM

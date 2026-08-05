@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AR eye-corner pixel calibration — real-time loop.
+"""AR eye-corner pixel calibration, real-time loop.
 
 Modes:
   python3 main.py --selftest            headless convergence test (numpy only)
@@ -17,6 +17,7 @@ The live loop each frame:
        (features -> shown pixel), retrain, reset nudge, next dot.
 """
 import argparse
+import json
 import sys
 import time
 
@@ -109,8 +110,8 @@ def run_selftest(cfg: Config, iterations: int = 240, seed: int = 0) -> int:
               % (he[0] * 1080, he[1] * 1080))
     auto_med = he[1] if he else 0.0
     ok = final < 0.025 and auto_med < 0.025
-    print("\nRESULT:", "PASS — learned an accurate map despite outliers ✅" if ok
-          else "WEAK — residual still high ⚠️")
+    print("\nRESULT:", "PASS, learned an accurate map despite outliers ✅" if ok
+          else "WEAK, residual still high ⚠️")
     return 0 if ok else 1
 
 
@@ -150,7 +151,7 @@ def run_calibrate_corners(cfg: Config, only=None) -> int:
     """Capture the eye-corner templates.
 
     LIVE preview first, then freeze and draw. The original version grabbed ONE frame per eye and
-    made you draw on whatever it happened to catch — blink, look away, or catch a bad exposure and
+    made you draw on whatever it happened to catch, blink, look away, or catch a bad exposure and
     your only recourse was to re-run the whole thing and redo the eye you had already got right.
     That cost two runs on 2026-08-02. Now: SPACE freezes the frame you like, ENTER accepts the
     box, and `only` re-does a single eye without touching the other.
@@ -173,7 +174,7 @@ def run_calibrate_corners(cfg: Config, only=None) -> int:
     print("Capturing eye-corner templates (%s)." % ", ".join(n for n, _ in targets))
     print("  LIVE view per eye:  SPACE = freeze this frame   Q = skip this eye")
     print("  then drag a box CENTRED on the corner (lid margin / lash roots / caruncle), ENTER.")
-    print("  DRAW IT BIG — roughly 150-200 px, not a tight little crop. MEASURED on this rig")
+    print("  DRAW IT BIG, roughly 150-200 px, not a tight little crop. MEASURED on this rig")
     print("  2026-08-02, cross-frame localisation margin vs box size:")
     print("      30px 0.038   45px 0.058   |   60px 0.122   80px 0.203   150px 0.211   200px 0.368")
     print("  Under ~60 px the template does not localise at all: this eye is low-contrast enough")
@@ -183,7 +184,7 @@ def run_calibrate_corners(cfg: Config, only=None) -> int:
 
     for name, idx in targets:
         cam = Camera(idx, cfg.cam_width, cfg.cam_height, name=name)
-        win = "%s — SPACE freezes, Q skips" % name
+        win = "%s, SPACE freezes, Q skips" % name
         cv2.namedWindow(win, cv2.WINDOW_NORMAL)
         frame, frozen = None, None
         while True:
@@ -200,7 +201,7 @@ def run_calibrate_corners(cfg: Config, only=None) -> int:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
             cv2.imshow(win, shown)
             k = cv2.waitKey(30) & 0xFF
-            if k == 32:                      # SPACE — freeze this one
+            if k == 32:                      # SPACE, freeze this one
                 frozen = frame.copy()
                 break
             if k in (ord("q"), 27):
@@ -219,7 +220,7 @@ def run_calibrate_corners(cfg: Config, only=None) -> int:
         if not ok:
             print("  %s: skipped (box too small)" % name)
             continue
-        # Report the template's own texture immediately — a flat one is worth knowing about NOW,
+        # Report the template's own texture immediately: a flat one is worth knowing about NOW,
         # not 30 corrections into a run when the tracker starts drifting.
         t = cv2.imread("%s/%s.png" % (cfg.template_dir, name), cv2.IMREAD_GRAYSCALE)
         if t is not None:
@@ -296,16 +297,18 @@ def run_loop(cfg: Config, simulate: bool) -> int:
     # image-motion estimate if the glasses are unplugged or the axis map was never measured --
     # load_map() REFUSES a low-R^2 map rather than letting a bad one predict backwards.
     _imu_vel = None
+    _imu_obj = None
     try:
         from xreal_imu import XrealIMU, ImuVelocity, load_map
         _M, _r2 = load_map()
         if _M is not None:
             _imu = XrealIMU().open()
+            _imu_obj = _imu
             _iv = ImuVelocity(_M, _imu)
             _imu_vel = _iv.velocity
             print("IMU velocity source: ON (axis map R^2 %.2f/%.2f)" % (_r2[0], _r2[1]))
         else:
-            print("IMU velocity source: off (no usable axis map — run xreal_imu.py --map)")
+            print("IMU velocity source: off (no usable axis map, run xreal_imu.py --map)")
     except Exception as _e:
         print("IMU velocity source: off (%s)" % _e)
     pred_filt = LatencyCompensator(lookahead_s=cfg.latency_s,
@@ -331,7 +334,7 @@ def run_loop(cfg: Config, simulate: bool) -> int:
     since_reseat = 0
     reseat_pending = False
     if reseat_every > 0:
-        print("re-seat protocol: ON — every %d approvals, take the glasses OFF and back ON"
+        print("re-seat protocol: ON, every %d approvals, take the glasses OFF and back ON"
               % reseat_every)
     print("Loop running. %s. Q/ESC quits."
           % ("joystick + keyboard" if inp.has_joystick else "keyboard (no pad)"))
@@ -401,7 +404,7 @@ def run_loop(cfg: Config, simulate: bool) -> int:
             if reseat_pending:
                 banner = ("TAKE THE GLASSES OFF\nAND PUT THEM BACK ON\n"
                           "then press ENTER   (seating %d)" % (seat_idx + 2))
-                hud += "\nRE-SEAT PENDING — approve is blocked until you confirm"
+                hud += "\nRE-SEAT PENDING, approve is blocked until you confirm"
             elif live and _offscreen(features):
                 # Say it ON THE DISPLAY, not in the terminal. The operator is wearing the rig and
                 # would otherwise press ENTER, see nothing happen, and have no way to know why --
@@ -420,11 +423,11 @@ def run_loop(cfg: Config, simulate: bool) -> int:
             if act.reset:                          # RESET fallback: cancel a mis-nudge
                 nudge[:] = 0.0
                 pred_s = None; pred_filt.reset()
-                print("  reset — current nudge cancelled (nothing stored)")
+                print("  reset, current nudge cancelled (nothing stored)")
             if act.undo:                           # UNDO fallback: drop the last bad sample
                 removed = ds.undo_last()
                 if removed is None:
-                    print("  undo — nothing to undo (no samples stored)")
+                    print("  undo, nothing to undo (no samples stored)")
                 else:
                     cal = build_calibrator(cfg, ds)   # retrain without the removed sample
                     nudge[:] = 0.0
@@ -434,7 +437,7 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                     _seats = ds.load_seats()
                     since_reseat = int(np.sum(_seats == seat_idx))
                     reseat_pending = reseat_every > 0 and since_reseat >= reseat_every
-                    print("  undo — removed sample #%d (%d left), retrained"
+                    print("  undo, removed sample #%d (%d left), retrained"
                           % (ds.count() + 1, ds.count()))
             m = overlay.take_mouse()               # click/drag places the dot (fast, X+Y at once)
             if m is not None:
@@ -466,7 +469,7 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                     sim_dev = world.seat()          # a genuinely new glasses pose
                     sim_features, sim_truth, sim_i = _sim_next_ordered(
                         world, sim_subject, sim_dev, sim_pts, sim_i)
-                print("  re-seated — now on seating %d" % (seat_idx + 1))
+                print("  re-seated, now on seating %d" % (seat_idx + 1))
             elif act.approve:
                 snap_why = ""
                 if simulate:
@@ -478,9 +481,9 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                 if snap_why:
                     # Say WHICH input is missing. A silent no-op here is what made the loop look
                     # like it was ignoring ENTER.
-                    print("  not stored — %s" % snap_why)
+                    print("  not stored, %s" % snap_why)
                 elif snap_conf < cfg.eye_conf_min:
-                    print("  eye confidence %.2f < %.2f — hold steady, not stored"
+                    print("  eye confidence %.2f < %.2f, hold steady, not stored"
                           % (snap_conf, cfg.eye_conf_min))
                 elif _offscreen(snap_features):
                     # The world cams see 70 deg; the display covers 48.25. A target outside that
@@ -489,12 +492,26 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                     # up with something else. FOUR of the 17 real samples of 2026-08-03 were this,
                     # at 36-37 deg off axis, and they were invisible because geometric_pixel
                     # clips. See geometry.offscreen.
-                    print("  target is %.0f deg off axis — outside the %.1f deg display, "
+                    print("  target is %.0f deg off axis, outside the %.1f deg display, "
                           "not stored (turn towards it)"
                           % (_offaxis(snap_features), _display_fov()))
                 else:
                     approved = np.clip(pred_s + nudge, 0.0, 1.0)
-                    ds.add(snap_features, approved, weight=snap_conf, seat=seat_idx)
+                    # WHAT MODE, AND AT WHAT HEAD TILT. A sample is only interpretable if you know
+                    # which display mode produced it: 2026-08-04 cost a day because that was
+                    # recorded wrongly for a whole session and reasoned from as settled.
+                    _note = {"display_mode": getattr(cfg, "display_mode", "unknown")}
+                    if _imu_obj is not None:
+                        try:
+                            _r = _imu_obj.read()
+                            if _r is not None:
+                                _t = head_tilt_deg(_r[1])
+                                if _t:
+                                    _note["pitch_deg"], _note["roll_deg"] = round(_t[0], 2), round(_t[1], 2)
+                        except Exception:
+                            pass
+                    ds.add(snap_features, approved, weight=snap_conf, seat=seat_idx,
+                           note=json.dumps(_note))
                     cal = build_calibrator(cfg, ds)    # retrain on all samples
                     nudge[:] = 0.0
                     pred_s = None; pred_filt.reset()
@@ -647,7 +664,7 @@ def selftest_input() -> int:
         nonlocal ok_all
         ok_all = ok_all and bool(cond)
         print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name,
-                               ("  — " + detail) if detail else ""))
+                               (", " + detail) if detail else ""))
 
     frame = np.zeros((8, 8), dtype=np.uint8)
 
@@ -824,6 +841,32 @@ def _display_fov() -> float:
         return float("nan")
 
 
+def head_tilt_deg(accel):
+    """Gravity vector -> (pitch, roll) in degrees. Absolute and DRIFT-FREE, unlike an integrated gyro.
+
+    >>> LOCKED-MODE INSURANCE. Read this before deciding it is not worth storing. <<<
+
+    In anchor/3DoF the glasses displace the image by a HEAD-POSE-dependent amount before it reaches
+    the eye, which is why a calibration captured that way is ill-posed: the same (features -> pixel)
+    map is wrong at every other head pose. Dylan chose locked mode on 2026-08-04 knowing this.
+
+    The offset is recoverable IF the head pose is recorded, and most of it already is: the WORLD-DOT
+    DIRECTION (features 0-3) encodes head orientation relative to the target, and
+    reseat.estimate_gain already regresses it out with an affine nuisance basis. What the world dot
+    cannot supply is ROLL, rotation about the view axis leaves the dot where it is. Gravity gives
+    exactly that, with no drift, for one accelerometer read.
+
+    So storing this turns "these samples are in the wrong mode, treat as suspect" into "these
+    samples carry the variable the wrong mode depends on".
+    """
+    a = np.asarray(accel, float).ravel()
+    if a.size < 3 or not np.all(np.isfinite(a)) or np.linalg.norm(a) < 1e-6:
+        return None
+    pitch = np.degrees(np.arctan2(-a[2], np.hypot(a[0], a[1])))
+    roll = np.degrees(np.arctan2(a[0], a[1]))
+    return float(pitch), float(roll)
+
+
 def make_hud(n, cal, simulate, shown, green, conf) -> str:
     lines = ["samples: %d   model: %s   lambda: %.3f" %
              (n, "trained" if cal.is_trained else "warming up", cal.lambda_ or 0),
@@ -864,6 +907,13 @@ def main(argv=None) -> int:
                         "is moved there BEFORE going fullscreen (without it, fullscreen fills the "
                         "primary monitor and nothing reaches the glasses)")
     p.add_argument("--db", type=str, help="override sample DB path")
+    p.add_argument("--display-mode", choices=("follow", "locked"), default="follow",
+                   help="WHICH XREAL MODE THIS RUN WAS CAPTURED IN. Stored with every sample. "
+                        "follow (0DoF) is the correct one for calibration; locked (anchor/3DoF) "
+                        "has the glasses displace the image by a head-pose-dependent amount before "
+                        "it reaches the eye, so the map is ill-posed. Recording it is not optional: "
+                        "on 2026-08-04 a whole session's mode was written down wrongly and reasoned "
+                        "from as settled for a day.")
     p.add_argument("--reseat-every", type=int, default=0, metavar="N",
                    help="every N approved samples, stop and tell the wearer ON SCREEN to take "
                         "the glasses OFF and put them back ON. Each batch is stored with its own "
@@ -910,7 +960,7 @@ def main(argv=None) -> int:
                    help="pixel accuracy for each glasses position on each face: population "
                         "prior vs geometry preset vs pupil-aided preset, error vs the oracle")
     p.add_argument("--kappa-hybrid", action="store_true",
-                   help="DC-removed (bias-free) geometry ID + offset stage — the combination v2 missed")
+                   help="DC-removed (bias-free) geometry ID + offset stage, the combination v2 missed")
     p.add_argument("--kappa-sdsweep", action="store_true",
                    help="correction-SD requirement sweep: what vernier precision buys under-3px")
     p.add_argument("--kappa-resid", action="store_true",
@@ -990,6 +1040,7 @@ def main(argv=None) -> int:
     if args.db:
         cfg.db_path = args.db
     cfg.reseat_every = int(getattr(args, "reseat_every", 0) or 0)
+    cfg.display_mode = getattr(args, "display_mode", "follow")
 
     import os
     meta_path = os.path.join(os.path.dirname(cfg.db_path), "meta.db")

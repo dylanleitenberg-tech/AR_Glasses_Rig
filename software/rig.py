@@ -15,7 +15,7 @@ Two coordinate frames are involved; keep them straight:
 
 Cameras are fixed on the bracket at the NOMINAL IPD (the print doesn't adapt per user);
 each wearer's real eyes sit at their own IPD, so the cameras are generally NOT perfectly
-over the pupil — that offset is part of what calibration learns.
+over the pupil, that offset is part of what calibration learns.
 """
 import numpy as np
 
@@ -23,12 +23,12 @@ from optics import rot_xyz, look_at, PinholeCamera, DisplayOptics
 import anatomy
 
 # ---- how the glasses rest on the face (face -> rig transform) -------------
-# MEASURED on the actual XREAL One Pro (Size L) — see MEASUREMENT_CHECKLIST.md.
+# MEASURED on the actual XREAL One Pro (Size L): see MEASUREMENT_CHECKLIST.md.
 NOMINAL_IPD = 67.0     # MEASURED user pupil IPD; bracket is printed for this (subjects vary around it)
 DISPLAY_IPD = 68.13    # MEASURED display optic center-to-center (slightly wider than the pupils;
 #                        calibration learns the ~1 mm pupil-vs-optic offset). Drives OPTIC_R/L below.
 EYE_BEHIND = 28.5      # CoR behind the optic = MEASURED vertex 15 mm + ~13.5 mm cornea->center-of-rotation
-PANTO_DEG = -3.5       # pantoscopic tilt: the One Pro adjusts in 3 stages up to ±3.5° — the old
+PANTO_DEG = -3.5 # pantoscopic tilt: the One Pro adjusts in 3 stages up to ±3.5°, the old
 #                        -7.0 was NOT ACHIEVABLE on this hardware (spec audit 2026-07-06). Set the
 #                        glasses to the max nose-down stage and record it (MEASUREMENT_CHECKLIST B2).
 #                        Changing this moves nominal_outer_canthus() -> update CANTH_SIM in the CAD.
@@ -49,7 +49,7 @@ WC_UP = 49.0               # raised 44->49 (2026-07-23): the world board's LOWER
 #                            FINAL build to refresh the deployed number (fast gate parity holds).
 # was 30->44 (2026-07-02): at 30 the 38 mm board's LOWER STANDOFFS +
 #                            PCB edge sat inside the GLASSES BROW band (brow top = optic +22.7 up;
-#                            board bottom = WC_UP - 19 was 11 mm below it) — found by the printed-
+#                            board bottom = WC_UP - 19 was 11 mm below it): found by the printed-
 #                            solid check (cad_overlap.py); no earlier check compared parts against
 #                            the glasses body. At 44 the whole module clears the brow top ~2.3 mm
 #                            and the see-through-cone margin grows to ~+20 mm.
@@ -65,7 +65,7 @@ WORLD_RES = 1280           # sensor resolution (quantizes the readings)
 # in the lens->eye gap, aimed back/in/down at the outer canthus. (Were at [+-54, 5, 5] = barely
 # outside the cone AND forward of the lens; eye-imaging cams belong in the gap, not the world side.)
 # MOVED to the temple to CLEAR the world-cam board (the 38 mm world + 36 mm eye boards were
-# physically overlapping by 15 mm at the old [+24,10,-2] — caught by the inter-camera clearance
+# physically overlapping by 15 mm at the old [+24,10,-2]: caught by the inter-camera clearance
 # check, cad_fit.camera_clearance). Out + down + back: now +3.8 mm board clearance, and looking UP
 # at the canthus (lower-rim placement = less lash occlusion).
 EC_X = NOMINAL_IPD / 2 + 36.0
@@ -74,11 +74,11 @@ EC_UP = -5.0           # lowered -2 -> -5 (2026-07-16: longer side booms); the a
 EC_FWD = -6.0
 # EYE-CORNER cam AIM BIAS (2026-07-26): the mounted eye cam framed the outer corner low + inboard
 # (bottom-left of frame), risking losing it on a glasses slip. Re-aim DOWN + OUTWARD so the canthus
-# sits nearer frame centre. Mirrored per side. AIM ONLY — EC_X/UP/FWD (position) and
+# sits nearer frame centre. Mirrored per side. AIM ONLY: EC_X/UP/FWD (position) and
 # nominal_outer_canthus() (the tracked landmark, hence CANTH_SIM parity) are UNCHANGED.
 # RE-AIM REMOVED 2026-07-27 (both were 6.0 / 3.0): the bias was inferred from a mounted photo
 # showing the corner edge-riding, but that framing is explained by the lens being ~45 deg rather
-# than the modelled 90 — a magnification effect, not an aim error. Two independent checks agree
+# than the modelled 90: a magnification effect, not an aim error. Two independent checks agree
 # the un-biased aim is the better one: the framing sweep puts the canthus at v=0.455 (frame
 # centre) un-biased vs 0.350 biased, with edge margin 0.442 vs 0.350 and 0.0% vs 0.7% falling off
 # the real 16:10 top edge; and accuracy_map is neutral either way (1.88 vs 1.90 px median).
@@ -91,12 +91,12 @@ EC_AIM_OUT  = 3.0   # mm the aim point moves outward (toward the temple), mirror
 #     outer canthus  41.9% in-frame  -> NOT TRACKABLE
 #     inner canthus 100.0% in-frame  (median u 0.838, v 0.414)
 # So the tracked landmark is the INNER canthus (autosim.Simulator(landmark="inner")), while the
-# camera AIM stays "outer" because that is what is physically printed and cannot be changed —
+# camera AIM stays "outer" because that is what is physically printed and cannot be changed , 
 # aim and tracked landmark are deliberately independent. The carrier is final (no printer
 # access), so remaining framing margin comes from the brow-clamp slop, not from geometry.
 EYE_FOV = 45.0
 
-# THE TRACKED LANDMARK — settled 2026-08-01, do not re-litigate per session.
+# THE TRACKED LANDMARK: settled 2026-08-01, do not re-litigate per session.
 # The camera AIM is "outer" because that is what is physically printed (and the carrier is final:
 # ASA/PETG done, no printer access). The TRACKED point is "inner" because at the real 45 deg lens
 # the outer canthus is only 41.9% in-frame while the inner is 100%. Aim and tracked landmark are
@@ -107,12 +107,12 @@ EYE_K1 = -0.10            # wide eye-corner lenses distort more
 EYE_RES = 640
 # ---- eye2: STEREO eye-corner pair = the 8-cam "FULL" FUTURE UPGRADE (NOT part of the 6-cam CORE) --
 # A 2nd eye-corner camera per eye at a clearly DIFFERENT position gives STEREO on each outer canthus,
-# triangulating its depth (cfwd) — the term a single view can't see. This is the higher-accuracy
+# triangulating its depth (cfwd): the term a single view can't see. This is the higher-accuracy
 # evolution to build AFTER the 6-cam CORE (use_stereo / build_stereo / --stereo-test); it is kept
 # isolated here and is off by default so the CORE stays a clean 6-camera model.
 # Stereo cam: WEARABLE temple position, paired BELOW the primary eye cam (same x, ~at the lens
 # plane) so its board extends out to the temple, not deep into the cheek. Parallax on the canthus
-# ~56 deg (vs the un-wearable deep-gap 80 deg) — still triangulates canthus depth.
+# ~56 deg (vs the un-wearable deep-gap 80 deg): still triangulates canthus depth.
 EC2_X = NOMINAL_IPD / 2 + 36.0   # moved with the primary eye cam to the temple (stereo pair)
 EC2_UP = -16.0                   # below + behind the primary so the two stereo boards also clear
 EC2_FWD = -10.0
@@ -160,7 +160,7 @@ SEAT_ROT_SD = 1.2      # initial seating spread
 SEAT_TRANS_SD = 1.8
 # ===========================================================================
 #  REAL-WORLD EFFECT MODELS.  All magnitudes below are PLACEHOLDERS at plausible
-#  engineering values — replace each with the MEASURED value once hardware is in
+#  engineering values: replace each with the MEASURED value once hardware is in
 #  hand (display checkerboard, camera calibration, eye-corner tracker stats, and a
 #  few instrumented human sessions). They are faithful models, not penalties.
 # ===========================================================================
@@ -228,7 +228,7 @@ def nominal_inner_canthus():
 
     Alternative tracked landmark (see `landmark=` on build()/Simulator). Canthal tilt is
     defined as the OUTER canthus rising relative to the inner one, so the inner canthus
-    carries no rise — it sits at eye level, ICD apart, at the same canthus depth.
+    carries no rise, it sits at eye level, ICD apart, at the same canthus depth.
     """
     face = np.array([[-anatomy.ICD_MEAN/2, 0.0, anatomy.CANTHUS_FWD_MEAN],
                      [+anatomy.ICD_MEAN/2, 0.0, anatomy.CANTHUS_FWD_MEAN]])
@@ -277,7 +277,7 @@ def build(landmark="outer"):
     `landmark` selects which canthus the eye-corner cams AIM at (and, paired with
     Simulator(landmark=), which one they track): 'outer' is the built design and the only
     one CAD parity covers; 'inner' is the medial-canthus variant under evaluation
-    (landmark_test.py). Camera POSITIONS are identical either way — only the aim changes,
+    (landmark_test.py). Camera POSITIONS are identical either way, only the aim changes,
     so this is an aim-only experiment, exactly like EC_AIM_DOWN/OUT."""
     canth = nominal_canthus(landmark)
     world = [
@@ -347,7 +347,7 @@ def assert_no_occlusion():
     if bad:
         detail = "; ".join("%s at %s inside the cone by %.2f mm"
                            % (n, np.round(c, 2).tolist(), -m) for n, c, m in bad)
-        raise AssertionError("rig see-through occlusion — camera(s) block the view: " + detail)
+        raise AssertionError("rig see-through occlusion, camera(s) block the view: " + detail)
 
 
 assert_no_occlusion()       # validate the fixed rig geometry at import time

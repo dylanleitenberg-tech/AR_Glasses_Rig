@@ -1,4 +1,4 @@
-"""snapshot.py — grab ONE synchronized frame-set from all rig cameras and save it to disk.
+"""snapshot.py, grab ONE synchronized frame-set from all rig cameras and save it to disk.
 
 The workhorse capture primitive: every calibration sample, debug capture, and dataset frame is a
 synchronized set of the 6 role images plus the metadata that says how trustworthy it is
@@ -30,7 +30,7 @@ SNAP_DIR = os.path.join(_DATA, "snapshots")
 
 
 def build_meta(sync_frame, role_index, budget_ms=3.0):
-    """Assemble the metadata dict for one SyncFrame (no disk I/O — testable)."""
+    """Assemble the metadata dict for one SyncFrame (no disk I/O, testable)."""
     roles = {}
     for role in sync_frame.frames:
         f = sync_frame.get(role)
@@ -83,7 +83,7 @@ def capture(n=1, budget_ms=3.0, fps=100, root=SNAP_DIR, verbose=True):
     from sync_capture import SyncBank
     role_index = load_map()
     if not role_index:
-        print("no role map — run:  python3 connect.py --auto")
+        print("no role map, run:  python3 connect.py --auto")
         return 1
     probs = validate_map(role_index)
     if probs:
@@ -164,7 +164,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "SNAPSHOT OK — synchronized set + trustworthy metadata ✅"
+        print("  =>", "SNAPSHOT OK, synchronized set + trustworthy metadata ✅"
               if ok else "PROBLEM ⚠️")
     return 0 if ok else 1
 

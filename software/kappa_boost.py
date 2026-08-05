@@ -1,7 +1,7 @@
-"""kappa_boost.py — improve kappa precision: honest label-based ID + vernier corrections.
+"""kappa_boost.py, improve kappa precision: honest label-based ID + vernier corrections.
 
 THE GAP THIS CLOSES: stereo_test fingerprints the user with `prior.predict(f) - TRUTH`, but
-reality never shows the truth — only the USER'S LABEL (truth + per-session perceptual bias +
+reality never shows the truth, only the USER'S LABEL (truth + per-session perceptual bias +
 per-correction alignment noise + fat-fingers). Kappa is identified FROM those corrections, so
 correction quality gates kappa precision, and kappa gates the deployed floor (stereo+good-kappa
 was the proven <1 px recipe). This module:
@@ -15,7 +15,7 @@ was the proven <1 px recipe). This module:
 
 Each arm's identifier is TRAINED the way it is TESTED (matched noise), so ridge absorbs what
 it can. Reported per arm: kappa recovery (deg + %popSD) and deployed STEREO physics-preset
-systematic error (px @1080p) — directly comparable to stereo_test's 1.077 px.
+systematic error (px @1080p), directly comparable to stereo_test's 1.077 px.
 
 NOTE on multi-DISTANCE separation: the autosim perceptual bias is constant per session, so
 distance sweeps separate nothing HERE; the multi-vergence protocol's 2.4 px cross-distance
@@ -69,7 +69,7 @@ def _fingerprint(sim, subj, prior, poses, dots, repeats, rng, cam, use_label,
                  dc_remove=False, use_pupil=True):
     """stereo_test._fingerprint, with the reference switchable: TRUTH (optimistic) or the
     user's LABEL (what a real calibration actually gets). dc_remove subtracts the user's
-    MEAN correction from the inaccuracy pattern — the constant per-session perceptual bias
+    MEAN correction from the inaccuracy pattern, the constant per-session perceptual bias
     is DC in pixels while kappa's effect varies across the field, so removing DC makes the
     identification bias-invariant (at the cost of kappa's own DC component). use_pupil=False
     = the no-IR build (no NIR pupil cams: no pupil features, no pupil-sensor fingerprint)."""
@@ -103,7 +103,7 @@ def _fingerprint(sim, subj, prior, poses, dots, repeats, rng, cam, use_label,
 def _refine_geometry(asim, sub_th, samples, param_idx, pupil, iters=4, lam=1e-3):
     """Per-user Gauss-Newton REFINEMENT of the identified geometry on pose-diverse vernier
     corrections: adjust the selected descriptor params to minimize |label - physics_predict|
-    across seats. The kappa/bias confound leaks bias INTO kappa here — which is exactly right
+    across seats. The kappa/bias confound leaks bias INTO kappa here, which is exactly right
     for the PERCEIVED objective (the kappa+bias SUM is what places pixels where the user
     wants; KAPPA.md's 'product reframe'). Returns the refined descriptor."""
     import complete_geometry as cg
@@ -137,7 +137,7 @@ def _refine_geometry(asim, sub_th, samples, param_idx, pupil, iters=4, lam=1e-3)
 
 def _fit_residual(kind, samples):
     """Per-user residual model from K (position, label-pred) pairs: MAD-gate the outliers
-    (a wild pose-fit must not poison the model — the no-IR offset arm blew up exactly this
+    (a wild pose-fit must not poison the model, the no-IR offset arm blew up exactly this
     way), then fit constant / affine / quadratic-in-position. Returns f(pos)->resid."""
     P = np.array([p for p, _ in samples])
     R = np.array([r for _, r in samples])
@@ -186,7 +186,7 @@ def evaluate(n_train=600, n_test=12, seed=0, verbose=True, followup=False):
     if followup == "hybrid":
         # THE MISSED COMBINATION: v2's "DC-removal failed" arms had NO offset stage. But
         # kappa's ID error is ~pure DC in pixel space (a constant offset absorbs it), while
-        # the 4.1->2.3 gap is the OTHER params' pose-varying error — which bias-free
+        # the 4.1->2.3 gap is the OTHER params' pose-varying error: which bias-free
         # (DC-removed) fingerprints should identify BETTER. Test DC-removed ID + offset.
         arms = [
             ("plain ID   + const8",    True, (vsd, VERNIER_GROSS), 6, False, True, ("const", 8), False, None),
@@ -207,7 +207,7 @@ def evaluate(n_train=600, n_test=12, seed=0, verbose=True, followup=False):
         # geometry-ID error (the constant part is already absorbed). Fit a richer per-user
         # residual model on vernier-grade corrections; score PERCEIVED (the target).
         # arms: (name, use_label, noise, reps, dc, pupil, resid=(kind,K), true_geom)
-        # arms: (..., resid, true_geom, refine) — refine = (param names, n_seats, per_seat)
+        # arms: (..., resid, true_geom, refine): refine = (param names, n_seats, per_seat)
         arms = [
             ("vern+avg6 + const8",       True, (vsd, VERNIER_GROSS), 6, False, True, ("const", 8),   False, None),
             ("refine(kappa) + const8",   True, (vsd, VERNIER_GROSS), 6, False, True, ("const", 8),   False, (("kappa_x", "kappa_y"), 4, 8)),

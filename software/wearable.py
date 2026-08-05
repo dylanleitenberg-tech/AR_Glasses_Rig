@@ -1,4 +1,4 @@
-"""wearable.py — would the cameras stop the glasses resting on the face in normal position?
+"""wearable.py, would the cameras stop the glasses resting on the face in normal position?
 
 Bulky is fine (it's a prototype) but it must be WEARABLE: nothing on the carrier may push into the
 face when the glasses sit at their normal vertex distance (held by nose pads + temples). cad_fit.py
@@ -151,7 +151,7 @@ def report():
         g = face_gap(pts); worst = min(worst, g)
         v = "CLEAR" if g >= 2.0 else ("TIGHT" if g >= 0 else "HITS FACE")
         print("  %-7s %8.1f mm   %s" % (name, g, v))
-    print("  => worst face gap %.1f mm  %s" % (worst, "WEARABLE" if worst >= 0 else "NOT WEARABLE — fix"))
+    print("  => worst face gap %.1f mm  %s" % (worst, "WEARABLE" if worst >= 0 else "NOT WEARABLE, fix"))
     return worst
 
 

@@ -1,23 +1,23 @@
-# Restore / backup guide — AR eye-calibration project
+# Restore / backup guide: AR eye-calibration project
 
-This is the full project: the **XREAL One Pro eye-calibration rig** — parametric CAD, the
+This is the full project: the **XREAL One Pro eye-calibration rig**, parametric CAD, the
 simulation + calibration + capture + world-mesh/overlay software, firmware, wiring/assembly
 docs, and the parts list. This file explains how to restore it on any computer.
 
 ## What's in the backup archive
 
-- **Everything committed to git** (full history — `.git/` is included).
-- `cad/` — OpenSCAD parametric carrier + LED bracket (`xreal_one_mount.scad`).
-- `software/` — all Python (sim, calibrator, capture, world_mesh, people_track, avatar,
+- **Everything committed to git** (full history, `.git/` is included).
+- `cad/`, OpenSCAD parametric carrier + LED bracket (`xreal_one_mount.scad`).
+- `software/`, all Python (sim, calibrator, capture, world_mesh, people_track, avatar,
   augment_rig, verify_all, etc.) + `requirements.txt`.
-- `firmware/` — the XIAO IR-strobe firmware.
+- `firmware/`, the XIAO IR-strobe firmware.
 - Docs: `README.md`, `HARDWARE_BRINGUP.md`, `WIRING.md`, `ASSEMBLY.md`, `ORDER_LIST.md`,
   `EYE_TRACKING.md`, `SAFETY.md`, `KAPPA.md`, `MONKEY_OVERLAY.md`, `RIGID_MOUNT_BUILD.md`, …
-- `data/` — the **distilled** artifacts kept (trained prior/identifier `*.npz`, `meta.db`,
+- `data/`, the **distilled** artifacts kept (trained prior/identifier `*.npz`, `meta.db`,
   `calibration_db.npz`, `pixel_map.npz`, templates, checkerboard, logs).
-- `_printable_stls/` — the ready-to-print parts (also regenerate from `cad/`, see below).
+- `_printable_stls/`, the ready-to-print parts (also regenerate from `cad/`, see below).
 
-## What's intentionally EXCLUDED (regenerable — to keep the archive small)
+## What's intentionally EXCLUDED (regenerable: to keep the archive small)
 
 | Excluded | Size | How to regenerate |
 |---|---|---|
@@ -25,7 +25,7 @@ docs, and the parts list. This file explains how to restore it on any computer.
 | `data/mega_samples.npz` | ~227 MB | `python3 software/megarun.py 100000` (~2.5 h; research only, not needed to build) |
 | `data/pixel_sweep_guesses.bin` | ~38 MB | `python3 software/pixel_sweep.py` (research only) |
 | `data/*.old_geom_*`, `*.old_fwd12` | ~36 MB | superseded DB backups; not needed |
-| `__pycache__/`, `*.pyc` | — | recreated on run |
+| `__pycache__/`, `*.pyc` | | recreated on run |
 
 None of the excluded files are needed to **build the hardware** or run the release gate.
 
@@ -69,6 +69,6 @@ $OSC -D 'part="led_bracket"' -o led_bracket.stl cad/xreal_one_mount.scad
 
 ## Making a fresh backup later
 
-From the project root, re-run the same archive command (see the parent folder), or simplest —
+From the project root, re-run the same archive command (see the parent folder), or simplest , 
 because it's all in git, `git bundle create ../ar-eye-cal.bundle --all` makes a single-file,
 full-history backup you can restore with `git clone ar-eye-cal.bundle`.

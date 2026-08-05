@@ -1,4 +1,4 @@
-"""reseat.py — did the glasses actually MOVE during the run, and does knowing that help?
+"""reseat.py, did the glasses actually MOVE during the run, and does knowing that help?
 
 THE PROBLEM THIS EXISTS TO STOP US REPEATING.
 
@@ -285,7 +285,7 @@ def verdict(X, Y, seats, joint=False, gains=GAINS):
                    "Cover the same part of the field at every seating."
                    % (100 * est["collinearity"]))
         else:
-            why = ("gain = %.2f +- %.2f — the interval spans both 0 and 1, so this data cannot "
+            why = ("gain = %.2f +- %.2f, the interval spans both 0 and 1, so this data cannot "
                    "tell the correction from nothing. This is NOT evidence it is useless."
                    % (g, se))
             why += (" The term is worth a median %.1f px here; per-sample residual scatter is "
@@ -294,7 +294,7 @@ def verdict(X, Y, seats, joint=False, gains=GAINS):
                 why += (" The seat barely varied: %d seating(s), span %.2f mm."
                         % (rep["n_seats"], rep["span_mm"]))
             why += (" To fix it: re-seat DELIBERATELY DIFFERENTLY (%.0f mm+), and calibrate CLOSE "
-                    "— the term is parallax and scales as 1/distance." % RECOMMENDED_SEAT_MM)
+                    ",  the term is parallax and scales as 1/distance." % RECOMMENDED_SEAT_MM)
     elif g - 2 * se > 0.0:
         call = "SET EYE_SHIFT_GAIN = %.2f" % round(g, 2)
         why = ("regression gain %.2f +- %.2f (%.1f sigma from zero), effect %.1f px, residual "
@@ -302,7 +302,7 @@ def verdict(X, Y, seats, joint=False, gains=GAINS):
                                                      est["sigma_px"], est["n"]))
     else:
         call = "LEAVE EYE_SHIFT_GAIN = 0.0"
-        why = ("gain = %.2f +- %.2f — resolvable and consistent with zero. This IS a real null "
+        why = ("gain = %.2f +- %.2f, resolvable and consistent with zero. This IS a real null "
                "result: the measured eye shift does not predict the residual."
                % (g, se))
 
@@ -312,7 +312,7 @@ def verdict(X, Y, seats, joint=False, gains=GAINS):
 
 
 def contamination(X):
-    """Samples whose target was outside the display entirely — see geometry.offscreen.
+    """Samples whose target was outside the display entirely, see geometry.offscreen.
 
     Reported FIRST, because everything downstream is a statistic over these samples and 4 of the
     17 in the only real set were unstorable. A spread figure computed over poisoned samples is
@@ -329,7 +329,7 @@ def print_verdict(v, X=None):
         if bad.any():
             print("== CONTAMINATION ==")
             print("  %d of %d samples had the target OUTSIDE the %.1f deg display "
-                  "(off-axis up to %.0f deg) — these cannot be alignments."
+                  "(off-axis up to %.0f deg), these cannot be alignments."
                   % (bad.sum(), len(bad), geometry.DISPLAY_FOV_DEG, ang[bad].max()))
             good = ~bad
             if good.sum() >= 2:
@@ -357,7 +357,7 @@ def print_verdict(v, X=None):
           % (e["gain"], e["se"], e["t"], e["sigma_px"], e["n"]))
     print("  seat/direction independence %.0f%%  (below %.0f%% = aliased, unusable)"
           % (100 * e["collinearity"], 100 * MIN_COLLINEARITY))
-    print("== SWEEP (median-error grid — kept for continuity with 2026-08-03, and far blunter) ==")
+    print("== SWEEP (median-error grid, kept for continuity with 2026-08-03, and far blunter) ==")
     for row in v["rows"]:
         line = "  gain %.2f   median %6.1f px   p95 %6.1f px" % (
             row["gain"], row["median"], row["p95"])
@@ -495,7 +495,7 @@ def selftest(verbose=True):
         nonlocal ok_all
         ok_all = ok_all and bool(cond)
         print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name,
-                               ("  — " + detail) if detail else ""))
+                               (", " + detail) if detail else ""))
 
     # --- NEGATIVE CONTROL 1: the glasses never moved -----------------------------------------
     # This is the 2026-08-03 dataset reproduced deliberately. A gain of 1.0 was planted in the
@@ -652,7 +652,7 @@ def main(argv=None):
     if a.check:
         X, Y, W, seats = load_real(a.db)
         if len(X) < 4:
-            raise SystemExit("only %d samples — run a calibration first" % len(X))
+            raise SystemExit("only %d samples, run a calibration first" % len(X))
         print_verdict(verdict(X, Y, seats, joint=a.joint), X)
         return 0
     p.print_help()

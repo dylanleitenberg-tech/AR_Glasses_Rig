@@ -1,15 +1,15 @@
 // =====================================================================
-//  AR Eye-Corner Calibration Rig — Meta-Ray-Ban-style frame, modified
+// AR Eye-Corner Calibration Rig, Meta-Ray-Ban-style frame, modified
 // =====================================================================
 //  NOTE: This is the LEGACY Path-B (DIY combiner) FALLBACK frame, NOT the canonical
-//  build. The canonical model is the 6-camera BINOCULAR rig on the XREAL One Pro —
+// build. The canonical model is the 6-camera BINOCULAR rig on the XREAL One Pro , 
 //  print `xreal_one_mount.scad` (bonded carrier: 2 world + 2 eye-corner + 2 NIR pupil)
 //  + `eye_tracking_bridge.scad` (nose/IMU). Use THIS file only if you have no XREAL
 //  display and are building a from-scratch Path-B combiner. The world cameras here are
 //  placed at the PUPILS (±ipd/2), matching the XREAL mount, so the camera sees what the
 //  eye sees.
 //  ⚠️ This frame sits directly on the face: pad EVERY face-contact surface (nose pads,
-//  brow, temple ends) with soft silicone/foam — no bare hard plastic on skin.
+// brow, temple ends) with soft silicone/foam, no bare hard plastic on skin.
 //
 //  Parametric, 3D-printable. A "Wayfarer"-ish frame with mounts added for:
 //    - 2x forward "world" cameras (outer top corners, like Ray-Ban Meta)
@@ -19,7 +19,7 @@
 //  This is a *starting* parametric model. Measure your own face / your real
 //  Ray-Ban Meta frames and tune the parameters at the top before printing.
 //  Print in PETG or ABS (lives on your face, near skin heat). Supports off,
-//  0.2 mm layers. The eye-cam booms are thin — print slow or add a brim.
+// 0.2 mm layers. The eye-cam booms are thin, print slow or add a brim.
 //
 //  Render a single part for printing by setting `part` below, or "all" to
 //  preview the assembly. Then: openscad -o frame.stl glasses_frame.scad
@@ -34,7 +34,7 @@ lens_w        = 50;   // lens opening width
 lens_h        = 40;   // lens opening height
 lens_r        = 9;    // lens corner radius
 bridge_gap    = 18;   // gap between the two lenses (over the nose)
-ipd           = 64;   // YOUR interpupillary distance, mm — world cams sit here
+ipd = 64; // YOUR interpupillary distance, mm, world cams sit here
 rim_t         = 3.5;  // rim border thickness around each lens
 front_depth   = 6;    // front-to-back thickness of the frame front
 brow_h        = 5;    // height of the top brow bar

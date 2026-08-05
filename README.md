@@ -36,9 +36,26 @@ Results so far, from a physics simulation built to be pessimistic about human er
   geometry refinement on user labels) because the simulation showed each one quietly
   overfits. The failures shaped the design as much as the successes.
 
-Current status: simulation and CAD are complete and pass a full automated release gate.
-The carrier has been printed and dry-fitted on the actual glasses through several
-revisions. Cameras are ordered and arriving, and hardware bring-up is the current phase.
+![The rig](media/session-2026-08-04/rig_complete_on_glasses.jpg)
+
+Current status: the rig is built and running on my face. All four cameras stream, both eye
+trackers lock onto my inner eye corners, the forward pair finds the target and measures its
+distance, and the whole preflight passes. I have real calibration samples stored and a
+measured overlay error rather than a simulated one.
+
+What the hardware phase actually produced, all measured on the rig:
+
+- Overlay latency went from 196 ms to 62 ms once I worked out that most of it was my own
+  smoothing rather than the cameras.
+- I reverse engineered the IMU inside the glasses, which streams over TCP at about 1100 Hz.
+  Nobody had documented the format, so I read raw packets and found the gyroscope and
+  accelerometer by checking a stationary reading against gravity: 9.773 against 9.81.
+- The overlay is now computed from physics rather than learned from scratch. A polynomial
+  fit on few samples was throwing the marker across the display, so geometry became the
+  backbone and learning became a correction that has to prove it helps before it is used.
+- The display field of view had been assumed at 50 degrees since the project started. I
+  measured it two ways and it is closer to 48, which was worth more error than getting a
+  user's eye spacing wrong by two standard deviations.
 
 ## Why this problem
 
@@ -51,8 +68,18 @@ the world. This is why one-time AR calibration never holds.
 
 The key idea, which came out of an early design discussion with our robotics coach Kim,
 is to measure the glasses-on-face pose continuously by watching the corners of your
-eyes. The outer canthus is a stable facial landmark, and its position in a
-glasses-mounted camera tells you exactly how the glasses are seated right now. The
+eyes. The inner canthus, the tear duct corner, is a stable facial landmark fixed to the
+skull rather than to the eyeball, so its position in a glasses-mounted camera tells you
+exactly how the glasses are seated right now without being confused by where you are
+looking. I checked that property rather than assuming it: the landmark my model tracks
+correlates with pupil position at 0.19, where the hand-tuned tracker it replaced sat at
+0.99.
+
+Reading the eye tracking literature later confirmed this was the right call for a reason
+I had not known. Trackers that build a 3D model of the eye can compensate for the headset
+sliding around, and purely 2D video methods have no known solution for it. Since my mount
+is zip tied and does not sit the same way twice, that compensation is not a nice extra.
+It is the only thing keeping a calibration valid for more than one session. The
 system then learns a function from (target direction, eye corner geometry) to the
 display pixel that lands on the target, using samples the user labels:
 
@@ -100,6 +127,24 @@ Max as a drop-in alternative.
   calibration, PCCR gaze tracking, slippage-robust methods, synthetic training data,
   Quest Pro and Vision Pro benchmarks).
 
+## The build
+
+![Carrier clamped on the glasses](media/session-2026-08-04/carrier_clamped_on_glasses.jpg)
+
+Every mount dimension came off a pair of calipers rather than a datasheet, because the
+camera boards did not match their published drawings closely enough to trust.
+
+![Measuring a camera board](media/session-2026-08-04/camera_board_caliper_width.jpg)
+
+![All cameras wired](media/session-2026-08-04/rig_all_cameras_wired.jpg)
+
+The zip ties are load bearing. The carrier was designed for M3 thumbscrews and the printed
+clamps did not hold well enough, so the working mount is zip tied. That is not tidy, but it
+is honest about what the software has to survive: the mount does not sit the same way twice,
+which is exactly the problem the eye corner cameras exist to solve.
+
+More photos and what each shows: `media/session-2026-08-04/README.md`.
+
 ## Try it without hardware
 
 The whole loop runs in simulation. It fakes the cameras and synthesizes ground truth, so
@@ -141,6 +186,38 @@ that walked 100 eye geometries times 100 glasses positions across the display (a
 contributes. Several cameras earned their place in the build this way, and one proposed
 sensor (an IMU for pose estimation) was demoted to bump detection because the data said
 it added nothing to registration.
+
+That last conclusion turned out to be half right and worth revisiting. The IMU adds
+nothing to registration accuracy, which the simulation had correctly shown. What it does
+add is speed, and I only understood that after measuring latency on real hardware. The
+cameras run at about 18 frames per second while the glasses' own IMU runs at 1100, and
+overlay error from lag scales with how fast you turn your head. So the sensor the
+simulation demoted came back as the fix for a different problem than the one I had
+tested it against.
+
+## What went wrong, and what that taught me
+
+The most useful part of this project has been the failures, so they are documented in the
+repo rather than quietly fixed.
+
+The pattern that cost the most time, roughly ten separate instances, is a check passing for
+a reason unrelated to what it claims to measure. A camera bring-up printed "BANK UP" with
+two cameras returning nothing. A stereo geometry check took the absolute value of disparity
+and so could not see that the two cameras were swapped. A template scored 0.99 on a patch of
+blank skin. Three separate self-tests measured nothing at all until I rewrote them, one
+because the synthetic signal ran off the edge of the frame within twenty frames and the rest
+of the test window was a flat line.
+
+The habit I built from that: when adding a check, write the failing case first and confirm
+it actually goes red against the broken version. And when a number and an image disagree,
+believe the image. Nearly every wrong turn I took came from trusting a measurement taken
+while the glasses were sitting on my desk instead of on my face.
+
+The second lesson is about tools versus problems. I spent a long time tuning a filter to fix
+overlay lag, trading smoothness against delay and never getting both. A filter has one knob
+and cannot do it. The answer, which the literature has known since the 1990s, is to predict
+where your head will be when the light actually reaches your eye. That is not a better
+filter, it is a different category of solution, and no amount of tuning would have found it.
 
 ## Acknowledgments
 

@@ -36,7 +36,7 @@ python3 main.py --selftest        # prints a learning curve, should end in PASS
 
 ### Hardware bring-up layer (connect · sync · adjust · mesh)
 
-The host-side stack that gets the 6 cameras running on the Mac — see **[../HARDWARE_BRINGUP.md](../HARDWARE_BRINGUP.md)**. Every module has a headless `--selftest` (in the release gate):
+The host-side stack that gets the 6 cameras running on the Mac, see **[../HARDWARE_BRINGUP.md](../HARDWARE_BRINGUP.md)**. Every module has a headless `--selftest` (in the release gate):
 
 | File | Role |
 |------|------|

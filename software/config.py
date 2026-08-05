@@ -61,6 +61,14 @@ class Config:
     # value of geometry.EYE_SHIFT_GAIN lost to leaving it off, which says nothing about the
     # correction and everything about the data. See reseat.py.
     reseat_every: int = 0
+    # WHICH XREAL DISPLAY MODE A RUN WAS CAPTURED IN, stored with every sample.
+    # "follow" (0DoF) is the correct one: a display pixel then corresponds to a FIXED direction
+    # relative to the glasses, which is the only condition under which the learned map exists.
+    # "locked" (anchor/3DoF) has the glasses' own IMU shift the image WITHIN the optics by an
+    # amount depending on head pose, so the same features require different pixels at different
+    # head poses. On 2026-08-04 this was recorded WRONGLY for a whole session and reasoned from as
+    # settled for a day, which is why it is now a stored per-sample field rather than a memory.
+    display_mode: str = "follow"
     poly_degree: int = 2
     min_samples_for_model: int = 6 # below this, fall back to weighted-mean pixel
     retrain_every: int = 1         # retrain after every N new samples

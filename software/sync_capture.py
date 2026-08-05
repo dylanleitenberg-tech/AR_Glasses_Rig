@@ -1,4 +1,4 @@
-"""sync_capture.py — the SYNCHRONIZED multi-camera grab layer for the 6-cam rig.
+"""sync_capture.py, the SYNCHRONIZED multi-camera grab layer for the 6-cam rig.
 
 cameras.py opens the role suite; this puts a REAL synchronization contract on top of it,
 which the whole live pipeline (capture.py, world_mesh.py, snapshot.py, rig_test.py) sits on.
@@ -11,19 +11,19 @@ WHY THIS EXISTS
     align the *grab* calls we get a genuinely comparable set. This module:
 
       * runs one BACKGROUND THREAD per camera that continuously ``grab()``s and keeps only
-        the freshest (frame, monotonic-timestamp, sequence) — never a stale buffered frame;
+        the freshest (frame, monotonic-timestamp, sequence), never a stale buffered frame;
       * a BARRIER makes every thread issue its ``grab()`` in the same scheduling window when
         a synchronized frame is requested, so the capture instants line up to within OS
         thread-wakeup latency (sub-ms .. few ms), not frame-times;
       * every returned set carries its per-camera timestamps and a measured JITTER
-        (max-min capture time). Nothing here hides the sync error — it reports it, and
+        (max-min capture time). Nothing here hides the sync error, it reports it, and
         callers can reject a set whose jitter exceeds a budget.
 
     For hard sync, strobe the IR LEDs from the XIAO (firmware/ir_strobe) inside the shared
     exposure window; the software barrier below is what aligns the rolling free-run grabs.
 
 NO-HARDWARE: a FakeCapture (synthetic frames, controllable per-read latency) lets the whole
-thing — threads, barrier, jitter math, freshness — be exercised with ``--selftest``.
+thing, threads, barrier, jitter math, freshness, be exercised with ``--selftest``.
 """
 import argparse
 import sys
@@ -104,7 +104,7 @@ class SyncCamera:
     def _run(self):
         while not self._stop.is_set():
             # cross the barrier so all cameras grab() in the same window; broken barrier =>
-            # shutdown or a peer died — just exit the thread.
+            # shutdown or a peer died: just exit the thread.
             try:
                 self.barrier.wait(timeout=2.0)
             except threading.BrokenBarrierError:
@@ -129,7 +129,7 @@ class SyncCamera:
                 self._grabbed_ok += 1
 
     def latest(self):
-        """(frame, capture_ts, seq) — the freshest grab, or (None, None, seq) if none yet."""
+        """(frame, capture_ts, seq), the freshest grab, or (None, None, seq) if none yet."""
         with self._lock:
             return self._frame, self._ts, self._seq
 
@@ -158,11 +158,11 @@ class SyncBank:
     ROLE_RES = {"worldL": 1280, "worldR": 1280, "eyeL": 640, "eyeR": 640,
                 "pupilL": 640, "pupilR": 640, "eye2L": 640, "eye2R": 640}
 
-    # Per-role capture MODE (width, height) — EXPLICIT, not derived from ROLE_RES.
+    # Per-role capture MODE (width, height): EXPLICIT, not derived from ROLE_RES.
     #
     # MEASURED 2026-08-01 on the real modules (ELP AR0234 + InnoMaker OV9281, one SABRENT hub):
     # both sensors are 16:10 (1920x1200 and 1280x800), so the old `int(res * 3 // 4)` rule asked
-    # the world cams for 1280x960 — a mode NEITHER sensor has. The driver silently fell back to
+    # the world cams for 1280x960: a mode NEITHER sensor has. The driver silently fell back to
     # an uncompressed mode, and four streams collapsed the shared USB 2.0 bus to ~1 fps with
     # multi-SECOND sync jitter. 640x480 is a mode these modules actually serve over MJPEG: all
     # four cameras run at ~54 fps on ONE bus.
@@ -170,7 +170,7 @@ class SyncBank:
     # TO GO FULL RESOLUTION: the bus carries THREE native streams at ~37 fps (bank_bringup.py
     # --ramp --native), so split the cameras across two host controllers (3+3) and pass
     # modes=bank_bringup.NATIVE_MODES. Features are normalised to [0,1], so capture resolution
-    # only sets localisation noise — it does not change the model contract.
+    # only sets localisation noise: it does not change the model contract.
     ROLE_MODE = {r: (640, 480) for r in ROLE_RES}
 
     def __init__(self, role_index, fps=100, opener=None, clock=time.monotonic, modes=None):
@@ -183,7 +183,7 @@ class SyncBank:
         self.clock = clock
         self.roles = list(role_index)
         # +1 party: the CONTROLLER thread (sync_frame caller) also crosses the barrier, so it
-        # blocks until every camera has issued its aligned grab — that is the sync point.
+        # blocks until every camera has issued its aligned grab: that is the sync point.
         self._barrier = threading.Barrier(len(self.roles) + 1)
         self.modes = dict(self.ROLE_MODE)
         if modes:
@@ -206,7 +206,7 @@ class SyncBank:
     def sync_frame(self, warm=True):
         """Trigger one aligned grab across all cameras and collect the freshest set.
 
-        Returns a SyncFrame. `jitter_ms` is the spread of per-camera capture timestamps —
+        Returns a SyncFrame. `jitter_ms` is the spread of per-camera capture timestamps , 
         the honest measure of how synchronized this set actually is. The barrier makes the
         controller's Nth wait block until every camera has finished its (N-1)th grab, so the
         controller cannot run ahead of the cameras; we then wait for each camera's sequence
@@ -283,7 +283,7 @@ class SyncFrame:
 class FakeCapture:
     """Synthetic camera. grab() is cheap (like a real cv2 grab that returns the already-captured
     global-shutter frame from the driver), so when the barrier releases all threads together the
-    grabs land within scheduling noise — that is what we assert against a naive sequential sweep."""
+    grabs land within scheduling noise, that is what we assert against a naive sequential sweep."""
 
     def __init__(self, role, res=640, fps=100, rng=None):
         self.role = role
@@ -348,7 +348,7 @@ def selftest(verbose=True):
     checks.append(("every sync set complete (6/6) and jitter is measured (%.2f ms)" % med_jit,
                    complete and np.isfinite(med_jit) and med_jit >= 0.0))
 
-    # (2) frames advance — no role stuck on a stale frame, and we read the ALIGNED grab
+    # (2) frames advance: no role stuck on a stale frame, and we read the ALIGNED grab
     s1 = dict(bank.sync_frame().seqs)
     for _ in range(5):
         bank.sync_frame()
@@ -378,7 +378,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "SYNC CAPTURE OK — barrier aligns grabs, jitter measured & reported ✅"
+        print("  =>", "SYNC CAPTURE OK, barrier aligns grabs, jitter measured & reported ✅"
               if ok else "PROBLEM ⚠️")
         print("  note: real global-shutter cams + IR strobe tighten this further; the number to")
         print("  watch on hardware is SyncFrame.jitter_ms (reject sets over your budget).")

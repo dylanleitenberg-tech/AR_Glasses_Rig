@@ -1,6 +1,6 @@
-"""live_rig.py — the integrated real-time driver: everything running together, every frame.
+"""live_rig.py, the integrated real-time driver: everything running together, every frame.
 
-This is the loop the user asked for — "cams capture synchronously, and the cams constantly track
+This is the loop the user asked for, "cams capture synchronously, and the cams constantly track
 and adjust the image." Each iteration:
 
     1. SYNC GRAB      sync_capture.SyncBank -> one barrier-aligned set of all 6 role frames,
@@ -15,7 +15,7 @@ and adjust the image." Each iteration:
 
 The loop body is `step()`, which is pure given its inputs, so `--selftest` drives the WHOLE
 pipeline headless: synthetic per-role frames exercise the exposure loop, and a synthetic moving
-world exercises the mesh tracker — proving the wiring end-to-end with NO hardware. `run()` needs
+world exercises the mesh tracker, proving the wiring end-to-end with NO hardware. `run()` needs
 opencv, the cameras, and a saved role map (connect.py).
 """
 import argparse
@@ -126,7 +126,7 @@ def run(fps=100, budget_ms=3.0, seconds=None, use_imu=False, target_fps=30.0,
     from world_mesh import WorldTracker
     role_index = load_map()
     if not role_index:
-        print("no role map — run:  python3 connect.py --auto"); return 1
+        print("no role map, run:  python3 connect.py --auto"); return 1
     probs = validate_map(role_index)
     if probs:
         print("role map invalid:", "; ".join(probs)); return 1
@@ -145,7 +145,7 @@ def run(fps=100, budget_ms=3.0, seconds=None, use_imu=False, target_fps=30.0,
             from imu_serial import GyroIntegrator
             imu = GyroIntegrator(port="/dev/tty.usbmodem*").start()   # bg-threaded gyro integration
         except Exception as e:
-            print("IMU unavailable (%s) — running vision-only" % e)
+            print("IMU unavailable (%s), running vision-only" % e)
 
     # Frame budget: cameras + mesh together must fit the deadline, and must not do it by
     # burning every core. LoadManager degrades ORB/mesh-stride until both hold.
@@ -246,7 +246,7 @@ def selftest(verbose=True):
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
         print("  final:", rig.tele.line())
-        print("  =>", "LIVE RIG OK — sync + autoexpose + mesh + telemetry run together ✅"
+        print("  =>", "LIVE RIG OK, sync + autoexpose + mesh + telemetry run together ✅"
               if ok else "PROBLEM ⚠️")
         print("  on hardware:  python3 live_rig.py --run   (ORB/LK world features + real cameras)")
     return 0 if ok else 1

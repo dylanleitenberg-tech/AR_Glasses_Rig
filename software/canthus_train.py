@@ -11,8 +11,8 @@ WHY TWO MODELS
     errors were CONFIDENT: wrong labels scored higher margin than right ones, so no threshold
     could filter them. Confidence from a single estimator is not evidence.
 
-    Two models trained independently — different init, different augmentation stream, different
-    data order — fail in uncorrelated ways. Where they AGREE on a held-out frame, the label is
+    Two models trained independently, different init, different augmentation stream, different
+    data order, fail in uncorrelated ways. Where they AGREE on a held-out frame, the label is
     almost certainly right; where they disagree, it is exactly the case a human should see. That
     turns "confidence" into something that actually carries information, and it is what lets a
     few hundred hand labels bootstrap into thousands.
@@ -21,14 +21,14 @@ WHY A HEATMAP, NOT COORDINATE REGRESSION
     Regressing (u,v) directly forces the net to collapse spatial evidence into two numbers through
     fully-connected layers, which generalises poorly and gives no way to see uncertainty. A
     heatmap keeps the prediction spatial: soft-argmax gives sub-pixel position, and the peak's
-    SHARPNESS is a usable confidence — a flat heatmap means the model does not know, which is
+    SHARPNESS is a usable confidence, a flat heatmap means the model does not know, which is
     precisely the signal the template could never produce.
 
 RUNTIME STAYS NUMPY
     Training happens here, once, in an isolated venv. --export writes plain .npz weights and
     canthus_net.py runs the forward pass in numpy, so the live loop gains no dependency and
     verify_all stays self-contained. This Intel Mac tops out at torch 2.2.2, which predates
-    numpy 2 — see .gitignore for the full reasoning.
+    numpy 2, see .gitignore for the full reasoning.
 """
 import os
 import sys
@@ -48,14 +48,14 @@ AGREE_PX = 0.02                # ensemble agreement threshold, normalised frame 
 
 
 # ----------------------------------------------------------------------------------
-#  Model — deliberately small. This is a single-landmark task on a fixed camera geometry,
+#  Model: deliberately small. This is a single-landmark task on a fixed camera geometry,
 #  not ImageNet; a big net would overfit a few hundred frames and cost frame time later.
 # ----------------------------------------------------------------------------------
 class CanthusNet:
     """Shared trunk, two heads: a landmark heatmap and an eye-open/closed logit.
 
     The heads share the trunk deliberately. Whether the eye is closed and where the corner sits
-    are read from the SAME evidence — lid margins, lash line, whether the iris is visible — so one
+    are read from the SAME evidence, lid margins, lash line, whether the iris is visible, so one
     set of features serves both, and the closed head costs a single extra 1x1 conv rather than a
     second network. It also regularises: the trunk cannot cheat on position by ignoring lid shape
     if it must also report lid state.
@@ -63,7 +63,7 @@ class CanthusNet:
     The landmark is NOT dropped when the eye closes. The inner canthus is where the lids MEET, so
     it stays visible through a blink and stays labellable; closed-ness is a separate property of
     the frame. That matters because rig.py models blink dropouts but nothing in the live loop
-    detects one, and a sample recorded mid-blink is bad twice over — gaze is not fixated, and the
+    detects one, and a sample recorded mid-blink is bad twice over, gaze is not fixated, and the
     lid deforms exactly the soft tissue the landmark sits in.
     """
 
@@ -108,12 +108,12 @@ def soft_argmax(torch, heat):
 def augment(rng, img, uv):
     """Photometric + small geometric jitter, applied per-sample so the two models see DIFFERENT
     streams. Brightness/contrast/noise cover the lighting swings these ambient-lit NoIR cameras
-    suffer; small shifts cover seating drift. Deliberately NO horizontal flip — that would turn a
+    suffer; small shifts cover seating drift. Deliberately NO horizontal flip, that would turn a
     left eye into a right eye and teach the wrong landmark."""
     import cv2
     out = img.astype(np.float32)
 
-    # ILLUMINATION GRADIENT — the augmentation that was missing, and the one that matters most.
+    # ILLUMINATION GRADIENT: the augmentation that was missing, and the one that matters most.
     # Dylan's room is lit from one side, so a brightness RAMP crosses the face; the old
     # augmentation only ever changed the LEVEL. Measured consequence: on a synthetic side-lit
     # frame the model went from 26 px to 258 px, and NO preprocessing rescued it -- illumination
@@ -131,7 +131,7 @@ def augment(rng, img, uv):
             ramp = ramp[:, ::-1] if ramp.shape[1] > 1 else ramp[::-1, :]
         out = out * ramp
 
-    # GAMMA — a nonlinear response change, which a linear gain cannot imitate. Range follows the
+    # GAMMA: a nonlinear response change, which a linear gain cannot imitate. Range follows the
     # published pupil-detection recipe (ETRA 2019): gamma in [0.6, 1.4].
     if rng.random() < 0.6:
         g = rng.uniform(0.6, 1.4)
@@ -257,7 +257,7 @@ def train(with_pseudo=False, epochs=60, verbose=True):
         net.load_state_dict(best_state)
         models.append((net, best))
         if verbose:
-            print("  model %d done — held-out median error %.4f frame units (%.1f px of 1280)"
+            print("  model %d done, held-out median error %.4f frame units (%.1f px of 1280)"
                   % (mi, best, best * 1280))
     torch.save({"m0": models[0][0].state_dict(), "m1": models[1][0].state_dict()},
                os.path.join(DATA, "canthus_models.pt"))
@@ -268,7 +268,7 @@ def train(with_pseudo=False, epochs=60, verbose=True):
 
 
 def pseudo(verbose=True):
-    """Label the unlabelled remainder — keeping ONLY frames where both models agree.
+    """Label the unlabelled remainder, keeping ONLY frames where both models agree.
 
     This is the step that makes a few hundred hand labels into thousands. Agreement between two
     independently-trained models is evidence in a way a single model's confidence is not: the

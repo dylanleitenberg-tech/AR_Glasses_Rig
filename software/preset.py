@@ -45,9 +45,9 @@ def build_preset(theta, n_sweep=2000, degree=3, seed=1, use_pupil=False, landmar
     """Sweep the identified geometry over the full pose range -> a calibrator (the preset).
 
     Two things make this a high-fidelity preset:
-      * DEGREE-3 fit (degree-2 was the wall — it floored at ~3.7 px even with perfect geometry);
+      * DEGREE-3 fit (degree-2 was the wall, it floored at ~3.7 px even with perfect geometry);
       * trained on the NOISE-FREE oracle (`ground_truth`), not noisy `observe()`. The sweep is
-        a synthetic map of a KNOWN geometry, so injecting sensor noise only hurts — using clean
+        a synthetic map of a KNOWN geometry, so injecting sensor noise only hurts, using clean
         features drops the true-geometry floor from ~2.7 px to ~0.75 px (see kappa_live.py /
         the sub-2px study). The per-USER live calibrator stays degree-2 (a handful of noisy
         samples); this fidelity is only for the dense synthetic sweep."""

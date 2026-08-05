@@ -1,17 +1,17 @@
-"""cad_overlap.py — measure REAL solid-on-solid overlaps in the printed carrier CAD.
+"""cad_overlap.py, measure REAL solid-on-solid overlaps in the printed carrier CAD.
 
 cad_fit.py / wearable.py check the CAMERAS (boards at rig.py positions) against the cone /
-eyeball / face, but nothing checked the printed SOLIDS — rail, brow clamps, booms, holders,
-IMU shelf — against EACH OTHER or against the GLASSES BODY the carrier clips onto. This shells
+eyeball / face, but nothing checked the printed SOLIDS, rail, brow clamps, booms, holders,
+IMU shelf, against EACH OTHER or against the GLASSES BODY the carrier clips onto. This shells
 out to the OpenSCAD CLI, renders intersection(A, B) for each pair via cad/overlap_check.scad,
 and integrates the resulting binary-STL volume (divergence theorem). Volume ~0 => clear.
 
 Pairs are classified:
-  KEEPOUT  — part vs glasses / eyeball / see-through cone: any overlap is a physical
+ KEEPOUT, part vs glasses / eyeball / see-through cone: any overlap is a physical
              impossibility (the glasses are real) or blocks vision -> must be ~0.
-  DISTINCT — two printed parts that should NOT touch (e.g. a camera holder vs a clamp):
+ DISTINCT, two printed parts that should NOT touch (e.g. a camera holder vs a clamp):
              overlap means the print is fused where it shouldn't be -> must be ~0.
-  ANCHOR   — intended structural union (booms root into the rail): overlap is fine.
+ ANCHOR, intended structural union (booms root into the rail): overlap is fine.
 
 Usage:  python3 cad_overlap.py            # full matrix
 """
@@ -24,9 +24,9 @@ import tempfile
 OPENSCAD = os.path.expanduser("~/Applications/OpenSCAD.app/Contents/MacOS/OpenSCAD")
 SCAD = os.path.join(os.path.dirname(__file__), "..", "cad", "overlap_check.scad")
 
-# (A, B, class) — right side + midline; the left is a mirror.
+# (A, B, class): right side + midline; the left is a mirror.
 PAIRS = [
-    # printed part vs the PHYSICAL glasses body (must be zero — the glasses are real)
+    # printed part vs the PHYSICAL glasses body (must be zero: the glasses are real)
     ("rail",   "glasses", "KEEPOUT"), ("clampR", "glasses", "KEEPOUT"),
     ("imu",    "glasses", "KEEPOUT"), ("worldR", "glasses", "KEEPOUT"),
     ("eyeR",   "glasses", "KEEPOUT"), ("pupilR", "glasses", "KEEPOUT"),
@@ -41,7 +41,7 @@ PAIRS = [
     ("eyeR",   "clampR", "DISTINCT"), ("pupilR", "clampR", "DISTINCT"),
     ("worldR", "imu",    "DISTINCT"), ("worldR", "worldL", "DISTINCT"),
     # the pupil booms UNITE into one central column and root into the IMU tower (by design,
-    # 2026-07-04) — these fusions are intended structure now
+    # 2026-07-04): these fusions are intended structure now
     ("pupilR", "pupilL", "ANCHOR"), ("pupilR", "imu", "ANCHOR"),
     # each camera's boom vs its own PCB keep-out (the physical board + back components):
     # the boom's end must NEVER enter it (the old attachment bulged 2.8 mm in)
@@ -88,7 +88,7 @@ def check_pair(a, b, out):
            "--export-format", "binstl", "-o", out, SCAD]
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if r.returncode != 0:
-        # an EMPTY intersection makes OpenSCAD exit nonzero — that's the CLEAR case, not an error
+        # an EMPTY intersection makes OpenSCAD exit nonzero: that's the CLEAR case, not an error
         if "top level object is empty" in (r.stderr or ""):
             return 0.0, []
         return None, (r.stderr or "").strip().splitlines()[-1:]
@@ -118,7 +118,7 @@ def main():
                 if vol > TOL_MM3:
                     bad += 1
             print(f"  {a:8s} {b:10s} {cls:9s} {vol:10.1f}   {verdict}")
-    print(f"  => {'ALL CLEAR' if bad == 0 else str(bad) + ' PROBLEM(S) — fix the CAD'}")
+    print(f"  => {'ALL CLEAR' if bad == 0 else str(bad) + ' PROBLEM(S), fix the CAD'}")
     return 0 if bad == 0 else 1
 
 

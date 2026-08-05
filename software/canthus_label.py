@@ -1,4 +1,4 @@
-"""Hand-label inner canthi on the collected corpus — the SEED set the model learns from.
+"""Hand-label inner canthi on the collected corpus, the SEED set the model learns from.
 
 WHY BY HAND AT ALL
     Template auto-labelling was tried and failed (see canthus_data): when the rig shifts, the
@@ -19,7 +19,7 @@ MADE FAST ON PURPOSE
         U               undo the previous frame
         Q               save and quit
 
-    Frames are shown in a deterministic shuffled order so the seed set spans the whole session —
+    Frames are shown in a deterministic shuffled order so the seed set spans the whole session , 
     consecutive frames are near-duplicates and labelling 300 in a row would teach almost nothing.
 
     python3 canthus_label.py --label --n 300
@@ -56,13 +56,13 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
         thing in the pipeline that encodes what a canthus IS. So every estimator faithfully
         reproduces that error, and two independent estimators simply agree on the lid (measured:
         A/B separation 0.029, both on the lid margin). No amount of estimator independence repairs
-        a wrong definition — something has to show the system the actual landmark once.
+        a wrong definition, something has to show the system the actual landmark once.
 
         Thirty is enough to define it. The model generalises from there and the existing machinery
         (mount band, anatomical prior, A/B agreement, closed-eye skip) filters its pseudo-labels
         across the remaining ~1470 frames.
 
-    FULL FRAME, NEVER CROPPED — Dylan's requirement. A crop hides the surrounding anatomy that
+    FULL FRAME, NEVER CROPPED, Dylan's requirement. A crop hides the surrounding anatomy that
     tells you which corner is which, and the whole failure here was mistaking one part of the eye
     for another. You see the entire frame, scaled up; the marker goes exactly where you click.
 
@@ -71,7 +71,7 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
         N       skip this frame              Q      save and quit
 
     CLOSED FRAMES STILL GET A POSITION. The inner canthus is where the lids MEET, so it stays
-    visible through a blink — closed-ness is a separate property of the frame, not a reason to
+    visible through a blink, closed-ness is a separate property of the frame, not a reason to
     discard the landmark. That is why the model has two heads rather than a filter, and it is why
     the seed must contain BOTH states: a head cannot learn a class it has never seen.
     """
@@ -98,7 +98,7 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
     # frames: a selection ranked "most open" came back about half closed by Dylan's eye. Ranking
     # the seed by a broken metric would skew which frames the model ever sees AND teach the
     # eye-state head from a label source we know is wrong. So take an unbiased deterministic
-    # spread across the corpus and let the human's ENTER/C calls define both classes — which is
+    # spread across the corpus and let the human's ENTER/C calls define both classes: which is
     # the whole point of a seed set.
     #
     # SELECT FOR GAZE DIVERSITY, not at random.
@@ -147,7 +147,7 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
             if len(rows):
                 picks += [int(rows[j]) for j in sample_order(len(rows), n_want // 2 + 1)]
 
-    # RESERVE A QUOTA FOR CLOSED EYES — the farthest-point picker cannot find them on its own.
+    # RESERVE A QUOTA FOR CLOSED EYES: the farthest-point picker cannot find them on its own.
     #
     # The gaze-diverse selection above samples in PUPIL space, so a frame only becomes a candidate
     # if the pupil detector fires on it. That silently biases the seed toward open eyes: the
@@ -201,7 +201,7 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
         stamp = (int(F.shape[0]), int(os.path.getmtime(CORPUS)))
         old_stamp = tuple(int(x) for x in s["corpus"]) if "corpus" in s.files else None
         if old_stamp is not None and old_stamp != stamp:
-            print("!! REFUSING TO RESUME — %s holds %d labels placed against a DIFFERENT corpus\n"
+            print("!! REFUSING TO RESUME, %s holds %d labels placed against a DIFFERENT corpus\n"
                   "   (was %d frames / mtime %d, now %d / %d). Those indices point at other\n"
                   "   images now. Move it aside and start a fresh seed set:\n"
                   "     mv %s %s.stale"
@@ -214,7 +214,7 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
             return 1
         prev = {int(i): (float(u), float(v)) for i, (u, v) in zip(s["index"], s["labels"])}
         if verbose:
-            print("resuming — %d already placed (corpus stamp matches)" % len(prev))
+            print("resuming, %d already placed (corpus stamp matches)" % len(prev))
     todo = [i for i in picks if i not in prev][:n_want]
     if not todo:
         print("nothing left (%d done)" % len(prev))
@@ -228,7 +228,7 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
             closed = {int(i): int(c) for i, c in zip(_s["index"], _s["closed"])}
     win = "CLICK the tear duct  |  ENTER=open  ·  C=closed  ·  N skip  ·  U undo  ·  Q save"
     # AUTOSIZE, not NORMAL. A NORMAL window scales the image to fit whatever size it opens at, so
-    # a native 1280x800 frame gets resampled and looks soft — which is exactly what it did, and
+    # a native 1280x800 frame gets resampled and looks soft: which is exactly what it did, and
     # the resulting scatter showed up as 3x worse label consistency (u std 0.024 vs 0.007).
     # AUTOSIZE pins the window to the image so every pixel shown is a pixel the sensor measured.
     cv2.namedWindow(win, cv2.WINDOW_AUTOSIZE)
@@ -252,7 +252,7 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
         # in fact native. Detail was never the problem; amplified noise was.
         #
         # So: a gentle lift, then an edge-preserving denoise. Bilateral keeps the lid margin and
-        # lash edges — the things being clicked — while flattening the grain between them.
+        # lash edges: the things being clicked, while flattening the grain between them.
         g = F[fi]
         lo, hi = np.percentile(g, 2), np.percentile(g, 98)
         lift = np.clip((g.astype(np.float32) - lo) * 235.0 / max(hi - lo, 1e-6) + 10, 0, 255)
@@ -320,7 +320,7 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
         print("  placed %d points -> %s" % (len(idx), out))
         print("  eye state: %d open / %d closed" % (int((fl == 0).sum()), int(fl.sum())))
         if fl.sum() < 5:
-            print("  NOTE: fewer than 5 closed examples — the closed head will be weak.")
+            print("  NOTE: fewer than 5 closed examples, the closed head will be weak.")
         valid = xy[:, 0] >= 0
         if valid.any():
             agree = np.linalg.norm(xy[valid] - d["labels"][idx][valid], axis=1)
@@ -328,7 +328,7 @@ def seed_pass(n_want=30, corpus=CORPUS, out=SEED, zoom=None, verbose=True, close
                   % np.median(agree))
         print("  positioned %d | closed-without-point %d (eye-state only)"
               % (int(valid.sum()), int((~valid).sum())))
-        print("  (large is EXPECTED and is the point — the template was on the lid)")
+        print("  (large is EXPECTED and is the point, the template was on the lid)")
     return 0
 
 
@@ -338,13 +338,13 @@ def closed_pass(corpus=CORPUS, seed=SEED, verbose=True):
     WHY IT IS WORTH A SEPARATE HEAD
         rig.py already models blink dropouts, but nothing in the live loop DETECTS one. A sample
         recorded mid-blink is bad twice over: the gaze is not fixated, and the lid deforms the
-        soft tissue around the canthus — the exact tissue a 200 px template patch is full of. So
+        soft tissue around the canthus, the exact tissue a 200 px template patch is full of. So
         the model should say "eye is closed, do not trust this frame", and the calibration loop
         should skip it.
 
         Note the landmark itself does NOT vanish during a blink: the inner canthus is where the
         lids MEET, so it stays visible and stays labellable. Closed-ness is a separate property of
-        the frame, not a reason to drop the position label — which is why this is a second head
+        the frame, not a reason to drop the position label, which is why this is a second head
         rather than a filter.
 
     Kept separate from the position pass on purpose: binary judgements go at a completely
@@ -399,7 +399,7 @@ def closed_pass(corpus=CORPUS, seed=SEED, verbose=True):
         print("  marked %d of %d | closed %d (%.0f%%)"
               % (len(closed), len(idx), int(flags.sum()), 100.0 * flags.mean()))
         if flags.sum() < 15:
-            print("  NOTE: few closed examples — the closed-eye head will be weak. Blink more")
+            print("  NOTE: few closed examples, the closed-eye head will be weak. Blink more")
             print("        during the next collection run if you want it reliable.")
     return 0
 
@@ -407,7 +407,7 @@ def closed_pass(corpus=CORPUS, seed=SEED, verbose=True):
 def label(n_want=300, corpus=CORPUS, out=SEED, verbose=True):
     import cv2
     if not os.path.exists(corpus):
-        print("!! no corpus at %s — run: python3 canthus_data.py --collect" % corpus)
+        print("!! no corpus at %s, run: python3 canthus_data.py --collect" % corpus)
         return 1
     d = np.load(corpus)
     F, L, R = d["frames"], d["labels"], d["roles"]
@@ -417,7 +417,7 @@ def label(n_want=300, corpus=CORPUS, out=SEED, verbose=True):
         s = np.load(out)
         prev = {int(i): (float(u), float(v)) for i, (u, v) in zip(s["index"], s["labels"])}
         if verbose:
-            print("resuming — %d frames already labelled" % len(prev))
+            print("resuming, %d frames already labelled" % len(prev))
 
     order = [i for i in sample_order(len(F), n_want) if int(i) not in prev]
     if not order:
@@ -487,7 +487,7 @@ def label(n_want=300, corpus=CORPUS, out=SEED, verbose=True):
         print("  labelled %d frames -> %s" % (len(idx), out))
         print("  vs the template proposal: median disagreement %.3f, %.0f%% moved >0.05"
               % (np.median(agree), 100.0 * (agree > 0.05).mean()))
-        print("  (that second number IS the template's error rate — it is why we are doing this)")
+        print("  (that second number IS the template's error rate, it is why we are doing this)")
     return 0
 
 

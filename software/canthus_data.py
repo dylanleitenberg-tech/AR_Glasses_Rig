@@ -1,10 +1,10 @@
-"""Build a labelled inner-canthus corpus from the rig itself — no hand-labelling.
+"""Build a labelled inner-canthus corpus from the rig itself, no hand-labelling.
 
 WHY THIS EXISTS
     Template capture is a MANUAL step every session: box both canthi by hand, and a box that is
     slightly wrong produces a template that scores ~1.0 and localises nowhere (see
     calib_preflight.template_margin). Dylan's words on 2026-08-02: "i cant box every time."
-    A learned landmark detector removes the step permanently — but it needs labelled data.
+    A learned landmark detector removes the step permanently, but it needs labelled data.
 
 WHY NOT WEB IMAGES
     Face photos online are frontal, visible-light, 0.5-2 m away. These cameras sit ~3 cm from the
@@ -14,15 +14,15 @@ WHY NOT WEB IMAGES
     recognises here. The ONLY data in the right domain is this rig, on this face.
 
 AUTO-LABELLING FROM THE TEMPLATE: TRIED, MEASURED, REJECTED (2026-08-02)
-    The plan was to let the template teach the model — run the matcher over thousands of frames,
+    The plan was to let the template teach the model, run the matcher over thousands of frames,
     keep only unambiguous locks, call those labels. It does not work, and the way it fails is
     instructive enough to keep here so nobody rebuilds it.
 
-    When the rig shifts on the face, the matcher settles on FEATURELESS SKIN — nose bridge, cheek
-    — and does so CONFIDENTLY. Measured on a real 1500-frame run: labels more than 0.20 (frame
+    When the rig shifts on the face, the matcher settles on FEATURELESS SKIN, nose bridge, cheek
+, and does so CONFIDENTLY. Measured on a real 1500-frame run: labels more than 0.20 (frame
     units) from the per-eye median were 34.8% of eyeL and 5.2% of eyeR, and those outliers
     averaged margin 0.486 against a corpus median of 0.414. The wrong labels scored HIGHER than
-    the right ones. No confidence threshold can filter that — the gate is anti-correlated with
+    the right ones. No confidence threshold can filter that, the gate is anti-correlated with
     correctness. Eyelashes do the same thing for the same reason (highest-contrast structure in
     frame, so a lash-lock is genuinely unambiguous, just wrong).
 
@@ -40,7 +40,7 @@ AUTO-LABELLING FROM THE TEMPLATE: TRIED, MEASURED, REJECTED (2026-08-02)
 
 QUALITY GATE
     A wrong label is worse than no label, so a frame is only stored when the match is BOTH strong
-    and unique — margin (peak minus the best rival elsewhere) above `min_margin`. That is the same
+    and unique, margin (peak minus the best rival elsewhere) above `min_margin`. That is the same
     quantity calib_preflight uses to decide whether a template is usable at all, and it is what
     separates "the corner is here" from "everything looks equally like the corner".
 
@@ -77,21 +77,21 @@ CORPUS = os.path.join(DATA, "canthus_corpus.npz")
 # full precision, and higher-resolution training stays available without re-collecting.
 STORE_W, STORE_H = 1280, 800
 
-MIN_MARGIN = 0.15      # above calib_preflight's 0.08 usability bar — labels must be BETTER
+MIN_MARGIN = 0.15 # above calib_preflight's 0.08 usability bar, labels must be BETTER
 MIN_PEAK = 0.55        # a weak absolute match is unreliable even when it is unique
 
-# TEMPORAL STABILITY GATE — the defence against lash-locks.
+# TEMPORAL STABILITY GATE: the defence against lash-locks.
 #
 # Margin alone CANNOT catch this failure. Eyelashes are the highest-contrast structure in the
 # frame, so when the matcher slips onto them it does so with a HIGH margin: the lock is genuinely
 # unambiguous, it is simply on the wrong thing. Score and uniqueness both say "confident", and the
-# label is confidently wrong — the worst kind to train on. Observed on hardware 2026-08-02.
+# label is confidently wrong: the worst kind to train on. Observed on hardware 2026-08-02.
 #
 # What separates a lash-lock from the real corner is PERSISTENCE, not confidence. A lash-lock is
 # transient: it appears for a frame or a few and snaps back. The canthus is where the matcher sits
 # the rest of the time.
 #
-# Crucially this must NOT reject re-seating, which is the most valuable variation in the corpus —
+# Crucially this must NOT reject re-seating, which is the most valuable variation in the corpus , 
 # taking the glasses off and putting them back on legitimately moves the corner in-frame. So the
 # test is not "close to where it has always been" (that would throw away every re-seat); it is
 # "the last STABLE_N detections agree with each other". A sustained new position after a re-seat
@@ -121,8 +121,8 @@ def match_with_margin(gray, tmpl, cv2):
 # only worth the clicks if it spans the configurations the model will actually meet. The wide and
 # closed phases are here specifically because HANDOFF lists them as the model's weakest coverage.
 PHASES = [(0, "LOOK FAR LEFT"), (12, "LOOK FAR RIGHT"), (24, "LOOK UP"), (34, "LOOK DOWN"),
-          (44, "EYES HELD WIDE"), (56, "NORMAL — BLINK NATURALLY"), (70, "EYES CLOSED"),
-          (80, "NORMAL — SLOW LOOK AROUND")]
+          (44, "EYES HELD WIDE"), (56, "NORMAL, BLINK NATURALLY"), (70, "EYES CLOSED"),
+          (80, "NORMAL, SLOW LOOK AROUND")]
 
 
 def _phase_at(t, phases):
@@ -141,7 +141,7 @@ def collect(eye_cams, target=1500, min_margin=MIN_MARGIN, seconds=None, view=Tru
 
     `raw=True` stores EVERY frame with no template gate, and that is what a training corpus wants.
     Gating on template margin biases the sample toward frames where the (lid-centred) template
-    happened to match well — the corpus then over-represents exactly the configurations that
+    happened to match well, the corpus then over-represents exactly the configurations that
     mislead the model, and under-represents the hard ones it most needs to see. Labels now come
     from human clicks, so the template has no business deciding which frames exist.
 
@@ -154,7 +154,7 @@ def collect(eye_cams, target=1500, min_margin=MIN_MARGIN, seconds=None, view=Tru
         p = os.path.join(DATA, "templates", "%s.png" % role)
         t = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
         if t is None:
-            print("!! no template at %s — run: python3 main.py --calibrate-corners" % p)
+            print("!! no template at %s, run: python3 main.py --calibrate-corners" % p)
             return 1
         tmpl[role] = t
 
@@ -162,7 +162,7 @@ def collect(eye_cams, target=1500, min_margin=MIN_MARGIN, seconds=None, view=Tru
     frames, labels, roles, metas = [], [], [], []
     kept = {"eyeL": 0, "eyeR": 0}
     seen = {"eyeL": 0, "eyeR": 0}
-    win = "canthus corpus — move, blink, re-seat.  Q when done" if view else None
+    win = "canthus corpus, move, blink, re-seat.  Q when done" if view else None
     if win:
         cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     t0 = time.time()
@@ -251,7 +251,7 @@ def selftest(verbose=True):
     checks = []
 
     # A distinctive mark on smooth, self-similar background: the matcher must find it, at the
-    # right place, with a healthy margin. (Self-similar on purpose — white noise localises
+    # right place, with a healthy margin. (Self-similar on purpose: white noise localises
     # perfectly and would prove nothing.)
     yy, xx = np.mgrid[0:200, 0:320]
     scene = (100 + 8 * np.sin(xx / 9.0) + 6 * np.sin(yy / 11.0)).astype(np.uint8)
@@ -282,7 +282,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "CANTHUS DATA OK — gate rejects flat, accepts structure ✅"
+        print("  =>", "CANTHUS DATA OK, gate rejects flat, accepts structure ✅"
               if ok else "PROBLEM ⚠️")
     return 0 if ok else 1
 

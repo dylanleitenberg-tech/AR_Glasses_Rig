@@ -7,7 +7,7 @@ new user calibrate?
 
 What the tracker gives: the eye's OPTICAL axis (gaze) as two angles in the rig frame, with
 realistic per-attempt accuracy (~0.7 deg; cf. Quest Pro ~1.08 deg). Crucially it does NOT
-give the VISUAL axis — the angle-kappa offset between them is unobservable, so the per-user
+give the VISUAL axis, the angle-kappa offset between them is unobservable, so the per-user
 kappa + perceptual bias must STILL be learned. So the prediction is:
   * +gaze removes the slip/parallax UNCERTAINTY the eye-corner cams can only infer
     -> faster convergence + lower error, BUT
@@ -23,7 +23,7 @@ import autosim
 import pupil_sensor
 from calibrator import Calibrator
 
-# MODELLED per-attempt gaze sigma (deg). Placeholder (cf. Quest Pro ~1.08 deg) — MEASURE on
+# MODELLED per-attempt gaze sigma (deg). Placeholder (cf. Quest Pro ~1.08 deg): MEASURE on
 # hardware and set it here. This is the sensor's accuracy, NOT a tunable gain: shrinking it just
 # makes the sim optimistic, and using it raw with no filtering is what makes live gaze jittery.
 # Live tracking STABILITY comes from GazeStabilizer (temporal filter), not from this number.
@@ -36,7 +36,7 @@ def gaze_read(subject, dev, P, rng, noise_deg=None):
     """Measured optical-axis gaze as (az, el) radians in the rig frame, with tracker noise.
 
     `noise_deg` overrides the module default so the per-attempt sigma is no longer hardcoded
-    inside the function — pass your MEASURED tracker accuracy. Clamped to [0, GAZE_NOISE_MAX]
+    inside the function, pass your MEASURED tracker accuracy. Clamped to [0, GAZE_NOISE_MAX]
     so a stray large value can't silently destabilise tracking."""
     nd = GAZE_NOISE_DEG if noise_deg is None else float(noise_deg)
     nd = float(np.clip(nd, 0.0, GAZE_NOISE_MAX))
@@ -50,7 +50,7 @@ def gaze_read(subject, dev, P, rng, noise_deg=None):
 
 
 class GazeStabilizer:
-    """Live gaze temporal filter — the actual remedy for the jitter/instability that the raw
+    """Live gaze temporal filter, the actual remedy for the jitter/instability that the raw
     per-attempt noise (GAZE_NOISE_DEG) would cause if fed straight to the overlay.
 
     Velocity-adaptive exponential smoother (one-euro style): heavy smoothing while the eye
@@ -151,7 +151,7 @@ def compare(n_users=40, seed_base=4000, verbose=True):
         print("\n   reading: gaze ANGLE is redundant with the world cameras (they already see the")
         print("   target direction); the lever for registration is eye POSITION (pupil centre),")
         print("   which fights slip parallax. Neither beats the kappa/perceptual-bias floor, so a")
-        print("   short per-user calibration is always required — eye tracking buys speed + slip-")
+        print("   short per-user calibration is always required, eye tracking buys speed + slip-")
         print("   robustness + (via pupil/iris) the geometry ID that the corner cameras can't get.")
     return R
 

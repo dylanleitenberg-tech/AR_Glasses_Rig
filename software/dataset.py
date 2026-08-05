@@ -107,7 +107,7 @@ class Dataset:
 
     def clear(self) -> int:
         """RESET fallback: wipe every stored sample (start the calibration over). Returns how
-        many rows were removed. Destructive — the live loop guards it behind a confirm key /
+        many rows were removed. Destructive, the live loop guards it behind a confirm key /
         the --reset-db CLI flag so misinputted data can be cleared deliberately, not by accident."""
         n = self.count()
         self.conn.execute("DELETE FROM samples")

@@ -1,4 +1,4 @@
-"""predictor.py — cancel the pipeline's own latency by EXTRAPOLATING, not by smoothing harder.
+"""predictor.py, cancel the pipeline's own latency by EXTRAPOLATING, not by smoothing harder.
 
 Dylan: "implement what will make calibration work. the red dot should be able to follow the black
 dot."
@@ -77,7 +77,7 @@ class LatencyCompensator:
         self.max_lead_frac = float(max_lead_frac)
         self._pos = OneEuro(min_cutoff=min_cutoff, beta=beta)
         self._vel = OneEuro(min_cutoff=vel_cutoff, beta=0.0)
-        # OPTIONAL EXTERNAL VELOCITY — the IMU. Differentiating the dot gives this same quantity
+        # OPTIONAL EXTERNAL VELOCITY: the IMU. Differentiating the dot gives this same quantity
         # at 17.9 Hz and one frame stale; the gyro gives it at ~1100 Hz and current, which is the
         # entire point of the fast/slow split. Supplying it changes nothing else in the chain.
         self.velocity_source = velocity_source
@@ -139,7 +139,7 @@ def selftest():
     def chk(name, cond, detail=""):
         nonlocal ok_all
         ok_all = ok_all and bool(cond)
-        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, ("  — " + detail) if detail else ""))
+        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, (", " + detail) if detail else ""))
 
     rng = np.random.default_rng(0)
     fps, lat = 17.9, 0.062

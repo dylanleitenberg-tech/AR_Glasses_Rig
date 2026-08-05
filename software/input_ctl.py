@@ -64,7 +64,7 @@ class InputController:
         a = Action()
 
         # ---- keyboard (from the overlay's cv2.waitKey) ----
-        # WASD only — arrow-key codes from cv2.waitKey are platform-specific and
+        # WASD only: arrow-key codes from cv2.waitKey are platform-specific and
         # collide with letter codes, so we don't map them (docs say WASD).
         if key != -1 and key != 255:
             k = key

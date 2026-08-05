@@ -1,4 +1,4 @@
-"""world_mesh.py — real-world MESH TRACKING from the two forward world cameras.
+"""world_mesh.py, real-world MESH TRACKING from the two forward world cameras.
 
 The AR overlay has to sit on the REAL WORLD, so we need to know, every frame, where the world
 is relative to the glasses. The world pair (rig.py: two forward AR0234 cams, R=I, baseline =
@@ -6,7 +6,7 @@ IPD, FOV 70 deg, 1280 px) is a rectified stereo rig. Each frame this module:
 
   1. TRIANGULATES matched features into 3D points in the left-camera frame (stereo depth).
   2. TRACKS those points across time and solves the rigid CAMERA MOTION between frames
-     (stereo visual odometry) with a robust Kabsch fit — RANSAC rejects mismatched features.
+     (stereo visual odometry) with a robust Kabsch fit, RANSAC rejects mismatched features.
   3. FUSES the IMU (imu_serial): the gyro gives the inter-frame rotation, used as a prior and to
      carry the pose when too few features survive (blank wall, motion blur) so tracking never
      free-falls.
@@ -15,7 +15,7 @@ IPD, FOV 70 deg, 1280 px) is a rectified stereo rig. Each frame this module:
      lets the display pixel<->world-ray map (pixel_map.py) stay locked as the head moves.
 
 DESIGN: the GEOMETRY (triangulate / Kabsch / RANSAC / pose integration / IMU blend) is pure
-numpy and fully unit-tested by ``--selftest`` with a synthetic moving rig — no camera needed.
+numpy and fully unit-tested by ``--selftest`` with a synthetic moving rig, no camera needed.
 The FEATURE FRONT-END (ORB stereo matching, LK optical-flow tracking, Subdiv2D meshing) is the
 only cv2 part and runs on real frames via WorldTracker.track(frameL, frameR).
 
@@ -79,7 +79,7 @@ def _mad_scale(res):
 
 def kabsch_ransac(P, Q, iters=100, thresh=None, rng=None):
     """Robust P->Q rigid fit for stereo VO. Because stereo DEPTH noise grows with range
-    (~15-40 mm at 1-2.5 m here), a fixed inlier threshold is wrong — it rejects good far points.
+    (~15-40 mm at 1-2.5 m here), a fixed inlier threshold is wrong, it rejects good far points.
     When `thresh` is None it is set ADAPTIVELY from a MAD scale of an initial fit (robust to
     <50% outliers), so the gate tracks the true inlier noise while still excluding gross feature
     mismatches. RANSAC finds the consensus, then a Tukey-biweight IRLS refine (redescending, like
@@ -271,7 +271,7 @@ def _delaunay_faces(uv):
 
 
 # --------------------------------------------------------------------------
-#  Real-frame feature front-end (cv2) — the only hardware-facing part
+#  Real-frame feature front-end (cv2): the only hardware-facing part
 # --------------------------------------------------------------------------
 class WorldTracker:
     """Turns real (frameL, frameR) world-cam pairs into ID'd stereo correspondences and drives
@@ -291,7 +291,7 @@ class WorldTracker:
         self._tracks = {}                # id -> (uL,vL) in the previous left frame
 
     def set_max_features(self, n):
-        """Change the ORB feature budget LIVE — perf.QualityController's main lever.
+        """Change the ORB feature budget LIVE, perf.QualityController's main lever.
 
         ORB detect + BF match is the heaviest stage in the loop and its cost is roughly linear
         in the feature count, so this is the knob that buys frame time. No-op when unchanged,
@@ -466,7 +466,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "WORLD MESH OK — triangulate + robust VO + IMU-fused pose + surface mesh ✅"
+        print("  =>", "WORLD MESH OK, triangulate + robust VO + IMU-fused pose + surface mesh ✅"
               if ok else "PROBLEM ⚠️")
         print("  note: geometry proven in numpy; on hardware WorldTracker feeds it ORB/LK features")
         print("  from the two world cams (needs opencv). Drift is bounded by re-observing map points.")

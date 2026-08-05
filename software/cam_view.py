@@ -1,7 +1,7 @@
-"""cam_view.py — plug a USB camera into the laptop and see its live feed.
+"""cam_view.py, plug a USB camera into the laptop and see its live feed.
 
 The simple bring-up tool: confirm a camera enumerates, run the IR remote test on the
-NoIR cameras, and set focus. Independent of the rig contract — it just opens a UVC camera
+NoIR cameras, and set focus. Independent of the rig contract, it just opens a UVC camera
 and shows it.
 
     python3 cam_view.py            # open the first working camera
@@ -39,7 +39,7 @@ def _need_cv2():
 def _open(cv2, index):
     """Open a camera index with the Mac-friendly backend, falling back to the default.
     Forces MJPG + a high fps request: without MJPG the global-shutter UVC cams fall back to
-    uncompressed YUYV, which caps ~15 fps at 1280x800 — MJPG is compressed and unlocks full rate
+    uncompressed YUYV, which caps ~15 fps at 1280x800, MJPG is compressed and unlocks full rate
     (this is what sync_capture.py does for the real pipeline)."""
     for backend in (getattr(cv2, "CAP_AVFOUNDATION", 0), cv2.CAP_ANY):
         cap = cv2.VideoCapture(index, backend)
@@ -91,7 +91,7 @@ def run(index=0):
         index = found[0]
         cap = _open(cv2, index)
 
-    win = "cam_view — 0-9 switch  s snap  i info  f flip  q quit"
+    win = "cam_view, 0-9 switch  s snap  i info  f flip  q quit"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     show_info, flip = True, False
     focus_peak = [0.0]                 # peak-hold for the focus meter ('r' resets)
@@ -122,7 +122,7 @@ def run(index=0):
             # FOCUS METER (variance of Laplacian, same metric as rig_test.focus_score).
             # Turning an M12 lens by eye is guesswork: sharpness peaks and falls off either
             # side, and you cannot see the peak while your hand is on the barrel. So show the
-            # live number AND a peak-hold — turn until the bar stops rising, then back off to
+            # live number AND a peak-hold: turn until the bar stops rising, then back off to
             # the peak. Measured on the CENTRE box, which is what you are focusing on.
             lap = cv2.Laplacian(roi, cv2.CV_64F) if roi.size else None
             focus = float(lap.var()) if lap is not None else 0.0

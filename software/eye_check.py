@@ -77,7 +77,7 @@ def _verdict(role, sat, states, in_band, n, smooth=None):
     # NOT-WORN SHORT-CIRCUITS EVERYTHING. Reporting exposure and model verdicts on a picture of a
     # room is worse than reporting nothing: it sends the session off adjusting hardware against
     # numbers that describe furniture.
-    # ADVISORY, NOT A VETO — the classes genuinely OVERLAP and I twice claimed otherwise.
+    # ADVISORY, NOT A VETO: the classes genuinely OVERLAP and I twice claimed otherwise.
     #
     # Measured flat-skin on this rig: WORN 92.1, 90.7, 85, 84, 83 | ROOM 83.2, 81.5 | DESK 77.2,
     # 77.3. Worn-83 and room-83.2 are indistinguishable, so no threshold separates them. The
@@ -91,35 +91,35 @@ def _verdict(role, sat, states, in_band, n, smooth=None):
     # both signals, warn when they disagree, and never silently withhold the measurement.
     lock_ok = n and states.get("ok", 0) >= 0.5 * n and in_band >= 0.5 * n
     if smooth is not None and smooth < SMOOTH_WORN_MIN and not lock_ok:
-        return ["PROBABLY NOT ON A FACE — only %.0f%% of the frame is flat skin (worn 83-92%%, "
+        return ["PROBABLY NOT ON A FACE, only %.0f%% of the frame is flat skin (worn 83-92%%, "
                 "room 77-83%%, and those OVERLAP), and the canthus is not holding a lock. Treat "
                 "everything below as suspect and check the saved PNG."
                 % smooth]
     if smooth is not None and smooth < SMOOTH_WORN_MIN and lock_ok:
         out.append("flat-skin %.0f%% is low (worn 83-92%%, room 77-83%%) but the canthus is LOCKED "
-                   "and in band, so this is a face — the flat-skin screen is the unreliable half."
+                   "and in band, so this is a face, the flat-skin screen is the unreliable half."
                    % smooth)
     if sat >= SAT_BLOWN:
         near = "desk/blown-out (%.1f%%)" % desk if abs(sat - desk) < abs(sat - worn) else "blown out"
-        out.append("BLOWN OUT — %.1f%% saturated, matches the %s signature, not the worn one "
+        out.append("BLOWN OUT, %.1f%% saturated, matches the %s signature, not the worn one "
                    "(%.1f%%). Either the rig is not on your face or daylight is hitting the "
                    "sensor. NO software fix exists (AVFoundation rejects exposure control): "
                    "kill daylight, close blinds, work under LED." % (sat, near, worn))
     elif sat > worn * 3:
-        out.append("BRIGHT — %.1f%% saturated vs %.1f%% expected worn. Usable but hot; "
+        out.append("BRIGHT, %.1f%% saturated vs %.1f%% expected worn. Usable but hot; "
                    "reduce ambient light before trusting a calibration." % (sat, worn))
     else:
-        out.append("EXPOSURE OK — %.1f%% saturated, consistent with the worn signature (%.1f%%)."
+        out.append("EXPOSURE OK, %.1f%% saturated, consistent with the worn signature (%.1f%%)."
                    % (sat, worn))
 
     ok = states.get("ok", 0)
     if n and ok == 0:
         if in_band == 0:
             out.append("MODEL: never in band. The landmark the model reports is outside rig.py's "
-                       "plausibility band for this camera every frame — this is the band or the "
+                       "plausibility band for this camera every frame, this is the band or the "
                        "framing, not a flaky detection.")
         else:
-            out.append("MODEL: in band %d%% of frames but never reached state 'ok' — the JUMP gate "
+            out.append("MODEL: in band %d%% of frames but never reached state 'ok', the JUMP gate "
                        "is holding it. Hold still, or the landmark is oscillating." % (100 * in_band // n))
     elif n:
         out.append("MODEL: locked on %d%% of frames (in band %d%%)."
@@ -137,7 +137,7 @@ def run(idx_l, idx_r, seconds=10.0, delay=0.0, save_dir="."):
         prior = None
 
     if delay > 0:
-        print("Settle the rig on your face — starting in %d s..." % delay)
+        print("Settle the rig on your face, starting in %d s..." % delay)
         for k in range(int(delay), 0, -1):
             print("  %d" % k, end="\r", flush=True)
             time.sleep(1)
@@ -164,7 +164,7 @@ def run(idx_l, idx_r, seconds=10.0, delay=0.0, save_dir="."):
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 400)
         if not cap.isOpened():
-            print("%s: COULD NOT OPEN index %d — is another tool (rig_view, preflight) still "
+            print("%s: COULD NOT OPEN index %d, is another tool (rig_view, preflight) still "
                   "running? On macOS only ONE process may hold a camera." % (role, idx))
             continue
         trk = CanthusTracker(mirrored=mir)
@@ -201,7 +201,7 @@ def run(idx_l, idx_r, seconds=10.0, delay=0.0, save_dir="."):
         print("  saturated   %.1f%%   (worn %.1f%% | desk %.1f%%)"
               % (sat, SAT_WORN[role], SAT_DESK[role]))
         print("  mean level  %.0f" % last.mean())
-        print("  laplacian   %.0f   (NOT a focus verdict for an eye cam — look at the PNG)" % lap)
+        print("  laplacian   %.0f   (NOT a focus verdict for an eye cam, look at the PNG)" % lap)
         print("  model u     median %.3f as the gate sees it   (band [%s, %s])"
               % (np.median(uus), "%.3f" % lo if lo else "?", "%.3f" % hi if hi else "?"))
         print("  flat-skin   %.0f%%   (worn >%.0f%% | room ~77-83%%)" % (smooth, SMOOTH_WORN_MIN))
@@ -240,11 +240,11 @@ def live(idx_l, idx_r):
         c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         if not c.isOpened():
-            print("%s: could not open index %d — is rig_view or preflight still running? "
+            print("%s: could not open index %d, is rig_view or preflight still running? "
                   "On macOS only ONE process may hold a camera." % (role, idx))
             return 1
         caps[role], trks[role], hist[role] = c, CanthusTracker(mirrored=mir), []
-    win = "seat the rig — adjust the brow clamp until both read LOCK.  q quits"
+    win = "seat the rig, adjust the brow clamp until both read LOCK.  q quits"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     print("Adjust the brow clamp and watch LOCK%. q quits.")
     while True:

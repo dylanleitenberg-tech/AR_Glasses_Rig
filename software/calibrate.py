@@ -3,18 +3,18 @@
 This is the deployable flow built on the database idea:
 
   1. ONCE, offline: generate a database of premade eye models (geometries we know exactly)
-     and, for each, its FINGERPRINT — the pattern of guess inaccuracies the population prior
+     and, for each, its FINGERPRINT, the pattern of guess inaccuracies the population prior
      makes across a fixed set of glasses positions and gaze targets (read via the eye-corner
      cameras). Saved to data/calibration_db.npz.
 
-  2. PER USER, at calibration time: run that same short protocol — show targets, the user
+ 2. PER USER, at calibration time: run that same short protocol, show targets, the user
      nudges the overlay onto each, and the miss between the prior's guess and the user's
      correction at each (position, gaze) IS the user's fingerprint. Match it to the nearest
      database model(s); that model's geometry is the user's estimate, and we build their
      per-user preset from it (preset.build_preset).
 
 In simulation the "user" is an autosim subject and the answers come from `observe`; in the
-real rig, replace `user_fingerprint` with the live capture loop — the matching + preset code
+real rig, replace `user_fingerprint` with the live capture loop, the matching + preset code
 is identical. The prior is retrained deterministically on load, so the DB file only needs the
 fingerprints + the model geometries.
 
@@ -33,7 +33,7 @@ from preset import build_preset, descriptor_to_subject
 _DATA = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
 _DB = os.path.join(_DATA, "calibration_db.npz")
 
-# One-time objective geometry capture (OCT / corneal topographer / optical biometry) — the
+# One-time objective geometry capture (OCT / corneal topographer / optical biometry): the
 # realistic 1-sigma measurement error per descriptor param, in native units. Axial-length-based
 # globe radius is very precise (IOLMaster); kappa from topography/OCT ~0.1 deg; facial dims ~0.5 mm.
 # Order = anatomy.DESCRIPTOR_NAMES: IPD, globe_r, ep_dist, OCD, ICD, canthal_tilt, kappa_x, kappa_y
@@ -42,7 +42,7 @@ OBJECTIVE_NOISE = np.array([0.30, 0.05, 0.30, 0.50, 0.50, 0.30, 0.10, 0.10])
 
 class PremiumPreset:
     """Per-user predictor from an OBJECTIVELY MEASURED geometry, via the white-box physics
-    preset (no polynomial). Stored as a biometric — recall by iris ID, never recalibrate."""
+    preset (no polynomial). Stored as a biometric, recall by iris ID, never recalibrate."""
 
     def __init__(self, measured_descriptor, sim):
         self.subject = descriptor_to_subject(measured_descriptor)
@@ -170,8 +170,8 @@ def demo(n_test=24, k=8, use_pupil=False, verbose=True):
               % ("no calibration (prior)", np.median(reg_prior), np.percentile(reg_prior, 95)))
         print("    %-26s median %5.2f   95th %5.2f"
               % ("matched-model preset", np.median(reg_match), np.percentile(reg_match, 95)))
-        print("\n  a new user is calibrated from a short (position, inaccuracy) protocol — no per-")
-        print("  user geometry measurement — by matching to the nearest premade eye model.")
+        print("\n  a new user is calibrated from a short (position, inaccuracy) protocol, no per-")
+        print("  user geometry measurement, by matching to the nearest premade eye model.")
     return desc_err, reg_match, reg_prior
 
 
@@ -255,7 +255,7 @@ def db_size_curve(sizes=(500, 1000, 2000, 3000, 5000), n_test=200, verbose=True)
     if verbose:
         print("  " + "-" * 36)
         print("  more models tighten the match (k-NN granularity) until the identifiability floor;")
-        print("  ep_dist/globe_r stay flat at ~100%% (front-of-eye can't see them) — the gap there")
+        print("  ep_dist/globe_r stay flat at ~100%% (front-of-eye can't see them), the gap there")
         print("  needs the PREMIUM objective measurement, not more eyes.")
 
 

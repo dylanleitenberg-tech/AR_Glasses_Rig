@@ -1,4 +1,4 @@
-"""anchor.py — WORLD-LOCKED projection: keep a virtual thing glued to a real 3D location.
+"""anchor.py, WORLD-LOCKED projection: keep a virtual thing glued to a real 3D location.
 
 This is the glue between "track the world" (world_mesh) and "draw on the display" (overlay). A
 virtual entity (a monkey on a person, a label on a wall) lives at a 3D point in the WORLD frame.
@@ -8,7 +8,7 @@ RE-PROJECT it: world 3D point -> where it lands on the AR display right now.
 Two stages, and the second one is why naive AR drifts:
 
   1. GEOMETRY (world_mesh): project the 3D world point into BOTH world cameras at the current head
-     pose (R_cw, C). The stereo pair (uL, uR) encodes the point's DEPTH — essential, because the
+     pose (R_cw, C). The stereo pair (uL, uR) encodes the point's DEPTH, essential, because the
      world cameras and the display sit at slightly different places on the head, so the display
      pixel for a given camera pixel depends on how far away the thing is (parallax). A mono pixel
      alone cannot place it; the stereo observation can.
@@ -19,7 +19,7 @@ Two stages, and the second one is why naive AR drifts:
      production; in `--selftest` it is a synthetic device model so the world-lock math is proven.
 
 Result: as the head turns, (R_cw, C) change, (uL, uR) change, and the composed display pixel
-tracks the real point — the entity stays put in the world. A fixed display pixel would smear off.
+tracks the real point, the entity stays put in the world. A fixed display pixel would smear off.
 
 Pure geometry + an injected `display_map`, so `--selftest` runs headless with NO hardware.
 """
@@ -133,7 +133,7 @@ def _make_synthetic_device(f=DEFAULT_F, B=DEFAULT_B, res=WORLD_RES,
                            disp_f=None, disp_res=1080, offset=(6.0, 4.0, 2.0),
                            roll_deg=1.5):
     """Returns (display_map, ground_truth_display_project). The display is a pinhole rigidly fixed
-    to the head at `offset` (mm, in left-cam frame) with a small rotation R_dc — so mapping a
+    to the head at `offset` (mm, in left-cam frame) with a small rotation R_dc, so mapping a
     world-cam pixel to a display pixel genuinely depends on depth (parallax), exactly like the
     real optic vs the world cameras."""
     disp_f = disp_f or (disp_res / 2) / np.tan(np.radians(50) / 2)   # ~50 deg display FOV
@@ -149,7 +149,7 @@ def _make_synthetic_device(f=DEFAULT_F, B=DEFAULT_B, res=WORLD_RES,
             return None                        # behind the display -> genuinely not displayable
         u = disp_f * p[0] / p[2] + dcx
         v = -disp_f * p[1] / p[2] + dcy        # world +y is UP (rig frame); screen +v is DOWN -> flip
-        # NOTE: no [0,1] gate here — a value outside is OFF the small AR display; callers use
+        # NOTE: no [0,1] gate here: a value outside is OFF the small AR display; callers use
         # AnchorProjector.on_display() and the compositor CLIPS the overlay to the display window
         # (a close, tall person's head/feet exceed the ~50 deg display FOV but the body still shows).
         return (u / disp_res, v / (disp_res * 9 / 16))             # normalized display pixel
@@ -209,14 +209,14 @@ def selftest(verbose=True):
     fixed = proj.project(p, poses[0])
     moved = proj.project(p, poses[2])
     drift_px = np.hypot((fixed[0] - moved[0]) * 1920, (fixed[1] - moved[1]) * 1080)
-    checks.append(("a NON-reprojected pixel would drift (%.0f px head-move) — re-proj required"
+    checks.append(("a NON-reprojected pixel would drift (%.0f px head-move), re-proj required"
                    % drift_px, drift_px > 50))
 
     # (3) PARALLAX: because cam != display, the display pixel depends on DEPTH (not just direction)
     near = np.array([0.0, 0.0, 900.0]); far = np.array([0.0, 0.0, 1800.0])   # same bearing, diff depth
     dn = proj.project(near, poses[0]); df = proj.project(far, poses[0])
     par_px = np.hypot((dn[0] - df[0]) * 1920, (dn[1] - df[1]) * 1080)
-    checks.append(("depth changes the display pixel (parallax %.1f px) — needs stereo, not mono"
+    checks.append(("depth changes the display pixel (parallax %.1f px), needs stereo, not mono"
                    % par_px, par_px > 2))
 
     # (4) visibility gating: a point BEHIND the head projects to None
@@ -235,7 +235,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "ANCHOR OK — parallax-correct world-lock via mesh pose + calibrated map ✅"
+        print("  =>", "ANCHOR OK, parallax-correct world-lock via mesh pose + calibrated map ✅"
               if ok else "PROBLEM ⚠️")
         print("  in production display_map = calibrator_display_map(trained calibrator); the stereo")
         print("  world obs carries depth so the lock holds as the head and the target both move.")

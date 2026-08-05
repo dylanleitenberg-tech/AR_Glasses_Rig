@@ -1,4 +1,4 @@
-"""device.py — the DeviceModel bridge: one rig the capture AND the geometry share.
+"""device.py, the DeviceModel bridge: one rig the capture AND the geometry share.
 
 Every geometry routine (physics_preset.physics_predict, preset.build_preset,
 complete_geometry, match, calibrate) takes a `sim` object that carries the device
@@ -18,7 +18,7 @@ fields on that instance with measured values. So:
                                cameras via live_features.assemble_features.
 
 The rig (camera<->display) geometry is a fixed one-time CONSTANT, not a per-use
-unknown — that is exactly what a Simulator's device fields are: fixed and learnable.
+unknown, that is exactly what a Simulator's device fields are: fixed and learnable.
 
 CLI:
   python3 device.py --selftest      round-trip device constants, prove apply works
@@ -125,7 +125,7 @@ def build_device(simulate=True, calib_path=None, seed=0,
         apply_calibration(sim, load_calibration(path))
     elif not simulate:
         raise FileNotFoundError(
-            "No device calibration at %s — run the one-time rig calibration "
+            "No device calibration at %s, run the one-time rig calibration "
             "(Phase 3) before live hardware capture." % path)
     return sim
 
@@ -175,7 +175,7 @@ def selftest(verbose=True):
         ref = autosim.Simulator(0, use_pupil=use_pupil, use_stereo=use_stereo)
         cal = json.loads(json.dumps(extract_calibration(ref)))   # through JSON
 
-        # a fresh, then CORRUPTED, device — confirm it really differs from ref
+        # a fresh, then CORRUPTED, device: confirm it really differs from ref
         dut = autosim.Simulator(0, use_pupil=use_pupil, use_stereo=use_stereo)
         _jitter_device(dut, np.random.default_rng(99))
         before = _max_truth_diff(ref, dut)
@@ -205,7 +205,7 @@ def selftest(verbose=True):
         print("  build_device(simulate=True) -> Simulator [%s];  "
               "(simulate=False, missing file) refuses [%s]"
               % ("PASS" if sim_ok else "FAIL", "PASS" if hw_ok else "FAIL"))
-        print("  =>", "DEVICE BRIDGE OK — constants are a portable, loadable artifact ✅"
+        print("  =>", "DEVICE BRIDGE OK, constants are a portable, loadable artifact ✅"
               if ok else "PROBLEM ⚠️")
     return 0 if ok else 1
 

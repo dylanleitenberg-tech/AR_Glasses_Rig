@@ -1,15 +1,15 @@
-"""glasses_fit.py — does the mount physically fit the REAL XREAL One Pro? (collision check)
+"""glasses_fit.py, does the mount physically fit the REAL XREAL One Pro? (collision check)
 
 cad_fit.py checks the see-through cone + eyeball; wearable.py checks the face. This checks the
 GLASSES themselves: a measured-dimension keep-out model of the One Pro (front frame body with the
 two see-through lens apertures + nose cutout removed, the brow the clip intentionally grips, and the
-temple arms) — and reports how far each camera's solid (board + M12 lens) + its boom sits from a
+temple arms), and reports how far each camera's solid (board + M12 lens) + its boom sits from a
 collision. Negative = the part is INSIDE the glasses (clash). The brow grip-zone is excluded (the
 clip is supposed to touch it). Sim frame: origin at the optic centre, +x right, +y up, +z forward.
 
 One Pro measured specs: front 151.6 x 50.5 mm, 57 deg FOV, IPD M = 63 (sim uses 64), brow ~11 mm
 (MEASURE), temples 148 mm, pantoscopic +-3.5 deg.  Lens aperture / lower-rim extents are estimates
-until calipered on the real unit — this is a first-order screen; the real test is a dry-fit.
+until calipered on the real unit, this is a first-order screen; the real test is a dry-fit.
 """
 import sys
 import numpy as np
@@ -149,7 +149,7 @@ def report():
         g = glasses_gap(pts); worst = min(worst, g)
         v = "CLEAR" if g >= 2 else ("TIGHT" if g >= 0 else "CLASH")
         print("  %-7s %+7.1f mm   %s" % (name, g, v))
-    print("  => worst %+.1f mm  %s" % (worst, "FITS THE GLASSES" if worst >= 0 else "CLASH — fix"))
+    print("  => worst %+.1f mm  %s" % (worst, "FITS THE GLASSES" if worst >= 0 else "CLASH, fix"))
     return worst
 
 

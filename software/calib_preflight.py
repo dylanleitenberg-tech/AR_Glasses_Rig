@@ -1,12 +1,12 @@
-"""calib_preflight.py — is this rig actually ready to run a calibration session?
+"""calib_preflight.py, is this rig actually ready to run a calibration session?
 
 `main.py --world-cam-left ... --fullscreen` needs SIX things true at once. When one is missing
-the loop still starts, shows a window, and silently never stores a sample — which looks like a
+the loop still starts, shows a window, and silently never stores a sample, which looks like a
 broken algorithm and is really a missing template or a camera pointed at the ceiling. This
 checks all six and names the one that is wrong.
 
   1. CAMERAS      all four base roles (worldL/R, eyeL/R) open and deliver frames
-  2. WORLD DOT    DotDetector finds the target dot in BOTH world cams — capture.py sets
+ 2. WORLD DOT DotDetector finds the target dot in BOTH world cams, capture.py sets
                   `no_target` if either misses, and a no-target frame can never become a sample
   3. TEMPLATES    an eye-corner template exists per eye (created by --calibrate-corners)
   4. CORNER LOCK  EyeCornerTracker actually matches those templates in the live eye frames
@@ -43,7 +43,7 @@ class Check:
 
 
 # --------------------------------------------------------------------------
-#  Pure checks (filesystem / OS — no cameras)
+#  Pure checks (filesystem / OS: no cameras)
 # --------------------------------------------------------------------------
 def check_templates(template_dir, roles=("eyeL", "eyeR")):
     """An eye-corner template PNG must exist per eye, or template matching has nothing to match."""
@@ -105,7 +105,7 @@ def check_cameras(role_index, frames):
 
 
 def check_world_dot(frames, detector=None):
-    """BOTH world cams must see the target dot — capture.py's `no_target` needs both."""
+    """BOTH world cams must see the target dot, capture.py's `no_target` needs both."""
     from dot_detector import DotDetector
     det = detector or DotDetector()
     # JOINT stereo selection, not one argmax per camera.
@@ -133,7 +133,7 @@ def check_world_dot(frames, detector=None):
                 seen.append(r)
                 where[r] = xy
     ok = len(seen) == 2
-    # DotDetector returns NORMALISED (0..1) coords — print 3 decimals, not %.0f, or every
+    # DotDetector returns NORMALISED (0..1) coords: print 3 decimals, not %.0f, or every
     # position rounds to 0/1 and a real detection is indistinguishable from a corner artefact.
     detail = "found in both (%s)" % ", ".join("%s@%.3f,%.3f" % (r, *where[r]) for r in seen)
     if ok:
@@ -163,15 +163,15 @@ def dot_geometry(pL, pR, width_px=640, edge_margin=0.05,
                  min_depth_mm=300.0, max_depth_mm=20000.0, max_dv=0.02):
     """Sanity-check that two dot detections are plausibly the SAME physical point.
 
-    Both cameras finding *a* dark blob is not evidence they found the SAME one — loose cameras
+    Both cameras finding *a* dark blob is not evidence they found the SAME one, loose cameras
     each lock onto their own screw head or shadow, the check goes green, and every stored sample
     is nonsense. Two geometric tests catch that:
 
-      * EPIPOLAR — the world cams are a horizontal pair, so one point must land on nearly the
+      * EPIPOLAR, the world cams are a horizontal pair, so one point must land on nearly the
         same ROW in both. A large vertical offset means two different objects.
-      * DEPTH — disparity converts to a distance via the rig's own focal length and baseline.
+      * DEPTH, disparity converts to a distance via the rig's own focal length and baseline.
         A target at 18 cm (or 200 m) is not the thing you taped to the wall.
-      * DISPARITY SIGN — a real point in front of the rig lands FURTHER RIGHT in the LEFT cam,
+      * DISPARITY SIGN, a real point in front of the rig lands FURTHER RIGHT in the LEFT cam,
         so uL - uR must be POSITIVE. Negative means the pair is reversed: either the two
         --world-cam-* indices are swapped, or both sensors are mounted 180 deg.
 
@@ -187,29 +187,29 @@ def dot_geometry(pL, pR, width_px=640, edge_margin=0.05,
     warns = []
     dv = abs(float(pL[1]) - float(pR[1]))
     if dv > max_dv:
-        warns.append("vertical offset %.3f between the two cams (epipolar violation) — they are "
+        warns.append("vertical offset %.3f between the two cams (epipolar violation), they are "
                      "probably locked onto DIFFERENT objects, not one shared dot" % dv)
     f = DEFAULT_F * (width_px / 1280.0)          # focal scales with capture width
     signed_px = (float(pL[0]) - float(pR[0])) * width_px
     if signed_px < 0:
         warns.append("disparity is NEGATIVE (%.1f px): the dot sits further right in worldR than "
                      "in worldL. A point in front of the rig must be further right in the LEFT "
-                     "cam, so the world pair is REVERSED — swap --world-cam-left/--world-cam-right "
+                     "cam, so the world pair is REVERSED, swap --world-cam-left/--world-cam-right "
                      "(or the sensors are mounted 180 deg). WorldTracker discards every match "
                      "with negative disparity, so the mesh will stay empty until this is fixed"
                      % signed_px)
     d_px = abs(signed_px)
     depth = (f * DEFAULT_B / d_px) if d_px > 1e-6 else None
     if depth is not None and depth < min_depth_mm:
-        warns.append("implied depth %.0f mm — far too close to be the target" % depth)
+        warns.append("implied depth %.0f mm, far too close to be the target" % depth)
     elif depth is not None and depth > max_depth_mm:
-        warns.append("implied depth %.0f mm — effectively at infinity, likely a false match"
+        warns.append("implied depth %.0f mm, effectively at infinity, likely a false match"
                      % depth)
     elif depth is None:
-        warns.append("zero disparity — identical position in both cams, not a real stereo pair")
+        warns.append("zero disparity, identical position in both cams, not a real stereo pair")
     for name, p in (("worldL", pL), ("worldR", pR)):
         if min(p[0], p[1], 1 - p[0], 1 - p[1]) < edge_margin:
-            warns.append("%s hit is hard against a frame edge (%.3f,%.3f) — likely an artefact"
+            warns.append("%s hit is hard against a frame edge (%.3f,%.3f), likely an artefact"
                          % (name, p[0], p[1]))
     return depth, dv, warns
 
@@ -218,12 +218,12 @@ def template_margin(frame, tmpl, cv2):
     """How UNIQUELY does `tmpl` localise in `frame`? Returns (peak, best_rival, margin).
 
     Match SCORE alone is not evidence of a usable template, and trusting it is an active trap: a
-    featureless crop — flat skin, a patch of shadow — correlates ~1.0 against every other
+    featureless crop, flat skin, a patch of shadow, correlates ~1.0 against every other
     featureless patch, so it scores near-perfect while carrying no localisation whatsoever. What
     matters is whether the peak STANDS OUT from the best rival elsewhere in the frame.
 
     Measured on this rig 2026-08-02: templates whose peaks were 0.97/0.95 (and which the old
-    score-only check passed as "locked") had rivals at 0.955/0.941 — margins of 0.017 and 0.005.
+    score-only check passed as "locked") had rivals at 0.955/0.941, margins of 0.017 and 0.005.
     At that margin any blink or small head movement lets the rival win and the tracker silently
     jumps mid-session, after the corrections have already been spent. Their Laplacian variance was
     ~5, i.e. essentially no edge structure at all."""
@@ -279,12 +279,12 @@ def check_model_lock(frames):
     if bad:
         detail += "  ⚠ " + ", ".join(bad)
     return Check("model lock", ok, detail,
-                 fix="the model sees no anatomically plausible canthus — check the eye cams are "
+                 fix="the model sees no anatomically plausible canthus, check the eye cams are "
                      "on your face and in focus")
 
 
 def check_corner_lock(frames, template_dir, min_margin=0.08):
-    """The templates must actually match in the live frames, not merely exist on disk —
+    """The templates must actually match in the live frames, not merely exist on disk , 
     and must match in ONE place. See template_margin() for why score alone is not enough."""
     import cv2
     from eye_tracker import EyeCornerTracker
@@ -317,14 +317,14 @@ def check_corner_lock(frames, template_dir, min_margin=0.08):
     else:
         detail = "no template/frame for: %s" % ", ".join(missing)
     if scores and not locked:
-        detail += "  (weak — aim the cam at the eye corner / re-grab the template)"
+        detail += "  (weak, aim the cam at the eye corner / re-grab the template)"
     if vague:
-        detail += ("  ⚠ NOT UNIQUE: %s — the best rival elsewhere in the frame scores within "
+        detail += ("  ⚠ NOT UNIQUE: %s, the best rival elsewhere in the frame scores within "
                    "%.3f of the peak, so this template does not localise and the tracker will "
                    "jump. Re-grab it on real structure (lid margin / lash line / caruncle), "
                    "not flat skin or shadow." % (", ".join(vague), min_margin))
     return Check("corner lock", ok, detail,
-                 fix="python3 main.py --calibrate-corners  (box the canthus ITSELF — the lid "
+                 fix="python3 main.py --calibrate-corners  (box the canthus ITSELF, the lid "
                      "margin and lash roots, not a patch of smooth cheek)")
 
 
@@ -371,7 +371,7 @@ def run(roles=None, seconds=3.0, verbose=True, use_model=False):
         print("== calibration preflight ==")
         for c in checks:
             print(c.line())
-        print("  =>", "READY TO CALIBRATE ✅" if ok else "NOT READY — fix the CHECK rows ⚠️")
+        print("  =>", "READY TO CALIBRATE ✅" if ok else "NOT READY, fix the CHECK rows ⚠️")
         if not ok:
             print("\n  next steps:")
             for c in checks:
@@ -455,7 +455,7 @@ def selftest(verbose=True):
     d_good = (f * DEFAULT_B / 1500.0) / W                    # disparity for a 1.5 m target
     good_depth, good_dv, good_warns = dot_geometry((0.50, 0.50), (0.50 - d_good, 0.50))
     # the REAL measured pair from this rig (2026-08-01): caught by DEPTH (181 mm), not by the
-    # epipolar test — its dv is 0.017, inside the 0.02 tolerance that loose, uncalibrated
+    # epipolar test: its dv is 0.017, inside the 0.02 tolerance that loose, uncalibrated
     # cameras need. Depth is the discriminator here; epipolar only bites once they are mounted.
     bad_depth, bad_dv, bad_warns = dot_geometry((0.387, 0.054), (0.652, 0.071))
     epi_depth, _, epi_warns = dot_geometry((0.50, 0.50), (0.50 - d_good, 0.58))  # same depth, off-row
@@ -469,7 +469,7 @@ def selftest(verbose=True):
                    and any("epipolar" in w for w in epi_warns)
                    and any("infinity" in w for w in far_warns)))
 
-    # (7) disparity SIGN: a REVERSED world pair is invisible to every other test here — abs()
+    # (7) disparity SIGN: a REVERSED world pair is invisible to every other test here: abs()
     #     hands back the identical depth, the rows still line up, neither hit is near an edge, so
     #     the row reads green. That is exactly what happened on 2026-08-02: the preflight passed
     #     at 2054 mm with the pair swapped, while WorldTracker's `(uL - uR) > 0.5` filter threw
@@ -477,7 +477,7 @@ def selftest(verbose=True):
     #     depth cannot catch it: both orderings give the SAME distance.
     fwd_depth, _, fwd_warns = dot_geometry((0.50, 0.50), (0.50 - d_good, 0.50))
     rev_depth, _, rev_warns = dot_geometry((0.50 - d_good, 0.50), (0.50, 0.50))
-    checks.append(("dot_geometry: reversed pair caught by SIGN — depth alone cannot "
+    checks.append(("dot_geometry: reversed pair caught by SIGN, depth alone cannot "
                    "(both orderings give %.0f mm)" % rev_depth,
                    not any("REVERSED" in w for w in fwd_warns)
                    and any("REVERSED" in w for w in rev_warns)
@@ -506,7 +506,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "CALIB PREFLIGHT OK — every precondition is checkable ✅"
+        print("  =>", "CALIB PREFLIGHT OK, every precondition is checkable ✅"
               if ok else "PROBLEM ⚠️")
         print("  on hardware:  python3 calib_preflight.py --run")
     return 0 if ok else 1

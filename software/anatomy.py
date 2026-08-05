@@ -9,7 +9,7 @@ Why each quantity matters for AR registration
 * Interpupillary distance (IPD): sets where each eye sits laterally; the optic must
   serve a pupil that can be 52-78 mm apart. Mean ~63 mm, SD ~3.8 mm (Dodgson 2004).
 * Eyeball radius / axial length: globe ~24 mm long, radius ~12 mm. The CENTER OF
-  ROTATION sits ~13.5 mm behind the corneal apex — the eye rotates about this point
+ ROTATION sits ~13.5 mm behind the corneal apex, the eye rotates about this point
   to fixate, so gaze direction is the line CoR->target.
 * Entrance pupil: the eye's real aperture sits ~3 mm behind the cornea, i.e.
   ~10.5 mm IN FRONT of the center of rotation. The chief ray (entrance pupil -> point)
@@ -96,7 +96,7 @@ def sample_subject(rng: np.random.Generator) -> Subject:
     eye_y = float(rng.normal(0.0, EYE_VERT_SD))
     cfwd = float(rng.normal(CANTHUS_FWD_MEAN, CFWD_SD))
 
-    # eyeball centers of rotation — DEPTH VARIES PER FACE: deeper for longer eyeballs
+    # eyeball centers of rotation: DEPTH VARIES PER FACE: deeper for longer eyeballs
     # (globe_r above the mean) plus an independent eye-relief/socket-depth term. -z = deeper
     # (behind the canthi at +cfwd), so the CoR-to-face-surface distance differs per subject.
     cor_z = -(globe_r - GLOBE_R_MEAN) * COR_AXIAL_K + float(rng.normal(0.0, COR_DEPTH_SD))

@@ -1,34 +1,34 @@
-"""vernier.py — Phase 2: hyperacuity (vernier) alignment UI = the kappa-precision lever.
+"""vernier.py, Phase 2: hyperacuity (vernier) alignment UI = the kappa-precision lever.
 
 WHY: the whole <1px path is gated by how precisely the user can say "the overlay is on the
 target" (rig.HUMAN_NOISE_SD, placeholder 0.004 norm ~ 4.3 px/correction, + 2% fat-fingers).
 Human VERNIER acuity (judging collinearity / centering-in-a-gap) is 5-10x finer than
-dot-on-dot covering — so the correction UI, not more sensors, is the cheapest accuracy lever
+dot-on-dot covering, so the correction UI, not more sensors, is the cheapest accuracy lever
 (KAPPA.md; kappa/vernier carries stereo from ~1.1 px to <1 px).
 
 THREE PIECES, all runnable BEFORE the cameras arrive:
 
-1) demo(): pygame practice + MEASUREMENT task on any display — including the XREAL One Pro
+1) demo(): pygame practice + MEASUREMENT task on any display, including the XREAL One Pro
    itself (it's just a USB-C monitor). A simulated "world dot" appears at a hidden true
    position (optional slow drift = head sway); you align a vernier crosshair (4 segments
    converging on a central gap the dot must sit centred in) with coarse/fine nudges and
    confirm. After N trials it reports YOUR median/robust-SD alignment error in px and
-   normalized units and writes data/vernier_noise.json — replacing the placeholder
+ normalized units and writes data/vernier_noise.json, replacing the placeholder
    HUMAN_NOISE_SD with a measured value.       Run:  python3 main.py --vernier-demo
 
-2) demo(sbs=True): DICHOPTIC variant for the binocular build — side-by-side 3D mode
+2) demo(sbs=True): DICHOPTIC variant for the binocular build, side-by-side 3D mode
    (set the One Pro to SBS): the REFERENCE half-pattern renders only in the left-eye half,
    the MOVABLE one only in the right-eye half; nulling the vertical offset measures/nulls
    inter-eye vertical disparity (fusion comfort needs < ~6-15 arcmin).
                                               Run:  python3 main.py --vernier-demo --sbs
 
-3) vernier_test(): sim validation — same convergence protocol as kappa.py but with the
+3) vernier_test(): sim validation, same convergence protocol as kappa.py but with the
    per-correction noise/fat-finger rates swapped for vernier-level ones; reports overlay
    error vs #corrections for dot-nudge vs vernier. Run:  python3 main.py --vernier-test
 
 The live run_loop integration point: replace the "nudge red dot, press approve" step with
 VernierPattern.render + the same nudge keys; each confirm yields exactly the same
-(features, label) sample the calibrator already consumes — only with less noise.
+(features, label) sample the calibrator already consumes, only with less noise.
 """
 import json
 import os
@@ -122,7 +122,7 @@ def vernier_test(n_users=12, Ks=(4, 8, 16, 32), seed_base=7100, verbose=True):
 #  the pygame UI
 # ======================================================================
 class VernierPattern:
-    """The render: 4 line segments converging on (x, y) with a central GAP — the target
+    """The render: 4 line segments converging on (x, y) with a central GAP, the target
     must sit centred in the gap; any offset breaks the segments' collinearity with it,
     which the eye judges at hyperacuity. Sub-pixel: drawn into a 4x supersampled tile
     blitted with smoothscale, so 0.25-px nudges are really displayed."""
@@ -171,14 +171,14 @@ def demo(trials=20, drift=True, sbs=False, fullscreen=True):
     """Practice + measure alignment precision. Put the window on the XREAL display for the
     real test. Keys: arrows = 1 px, SHIFT+arrows = 0.25 px, ENTER/SPACE = confirm,
     R = re-randomize, ESC/Q = quit early. SBS mode: reference dot on the LEFT half
-    (left eye), your movable pattern on the RIGHT half (right eye) — null the VERTICAL
+    (left eye), your movable pattern on the RIGHT half (right eye), null the VERTICAL
     offset you perceive when the two halves fuse."""
     import pygame
     pygame.init()
     flags = pygame.FULLSCREEN if fullscreen else 0
     screen = pygame.display.set_mode((0, 0) if fullscreen else (1280, 720), flags)
     W, H = screen.get_size()
-    pygame.display.set_caption("vernier alignment — " + ("DICHOPTIC SBS" if sbs else "monocular"))
+    pygame.display.set_caption("vernier alignment, " + ("DICHOPTIC SBS" if sbs else "monocular"))
     font = pygame.font.SysFont(None, 22)
     clock = pygame.time.Clock()
     pat = VernierPattern()

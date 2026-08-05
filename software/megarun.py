@@ -1,4 +1,4 @@
-"""Large-scale run (100k+ eyes) — numpy + stdlib, memory- and crash-safe.
+"""Large-scale run (100k+ eyes), numpy + stdlib, memory- and crash-safe.
 
 Generation (the expensive part) is checkpointed to disk before any analysis, so a
 crash in analysis never costs the 16-minute regen. Data is held as compact stacked
@@ -7,7 +7,7 @@ identifier subsamples training subjects + uses batched prediction so memory stay
 (an unbounded identify step is what OOM-killed the first 100k attempt).
 
 We give the extra data something to bite on: degree-3 prior (vs 2) and a polynomial-
-expanded identifier — then report honestly whether 100k actually beats the 1000 run.
+expanded identifier, then report honestly whether 100k actually beats the 1000 run.
 """
 import os
 import time

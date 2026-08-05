@@ -77,7 +77,7 @@ class PinholeCamera:
 # Sanity bound on the display's normalized radial-distortion coefficients. The XREAL One Pro's
 # X-prism optic is mild (k1~0.06, k2~0.02); anything past this magnitude is unphysical for this
 # device and would warp the overlay badly, so it's almost certainly a typo/mis-set constant.
-# (NB: there is no display.py in this repo — the display optic lives HERE and in rig.py.)
+# (NB: there is no display.py in this repo: the display optic lives HERE and in rig.py.)
 DISPLAY_K_MAX = 0.25
 
 
@@ -94,7 +94,7 @@ class DisplayOptics:
     """See-through AR optic. Virtual image at `virtual_dist` mm (None = collimated/∞).
 
     A finite virtual image is the real case (birdbath/waveguide focus a few metres out),
-    which makes the registered pixel depend on eye position (vergence), not just angle —
+    which makes the registered pixel depend on eye position (vergence), not just angle , 
     so calibration must account for it, exactly like real hardware.
     """
 

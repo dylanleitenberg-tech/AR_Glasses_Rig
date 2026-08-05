@@ -1,4 +1,4 @@
-"""Which canthus should the eye-corner cameras track — OUTER or INNER?
+"""Which canthus should the eye-corner cameras track, OUTER or INNER?
 
 The rig was designed around the OUTER (lateral) canthus. Mounting the reprinted carrier
 raised the question of whether the INNER (medial) canthus is the better landmark, so this
@@ -6,7 +6,7 @@ runs the two head-to-head through the identical pipeline.
 
 Why it could go either way:
   * OUTER sits ~25 mm from the temple-mounted camera and swings through a longer arc as the
-    glasses slip, so it has more image motion per mm of slip — more signal.
+    glasses slip, so it has more image motion per mm of slip, more signal.
   * INNER sits ~53 mm away (smaller, further, more foreshortened) BUT is anchored by the
     medial canthal tendon to bone, whereas the lateral canthus rides the soft tissue that
     forms crow's feet. In hardware that should make it steadier under expression.
@@ -43,7 +43,7 @@ LANDMARKS = ("outer", "inner")
 def make_subjects(n, seed):
     """Faces built from a DEDICATED rng, so neither arm's rng consumption can shift them.
 
-    Mirrors Simulator.new_subject (which draws from the sim's own rng — unusable here,
+    Mirrors Simulator.new_subject (which draws from the sim's own rng, unusable here,
     because the two arms reject captures at different rates and would desynchronize).
     """
     rng = np.random.default_rng(seed)
@@ -189,7 +189,7 @@ def compare(n_train=800, n_test=20, seed=0, soft_sweep=False, verbose=True):
                  100 * res["inner"][1][:, j].mean() / max(pop_sd[j], 1e-9)))
 
     if soft_sweep:
-        print("\n  soft-tissue sensitivity — how each landmark degrades as its per-capture")
+        print("\n  soft-tissue sensitivity, how each landmark degrades as its per-capture")
         print("  motion grows (rig.SOFT_TISSUE_SD = %.2f mm is the current placeholder):"
               % rig.SOFT_TISSUE_SD)
         print("    %-10s %12s %12s" % ("motion mm", "outer px", "inner px"))
@@ -206,7 +206,7 @@ def compare(n_train=800, n_test=20, seed=0, soft_sweep=False, verbose=True):
 
 
 # ----------------------------------------------------------------------
-#  Selftest — plumbing + regression guard
+#  Selftest: plumbing + regression guard
 # ----------------------------------------------------------------------
 def selftest():
     ok = True
@@ -252,7 +252,7 @@ def selftest():
     #
     # This used to assert BOTH landmarks were >90% in-frame, which silently encoded the old
     # EYE_FOV=90 assumption. The real lens is 45 deg (measured 2026-08-01), and at 45 deg the
-    # OUTER canthus is only ~44% in-frame — that is precisely why rig.TRACKED_LANDMARK is
+    # OUTER canthus is only ~44% in-frame: that is precisely why rig.TRACKED_LANDMARK is
     # "inner", so requiring both to be visible would fail on correct hardware. What actually
     # matters is that whichever landmark we track is visible; assert that, and report the other
     # for information.

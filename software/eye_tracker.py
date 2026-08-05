@@ -4,7 +4,7 @@ A close-up glasses-mounted camera sees only a patch of eye, not a whole face, so
 face-mesh trackers don't apply. Instead we use a rock-simple, robust method: you
 capture a small template of your eye corner once (--calibrate-corners), and each
 frame we template-match to locate it. The corner's position in the camera frame is
-exactly the signal we want — it moves when the glasses shift on your face, which is
+exactly the signal we want, it moves when the glasses shift on your face, which is
 the whole point.
 
 Returns normalized (x, y) in [0, 1] of the frame. Two of these (left + right eye)
@@ -39,7 +39,7 @@ class EyeCornerTracker:
     def calibrate(self, frame, window: str = "select eye corner", min_px: int = 0) -> bool:
         """Interactively grab the eye-corner template from a frame. Returns ok.
 
-        `min_px` grows whatever box you drew — about its own CENTRE — to at least min_px on each
+        `min_px` grows whatever box you drew, about its own CENTRE, to at least min_px on each
         side, clamped to the frame. The human picks WHERE; the code enforces HOW BIG.
 
         WHY (measured 2026-08-02): template size is the dominant term in whether the template

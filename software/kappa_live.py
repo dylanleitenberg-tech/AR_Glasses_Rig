@@ -4,14 +4,14 @@ The accuracy_map study left the geometry preset at ~3.7 px, limited by how well 
 identified from the (perceptually-biased) subjective answers. This wires in the two escapes
 from KAPPA.md and measures whether per-position accuracy actually crosses 3 px:
 
-  * baseline preset      — kappa identified from subjective inaccuracy answers (today).
-  * PCCR-aided preset     — kappa REPLACED by an objective corneal-reflex (eye-tracker)
+ * baseline preset, kappa identified from subjective inaccuracy answers (today).
+ * PCCR-aided preset, kappa REPLACED by an objective corneal-reflex (eye-tracker)
                             measurement = true kappa + imaging noise. This is an INDEPENDENT
                             measurement that does not contain the perceptual bias, so it
                             breaks the confound. We sweep the PCCR noise to show the floor it
                             buys.
 
-The error is the systematic miss vs the oracle (`ground_truth`) in px @1080p — the same metric
+The error is the systematic miss vs the oracle (`ground_truth`) in px @1080p, the same metric
 as accuracy_map, so the numbers are directly comparable. (The multi-vergence path that handles
 the perceptual/cross-distance bias is demonstrated separately in `kappa.py`.)
 
@@ -104,10 +104,10 @@ def evaluate(n_train=800, n_test=24, repeats=4, pccr_noise_deg=(0.30, 0.10, 0.05
         print("    " + "-" * 52)
         below = "below" if np.median(b) < 3.0 else "toward"
         print("\n  DIAGNOSIS: the deployed preset (identified geometry, degree-3 sweep) now lands")
-        print("  at %.2f px median per position — %s 3 px. Swapping in an objective kappa does NOT"
+        print("  at %.2f px median per position, %s 3 px. Swapping in an objective kappa does NOT"
               % (np.median(b), below))
         print("  help (it breaks the jointly-fit descriptor's consistency), and even PERFECT")
-        print("  geometry only reaches %.2f px — so the residual is the PRESET MODEL's fidelity,"
+        print("  geometry only reaches %.2f px, so the residual is the PRESET MODEL's fidelity,"
               % np.median(t))
         print("  NOT kappa or the sensors: kappa is already recovered (the per-user bias averages")
         print("  out across training faces). The lever was MODEL fidelity (degree-2 -> degree-3),")

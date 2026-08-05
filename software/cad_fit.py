@@ -1,8 +1,8 @@
-"""cad_fit.py — does a REAL camera module physically fit at each rig.py position?
+"""cad_fit.py, does a REAL camera module physically fit at each rig.py position?
 
 The occlusion guard in rig.py only checks camera CENTRES. But the parts we actually order are
-36-38 mm PCBs with an M12 lens, not points. This models each camera as its true solid — a square
-board behind the lens + the M12 lens cylinder in front — and checks, for both eyes:
+36-38 mm PCBs with an M12 lens, not points. This models each camera as its true solid, a square
+board behind the lens + the M12 lens cylinder in front, and checks, for both eyes:
   * clearance to the see-through CONE (negative = blocks the view), and
   * gap to the EYEBALL sphere (negative = the board would hit the eye/face).
 The board is rotated about the optical axis to the BEST orientation (we'd design it that way), so
@@ -103,7 +103,7 @@ def report(board_by_cam, label):
         allfit = allfit and fit
         print("  %-7s %5.0fmm %+5.1f %+5.1f   %s"
               % (name, b, cl, gp, "FITS" if fit else ("CONE!" if cl < 0 else "HITS EYE!")))
-    print("  =>", "ALL FIT" if allfit else "DOES NOT FIT — see flags", "\n")
+    print("  =>", "ALL FIT" if allfit else "DOES NOT FIT, see flags", "\n")
     return allfit
 
 
@@ -129,7 +129,7 @@ def _sat_clear(A, B):
 
 
 def camera_clearance(board_by_cam):
-    """INTER-CAMERA board clearance — the check cad_fit was missing. The per-camera fit above
+    """INTER-CAMERA board clearance, the check cad_fit was missing. The per-camera fit above
     verifies each board clears the eye/cone/face; this verifies the boards don't collide with EACH
     OTHER (two boards can each clear the eye yet interpenetrate). Prints every pair under 3 mm;
     returns True if no CORE (non-stereo) pair overlaps."""
@@ -146,8 +146,8 @@ def camera_clearance(board_by_cam):
                   "OVERLAP" if g <= 0 else "tight", "  (FULL/stereo upgrade)" if stereo else ""))
             if g <= 0 and not stereo and a in core and b in core:
                 ok = False
-    print("  =>", "CORE 6-cam boards CLEAR — buildable ✅" if ok
-          else "CORE BOARDS OVERLAP — reposition needed ⚠️", "\n")
+    print("  =>", "CORE 6-cam boards CLEAR, buildable ✅" if ok
+          else "CORE BOARDS OVERLAP, reposition needed ⚠️", "\n")
     return ok
 
 
@@ -203,7 +203,7 @@ def search():
         b = boards[name]; C0 = CAMS[name][0]
         res = find_fit(name, b)
         if res is None:
-            print("  %-7s (%dmm) — no fit within +-16mm" % (name, b)); continue
+            print("  %-7s (%dmm), no fit within +-16mm" % (name, b)); continue
         disp, C2, cl, gp = res
         px = parallax(name, C2)
         extra = "  parallax %.0f deg (was %.0f)" % (px, parallax(name, C0)) if px else ""

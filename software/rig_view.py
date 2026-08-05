@@ -42,7 +42,7 @@ def run(roles, tile=(480, 300)):
     #
     # Nothing is lost for this purpose: the view exists to position the target and the glasses,
     # and every detector downstream is scale-invariant in normalised coordinates.
-    # PER-SENSOR modes from cameras.ROLE_MODE — never one size for every role. The eye (OV9281)
+    # PER-SENSOR modes from cameras.ROLE_MODE: never one size for every role. The eye (OV9281)
     # and world (AR0234) sensors accept DIFFERENT modes, and an unsupported request silently
     # returns native, saturating the bus. Hardcoding 640x400 here gave the world cams 1920x1200
     # and starved half the bank: "only 2 cams are running".
@@ -50,7 +50,7 @@ def run(roles, tile=(480, 300)):
     cams = {r: Camera(i, *ROLE_MODE.get(r, (640, 480)), name=r) for r, i in roles.items()}
     det = DotDetector()
     trk = {"eyeL": CanthusTracker(mirrored=True), "eyeR": CanthusTracker(mirrored=False)}
-    win = "rig view — position everything until all four read green.  q quits"
+    win = "rig view, position everything until all four read green.  q quits"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
 
     while True:

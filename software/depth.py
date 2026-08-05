@@ -1,4 +1,4 @@
-"""depth.py — the world stereo pair used as a METRIC DEPTH SENSOR, with honest uncertainty.
+"""depth.py, the world stereo pair used as a METRIC DEPTH SENSOR, with honest uncertainty.
 
 WHY THIS EXISTS, AND WHY IT IS NOT JUST triangulate_stereo
     `world_mesh.triangulate_stereo` already converts a matched pair into a 3D point, and this
@@ -95,7 +95,7 @@ def depth_needed_mm(Z_mm, tol_px=1.0, translation_mm=100.0):
 
 def capability_ratio(disp_px=DISP_PRECISION_REAL, tol_px=1.0, translation_mm=100.0,
                      f=DEFAULT_F, B=DEFAULT_B):
-    """(depth error we get) / (depth error we need). CONSTANT with range — that is the point.
+    """(depth error we get) / (depth error we need). CONSTANT with range, that is the point.
 
     <= 1 means parallax correction is within tol_px at every distance the pair can match at all.
     Returned as a scalar precisely because it does not depend on Z.
@@ -138,15 +138,15 @@ class StereoDepth:
         uR, vR = float(uvR[0]), float(uvR[1])
         row = abs(vL - vR)
         if row > self.max_row_offset_norm:
-            return self._bad("epipolar violation: rows differ by %.3f (max %.3f) — the two cams "
+            return self._bad("epipolar violation: rows differ by %.3f (max %.3f), the two cams "
                              "are almost certainly on DIFFERENT objects"
                              % (row, self.max_row_offset_norm))
         disp_px = (uL - uR) * self.res
         if disp_px < 0:
-            return self._bad("disparity is NEGATIVE (%.1f px) — the world pair is REVERSED "
+            return self._bad("disparity is NEGATIVE (%.1f px), the world pair is REVERSED "
                              "(swap worldL/worldR), or the sensors are mounted 180°" % disp_px)
         if disp_px < self.min_disp_px:
-            return self._bad("disparity %.2f px is below the noise floor (%.1f px) — the point is "
+            return self._bad("disparity %.2f px is below the noise floor (%.1f px), the point is "
                              "too far for this %.0f mm baseline to range"
                              % (disp_px, self.min_disp_px, self.B))
         pts, good = triangulate_stereo([[uL * self.res, vL * self.res]],
@@ -186,7 +186,7 @@ def selftest():
     def chk(name, cond, detail=""):
         nonlocal ok_all
         ok_all = ok_all and bool(cond)
-        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, ("  — " + detail) if detail else ""))
+        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, (", " + detail) if detail else ""))
 
     sd = StereoDepth()
 

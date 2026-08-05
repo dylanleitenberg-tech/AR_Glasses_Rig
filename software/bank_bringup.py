@@ -1,20 +1,20 @@
-"""bank_bringup.py — bring up WHATEVER cameras are on the hub, as one bank, without cooking the Mac.
+"""bank_bringup.py, bring up WHATEVER cameras are on the hub, as one bank, without cooking the Mac.
 
 The existing bring-up chain (connect -> rig_test -> snapshot -> live_rig) assumes the FINISHED
 rig: a complete 6-role map, and IR LEDs available to tell the pupil cams from the eye-corner
-cams. Neither holds at the start of assembly — you plug cameras into the powered hub one or two
+cams. Neither holds at the start of assembly, you plug cameras into the powered hub one or two
 at a time, with no illumination built yet. This module is the step BEFORE that chain:
 
     * accepts a PARTIAL bank (1..8 cameras) instead of demanding all six;
     * needs NO IR LEDs (roles are provisional and clearly labelled as such);
     * reports what each camera actually NEGOTIATED (format/resolution/fps), not what was asked
-      for — a camera silently handing back 1280x800 when you asked for 640x480 is 4x the decode
+      for, a camera silently handing back 1280x800 when you asked for 640x480 is 4x the decode
       cost, and that is exactly the surprise that melts a laptop;
     * runs the bank under an explicit CPU BUDGET with automatic back-off.
 
 WHY THE CPU GUARD EXISTS
     Every frame of every camera is an MJPEG decode on the CPU. sync_capture's barrier means the
-    camera threads only grab when the controller asks, so the LOOP RATE is the master throttle —
+    camera threads only grab when the controller asks, so the LOOP RATE is the master throttle , 
     but rig_test/live_rig call sync_frame() in an unthrottled while-loop, i.e. "as fast as the
     machine allows". On an 8-core Intel i9 with six streams that is a fan-pinning, thermally
     throttling load. So here:
@@ -28,8 +28,8 @@ WHY THE CPU GUARD EXISTS
         across all 16 threads.
 
     The guard logic, the rate controller, the thermal parse and the role assignment are pure
-    functions over injected inputs, so `--selftest` proves all of it headless — including a full
-    loop over FakeCapture cameras — with no hardware and no load on the machine.
+    functions over injected inputs, so `--selftest` proves all of it headless, including a full
+    loop over FakeCapture cameras, with no hardware and no load on the machine.
 
 USAGE
     python3 bank_bringup.py --selftest        # headless; no cameras, no load
@@ -40,7 +40,7 @@ USAGE
 
 The provisional map is honest about what it cannot know: colour/1280 cameras become worldL/R,
 mono cameras become eyeL/eyeR then pupilL/pupilR **in index order**. Eye-vs-pupil and L-vs-R are
-NOT determined — fix them with `connect.py --identify` once the cams are on the carrier, or with
+NOT determined, fix them with `connect.py --identify` once the cams are on the carrier, or with
 the IR-strobe test once the LEDs exist.
 """
 import argparse
@@ -58,13 +58,13 @@ from rig_test import focus_score, brightness, fps_from_stamps
 
 
 # --------------------------------------------------------------------------
-#  CPU accounting (stdlib only — no psutil dependency)
+#  CPU accounting (stdlib only: no psutil dependency)
 # --------------------------------------------------------------------------
 def cpu_seconds():
     """Total CPU seconds burned by THIS process (all threads, user + system).
 
     resource.RUSAGE_SELF covers every thread in the process, so the cv2 decode threads and the
-    per-camera grab threads are all included — which is precisely the load we are budgeting."""
+    per-camera grab threads are all included, which is precisely the load we are budgeting."""
     ru = resource.getrusage(resource.RUSAGE_SELF)
     return ru.ru_utime + ru.ru_stime
 
@@ -79,9 +79,9 @@ class CpuGuard:
     load = ΔCPU-seconds / (Δwall-seconds × cores). 1.0 means every core pinned by this process.
 
     Verdicts:
-        "ok"       — under budget, carry on
-        "throttle" — over budget, the caller should reduce the loop rate
-        "stop"     — over the HARD ceiling continuously for `grace` seconds; the caller should
+        "ok", under budget, carry on
+        "throttle", over budget, the caller should reduce the loop rate
+        "stop", over the HARD ceiling continuously for `grace` seconds; the caller should
                      shut the bank down rather than keep cooking
 
     `clock` and `cpu_fn` are injected so the selftest can drive it deterministically.
@@ -160,7 +160,7 @@ def parse_thermal(text):
     """Pull CPU_Speed_Limit / CPU_Scheduler_Limit out of `pmset -g therm` output.
 
     100 = no de-rating. Anything lower means macOS is ALREADY throttling the CPU, which is the
-    machine telling us it is too hot — a stronger signal than our own load number."""
+    machine telling us it is too hot, a stronger signal than our own load number."""
     out = {}
     for key in ("CPU_Speed_Limit", "CPU_Scheduler_Limit", "CPU_Available_CPUs"):
         m = re.search(key + r"\s*=\s*(\d+)", text)
@@ -191,12 +191,12 @@ def thermally_throttled(state):
 #   "binocular" = the finished 6-cam CORE: an eye-corner + a pupil cam for EACH eye.
 #   "one_eye"   = the 4-cam interim build: both inward cams serve the RIGHT eye. Right, not
 #                 left, because rig.py DISPLAY_EYE = 1 and build_pupil_camera() models the
-#                 right eye as canonical — so a one-eye rig on the right needs no sim changes,
+#                 right eye as canonical: so a one-eye rig on the right needs no sim changes,
 #                 while a left-eye one would have to mirror everything.
 MONO_ORDER = {"binocular": ("eyeL", "eyeR", "pupilL", "pupilR"),
               "one_eye": ("eyeR", "pupilR")}
 
-# NATIVE sensor modes (2026-08-01, measured on the real modules). BOTH sensors are 16:10 —
+# NATIVE sensor modes (2026-08-01, measured on the real modules). BOTH sensors are 16:10 , 
 # SyncBank derives height as int(res * 3 // 4), i.e. 4:3, so its world request lands on
 # 1280x960, a mode NEITHER sensor offers. Asking for a non-existent mode makes the driver fall
 # back to whatever it can do, which is how four streams stalled the bus. These are the real ones.
@@ -211,7 +211,7 @@ def assign_roles(descs, skip=(), layout="binocular"):
 
     Colour/1280 cameras -> worldL, worldR. Mono cameras fill MONO_ORDER[layout] in index order.
     This CANNOT distinguish eye-corner from pupil (that needs the IR strobe) nor left from right
-    (that needs a human) — the notes say so, and nothing downstream should treat the map as final
+    (that needs a human), the notes say so, and nothing downstream should treat the map as final
     until connect.py --identify has confirmed it."""
     if layout not in MONO_ORDER:
         raise ValueError("layout must be one of %s, got %r" % (sorted(MONO_ORDER), layout))
@@ -225,7 +225,7 @@ def assign_roles(descs, skip=(), layout="binocular"):
     for role, idx in zip(("worldL", "worldR"), world):
         role_index[role] = idx
     if len(world) > 2:
-        notes.append("%d colour cams found but only 2 world roles exist — extras ignored: %s"
+        notes.append("%d colour cams found but only 2 world roles exist, extras ignored: %s"
                      % (len(world), world[2:]))
     elif len(world) < 2:
         notes.append("%d/2 world (colour) cams present" % len(world))
@@ -233,22 +233,22 @@ def assign_roles(descs, skip=(), layout="binocular"):
     for role, idx in zip(mono_roles, mono):
         role_index[role] = idx
     if len(mono) > len(mono_roles):
-        notes.append("%d mono cams found but the %s layout has only %d mono roles — extras "
+        notes.append("%d mono cams found but the %s layout has only %d mono roles, extras "
                      "ignored: %s" % (len(mono), layout, len(mono_roles), mono[len(mono_roles):]))
     elif len(mono) < len(mono_roles):
         notes.append("%d/%d mono (OV9281) cams present" % (len(mono), len(mono_roles)))
 
     if mono:
-        notes.append("eye-vs-pupil is PROVISIONAL (index order) — no IR LEDs to run the strobe "
+        notes.append("eye-vs-pupil is PROVISIONAL (index order), no IR LEDs to run the strobe "
                      "A/B test; confirm with connect.py --identify")
     if layout == "one_eye":
         notes.append("ONE-EYE layout: both inward cams serve the RIGHT eye (rig.py DISPLAY_EYE=1). "
-                     "The 8-feature calibration contract needs eyeL too — bring-up, focus, "
+                     "The 8-feature calibration contract needs eyeL too, bring-up, focus, "
                      "framing and sync are all valid now; per-user calibration is not.")
     else:
         missing = [r for r in CORE_ROLES if r not in role_index]
         if missing:
-            notes.append("not yet a full rig — missing: %s" % ", ".join(missing))
+            notes.append("not yet a full rig, missing: %s" % ", ".join(missing))
     return role_index, notes
 
 
@@ -284,7 +284,7 @@ def parse_res(spec):
 
     Accepts '640' (SyncBank's 4:3 convention, -> 640x480) or an explicit '1280x800'. Explicit
     WxH matters because these sensors are 16:10 and the modes the driver will hand you MJPEG on
-    are not predictable from width alone — you have to be able to ask for an exact one."""
+    are not predictable from width alone, you have to be able to ask for an exact one."""
     if spec is None:
         return None
     s = str(spec).lower().replace(" ", "")
@@ -304,7 +304,7 @@ def parse_res(spec):
 def device_names():
     """Best-effort UVC device names in AVFoundation order (which cv2 indices usually follow).
 
-    Purely informational — used to label the scan table so you can tell the built-in FaceTime
+    Purely informational, used to label the scan table so you can tell the built-in FaceTime
     camera from an InnoMaker/ELP module without opening each one."""
     try:
         txt = subprocess.run(["system_profiler", "SPCameraDataType"],
@@ -339,7 +339,7 @@ def _open_probe(cv2, index, width, height):
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     except Exception:
         pass
-    # RETRY (2026-08-01): a single read() misses cameras that need a moment to start streaming —
+    # RETRY (2026-08-01): a single read() misses cameras that need a moment to start streaming , 
     # index 5 enumerated but returned nothing on the first probe. Give each device several
     # attempts with a short settle before declaring it dead.
     ok, frame = False, None
@@ -367,7 +367,7 @@ def _open_probe(cv2, index, width, height):
 
 def scan(max_index=8, width=1280, height=800, skip=(), layout="binocular", verbose=True):
     """Probe every index and print what is actually attached. Opens each camera briefly, one at
-    a time — near-zero sustained CPU."""
+    a time, near-zero sustained CPU."""
     import cv2
     cv2.setNumThreads(2)
     names = device_names()
@@ -461,7 +461,7 @@ def run_loop(bank, roles, seconds=10.0, guard=None, rate=None, on_frame=None, wa
     `warm` controls sync_frame's flush grab. warm=True costs TWO grabs per set (one to drain a
     stale driver buffer, one aligned); warm=False costs one, so the set rate can roughly double.
     Since the barrier only lets a camera grab when the controller crosses it, every tick is
-    already fresh here — but the flush is kept as the default because it is what the rest of the
+    already fresh here, but the flush is kept as the default because it is what the rest of the
     pipeline (snapshot.py, rig_test.py) assumes.
 
     Returns (BankStats, reason) where reason is "done" | "cpu-stop" | "camera-died"."""
@@ -490,7 +490,7 @@ def run_loop(bank, roles, seconds=10.0, guard=None, rate=None, on_frame=None, wa
             load, verdict = guard.update()
             if verdict == "stop":
                 if verbose:
-                    print("  CPU over hard ceiling (%.0f%%) even at the rate floor — stopping."
+                    print("  CPU over hard ceiling (%.0f%%) even at the rate floor, stopping."
                           % (load * 100))
                 reason = "cpu-stop"
                 break
@@ -518,12 +518,12 @@ def dead_camera_advice(dead, shapes):
     module used to blame the bus unconditionally and tell you to cut resolution.
 
     They are told apart by the frame size that was actually DELIVERED. Starvation is a bandwidth
-    problem, so it cannot be the cause when the survivors are already serving small frames — a bus
+    problem, so it cannot be the cause when the survivors are already serving small frames, a bus
     short of bandwidth does not carry three streams flawlessly and drop the fourth entirely.
 
     MEASURED 2026-08-04, which is why this exists: eyeL dead with all four requested at 640x480 and
     the whole bank at 1 fps. Dropping eyeL took the other three to 38 fps, 0 misses, 7.13 ms
-    jitter — the bus had capacity to spare — and eyeL then delivered 0/30 frames opened ALONE at
+    jitter, the bus had capacity to spare, and eyeL then delivered 0/30 frames opened ALONE at
     every mode. It was the cable. The old advice would have had us cut a resolution already cut.
     """
     shapes = [s for s in shapes if s]
@@ -531,11 +531,11 @@ def dead_camera_advice(dead, shapes):
     if len(dead) == 1 and shapes and len(small) == len(shapes):
         return [
             "ONE camera is dead while the rest already serve small frames, so this is",
-            "NOT bandwidth — a bus cannot starve one stream and carry the others.",
+            "NOT bandwidth, a bus cannot starve one stream and carry the others.",
             "The barrier makes it look bank-wide: every camera waits for %s." % dead[0],
             "ISOLATE IT: re-run with --skip <its index>. If the rest jump to ~38 fps,",
             "the bus is fine and the fault is that camera's cable, connector or hub",
-            "port. Then open it ALONE — an intermittent lead delivers a frame to",
+            "port. Then open it ALONE, an intermittent lead delivers a frame to",
             "--scan and nothing a minute later.",
         ]
     return [
@@ -552,7 +552,7 @@ def run(seconds=15.0, max_index=8, target_rate=20.0, budget=0.50, res=None, skip
         native=False, verbose=True):
     """Full hardware bring-up of whatever is plugged in.
 
-    `roles` (from --roles) overrides auto-classification entirely — use it once you have
+    `roles` (from --roles) overrides auto-classification entirely, use it once you have
     eyeballed each index and know which camera is which."""
     import cv2
     from sync_capture import SyncBank, open_cv2_capture
@@ -586,7 +586,7 @@ def run(seconds=15.0, max_index=8, target_rate=20.0, budget=0.50, res=None, skip
     # width on everything (4:3); otherwise use SyncBank.ROLE_MODE verbatim.
     #
     # DO NOT re-derive the height from ROLE_RES here. This branch used to compute
-    # `h = int(ROLE_RES[role] * 3 // 4)`, which asks the 16:10 world cams for 1280x960 — a mode
+    # `h = int(ROLE_RES[role] * 3 // 4)`, which asks the 16:10 world cams for 1280x960: a mode
     # NEITHER sensor has. The driver falls back to an uncompressed mode, four streams swamp the
     # shared USB 2.0 bus, and sync_capture's barrier stalls the whole bank: measured 2026-08-02 at
     # ~1 fps with 118 ms jitter and TWO of four cameras missing every single grab, while still
@@ -612,7 +612,7 @@ def run(seconds=15.0, max_index=8, target_rate=20.0, budget=0.50, res=None, skip
 
     def draw(fs):
         drawn["n"] += 1
-        if drawn["n"] % 3:                             # draw every 3rd set — the window is not free
+        if drawn["n"] % 3:                             # draw every 3rd set, the window is not free
             return
         tiles = []
         for r in sorted(fs.frames):
@@ -694,7 +694,7 @@ def ramp(role_index, seconds=4.0, res=None, opener=None, cv_threads=2, verbose=T
     """Bring cameras up ONE AT A TIME, cumulatively, measuring the bank at each step.
 
     WHY: a UVC camera reserves isochronous USB bandwidth when it starts streaming. On a shared
-    bus the first few succeed and a later one silently gets nothing — it opens, but never
+    bus the first few succeed and a later one silently gets nothing, it opens, but never
     delivers a frame. Because sync_capture's barrier waits for every camera, ONE starved camera
     throttles the whole bank, so the aggregate number hides which camera actually broke.
 
@@ -752,7 +752,7 @@ def ramp(role_index, seconds=4.0, res=None, opener=None, cv_threads=2, verbose=T
             print("  => this bus carried %d camera(s) with every stream alive "
                   "(worst %.1f fps)" % (best["n"], best["worst"]))
         else:
-            print("  => no step kept every stream alive — check power/cabling first")
+            print("  => no step kept every stream alive, check power/cabling first")
         print("  if the limit is below the 6 the design needs: force MJPG, drop resolution,")
         print("  or split the cameras across two separate host controllers (opposite-side ports).")
     return rows
@@ -867,7 +867,7 @@ def selftest(verbose=True):
     checks.append(("assign_roles: 2 mono -> partial map + honest notes; 6 -> full; --skip honoured",
                    partial_ok and full_ok and skip_ok))
 
-    # (5b) ONE-EYE layout: 2 inward cams serve the RIGHT eye (eyeR + pupilR), not eyeL/eyeR —
+    # (5b) ONE-EYE layout: 2 inward cams serve the RIGHT eye (eyeR + pupilR), not eyeL/eyeR , 
     #      and the map must warn that the 8-feature calibration contract is not satisfied.
     ri_one, notes_one = assign_roles({1: color_desc(), 2: color_desc(),
                                       3: mono_desc(), 4: mono_desc()}, layout="one_eye")
@@ -975,7 +975,7 @@ def selftest(verbose=True):
     if verbose:
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
-        print("  =>", "BANK BRINGUP OK — partial bank maps, CPU budget enforced ✅"
+        print("  =>", "BANK BRINGUP OK, partial bank maps, CPU budget enforced ✅"
               if ok else "PROBLEM ⚠️")
         print("  on hardware:  python3 bank_bringup.py --scan   then   --run")
     return 0 if ok else 1

@@ -1,9 +1,9 @@
-"""Pixel-placement map — *where must the display pixel be?*
+"""Pixel-placement map, *where must the display pixel be?*
 
 For EVERY eye (sampled across the anatomical population), EACH glasses position (a grid
 spanning the realistic slip envelope), and 100 dot positions (a 10x10 grid over the page),
-this computes the EXACT display pixel that registers the overlay — the physics oracle's
-ground truth — and then checks the learned camera-features->pixel models reproduce it.
+this computes the EXACT display pixel that registers the overlay, the physics oracle's
+ground truth, and then checks the learned camera-features->pixel models reproduce it.
 
 Two questions it answers:
   1. Do we KNOW the right pixel?  ->  yes: the noise-free oracle (`Simulator.ground_truth`)

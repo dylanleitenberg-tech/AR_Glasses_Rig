@@ -1,4 +1,4 @@
-# DOMAIN REFERENCE — eye anatomy, eye tracking, optics, and overlay mechanics
+# DOMAIN REFERENCE: eye anatomy, eye tracking, optics, and overlay mechanics
 
 Written 2026-08-03 at Dylan's request for depth across the fields this rig sits in. Organised
 around **what changes a decision here**, not around textbook completeness. Every section ends with
@@ -11,17 +11,17 @@ Three findings up front, because they matter most:
    We built the right thing for the right reason.
 2. **The correct rendering viewpoint depends on what you are optimising**, and our design has
    already implicitly chosen. That choice explains a measurement we took but never accounted for.
-3. **Display FOV is not a constant.** Pupil swim makes it vary with eye position in the eyebox —
+3. **Display FOV is not a constant.** Pupil swim makes it vary with eye position in the eyebox , 
    which means `geometry.DISPLAY_FOV_DEG = 50.0` is wrong in a way no single number can fix.
 
 ---
 
-## 1. THE EYE — the anatomy that actually enters the maths
+## 1. THE EYE: the anatomy that actually enters the maths
 
 ### 1.1 Two axes, not one
-- **Optical axis** — the line through the eyeball centre, corneal centre, iris centre and pupil
+- **Optical axis**, the line through the eyeball centre, corneal centre, iris centre and pupil
   centre. It is what a camera can *see*.
-- **Visual axis** — the line from the **fovea** through the corneal centre to the fixation point.
+- **Visual axis**, the line from the **fovea** through the corneal centre to the fixation point.
   It is where the person is actually looking.
 - They are **not the same line.** The offset is **angle kappa** (its components alpha and beta),
   typically **~5° horizontal and ~1.5° vertical**, and it **varies between individuals**.
@@ -50,44 +50,44 @@ instruction to hold a neutral face while calibrating.
 
 ---
 
-## 2. EYE TRACKING — the methods, and where each breaks
+## 2. EYE TRACKING: the methods, and where each breaks
 
 ### 2.1 The dominant method: PCCR (pupil–corneal reflection)
 IR LEDs make **glints** on the cornea; the vector between pupil centre and glint gives gaze.
 **Dark pupil** (off-axis illumination, pupil appears dark) vs **bright pupil** (on-axis, retroreflection
-makes it glow) — many systems alternate to segment the pupil robustly by differencing.
+makes it glow), many systems alternate to segment the pupil robustly by differencing.
 
 Universal in commercial trackers, and IR is used for a reason that is **not** about the pupil: an
 IR bandpass filter makes the eye image **independent of ambient light**. Our rig has no IR LEDs, no
-filter, and **no software exposure control on macOS** — which is why exposure is a physical lever
+filter, and **no software exposure control on macOS**, which is why exposure is a physical lever
 here and why blowout has repeatedly wrecked measurements.
 
 ### 2.2 2D vs 3D, and the finding that matters most
-- **2D / appearance-based** — regress gaze directly from image features. Simple, but the mapping is
+- **2D / appearance-based**, regress gaze directly from image features. Simple, but the mapping is
   only valid for the head-to-camera geometry present at calibration.
-- **3D / model-based** — reconstruct an eye model (corneal centre, optical axis) in 3D, then apply
+- **3D / model-based**, reconstruct an eye model (corneal centre, optical axis) in 3D, then apply
   kappa.
 
 **The slippage result:** eye trackers using **3D models of the eye can compensate for slippage**,
 and there is **no known solution for slippage compensation in 2D video-based eye tracking.**
 Measured slippage penalties in the literature run **0.8–3.1° of added gaze error**, and slippage
-happens constantly — pushing glasses up the nose, brushing hair, talking.
+happens constantly, pushing glasses up the nose, brushing hair, talking.
 
 **This is the strongest external validation of our architecture.** We do not track gaze at all; we
 track a **face-fixed landmark to recover the glasses' pose on the head**, which is the slippage
-term itself. With a **zip-tied, non-repeatable mount**, that is not a nice-to-have — it is the only
+term itself. With a **zip-tied, non-repeatable mount**, that is not a nice-to-have, it is the only
 thing standing between us and a calibration that expires the moment the rig shifts.
 
 ### 2.3 What a canthus tracker cannot do
 It gives **glasses-relative head geometry**, not gaze. So it cannot supply the entrance-pupil
 position for a given fixation (§3), cannot apply kappa, and cannot know where the user is looking.
 Dylan's own `eyetracker.py` study measured the consequence honestly: corner-only **9.9 px** vs
-+pupil **10.1 px** for registration — i.e. **no registration gain from adding the pupil.** §3
++pupil **10.1 px** for registration, i.e. **no registration gain from adding the pupil.** §3
 explains *why* that result is not surprising.
 
 ---
 
-## 3. THE VIEWPOINT QUESTION — where the virtual camera actually goes
+## 3. THE VIEWPOINT QUESTION: where the virtual camera actually goes
 
 This is the deepest item here and it has a real consequence for us.
 
@@ -101,7 +101,7 @@ are three candidates and they are not interchangeable:
 | Optics' nodal point | matches the lens design | not where the eye is; mismatch causes distortion |
 
 The literature states it directly: depending on whether **angular** or **positional** accuracy
-matters, either the centre of rotation or the centre of the entrance pupil is chosen — and **the
+matters, either the centre of rotation or the centre of the entrance pupil is chosen, and **the
 entrance pupil yields higher angular accuracy.** Distortion, separately, results from the pupil
 sitting away from the **nodal points of the optics**.
 
@@ -111,7 +111,7 @@ That is a real choice with real consequences:
 
 - ✅ It is stable, needs no gaze tracking, and does not require kappa.
 - ✅ **It explains the 9.9 vs 10.1 px result.** Adding a pupil feature did not help registration
-  because our whole formulation is built around a gaze-independent viewpoint — the pupil's
+ because our whole formulation is built around a gaze-independent viewpoint, the pupil's
   information has nowhere to go. That measurement was never a fluke; it is structural.
 - ❌ It gives up angular accuracy at **large gaze angles**, where the entrance pupil has swung
   furthest from the rotation centre. Worst case: a 10 mm displacement. At **0.5 m** that subtends
@@ -119,30 +119,30 @@ That is a real choice with real consequences:
 
 **And that maps onto the stated goal.** The end goal is people and cars **far away**, where the
 entrance-pupil-vs-rotation-centre distinction is worth ~0 px. **The design choice is well matched
-to the application** — near-field content is where it would cost, and near-field is not the target.
+to the application**, near-field content is where it would cost, and near-field is not the target.
 
 ---
 
-## 4. THE DISPLAY — birdbath optics, and why FOV is not a number
+## 4. THE DISPLAY: birdbath optics, and why FOV is not a number
 
 The XREAL One Pro is a **birdbath**: a display panel, a beamsplitter, and a spherical
 mirror/combiner. It is the same family as XREAL Air, Rokid Air, Huawei Vision Glass.
 
 Key parameters, all of which we currently treat as constants and none of which are:
-- **Eye relief / exit pupil distance** — the design distance from eyepiece to eye.
-- **Eyebox** — the region the eye may occupy and still see the full FOV. Move outside it and the
+- **Eye relief / exit pupil distance**, the design distance from eyepiece to eye.
+- **Eyebox**, the region the eye may occupy and still see the full FOV. Move outside it and the
   image vignettes or vanishes.
-- **Pupil swim** — **aberrations across the pupil mean the image distorts as the eye moves within
+- **Pupil swim**, **aberrations across the pupil mean the image distorts as the eye moves within
   the eyebox.** The literature is explicit that this **exists in all near-to-eye display systems**.
 
 ### The uncomfortable implication for us
 `geometry.DISPLAY_FOV_DEG = 50.0` is (a) **assumed, never measured**, and (b) **not even a
-constant** — the effective mapping from angle to pixel varies with where the eye sits in the
+constant**, the effective mapping from angle to pixel varies with where the eye sits in the
 eyebox. A single scalar cannot represent it.
 
 **But our architecture can absorb this, and here is the part worth noticing:** the learned residual
 takes the **eye-corner features as inputs**. Those features encode *where the glasses sit relative
-to the eye* — which is exactly the variable pupil swim depends on. So a residual model on top of
+to the eye*, which is exactly the variable pupil swim depends on. So a residual model on top of
 geometry can in principle learn a **position-dependent** correction that no fixed FOV constant
 could. That is a genuine architectural argument for geometry-plus-residual over either alone, and
 it was not the reason we adopted it.
@@ -152,18 +152,18 @@ been run.** It is the highest-value unrun tool in the repo.
 
 ---
 
-## 5. REGISTRATION ERROR — the budget, and what dominates
+## 5. REGISTRATION ERROR: the budget, and what dominates
 
 From Holloway's end-to-end analysis (already in `LATENCY_AND_TRACKING.md`, restated because it
 frames everything above):
 
-1. **System latency — the largest single term.** Unlike the rest, it scales with **head angular
+1. **System latency, the largest single term.** Unlike the rest, it scales with **head angular
    velocity**, so it is invisible standing still and dominant in motion. We measure 62 ms against a
    modern target of <20 ms.
-2. **Eye position / viewpoint error** — §3. Bounded by ~10 mm, and negligible in the far field.
-3. **Optical distortion** — §4. Currently unmodelled and unmeasured.
-4. **Tracker noise** — measured ~0.003–0.004 frame-units on our dot detection.
-5. **Calibration/parameter error** — what the sample-driven fit addresses.
+2. **Eye position / viewpoint error**, §3. Bounded by ~10 mm, and negligible in the far field.
+3. **Optical distortion**, §4. Currently unmodelled and unmeasured.
+4. **Tracker noise**, measured ~0.003–0.004 frame-units on our dot detection.
+5. **Calibration/parameter error**, what the sample-driven fit addresses.
 
 **Priority follows directly:** latency first (in progress), then measure the display, then worry
 about the rest. Chasing calibration accuracy while (1) and (3) are unaddressed is optimising the
@@ -173,7 +173,7 @@ smallest terms.
 
 ## 6. CONSOLIDATED IMPLICATIONS FOR THIS RIG
 
-**Validated by the literature — keep doing:**
+**Validated by the literature, keep doing:**
 - Tracking a **face-fixed landmark for slippage compensation**. This is the 3D-model approach, and
   2D methods have no answer to slippage. With a zip-tied mount it is essential.
 - **Gaze-independent viewpoint.** Well matched to a far-field application; costs ~nothing at 20 m.
@@ -181,17 +181,17 @@ smallest terms.
   residual has access to eye-position features and can therefore learn pupil-swim-like effects.
 
 **Corrected or newly explained:**
-- The **9.9 vs 10.1 px pupil result is structural**, not a null finding — a gaze-independent
+- The **9.9 vs 10.1 px pupil result is structural**, not a null finding, a gaze-independent
   formulation has no way to use gaze information.
 - **Display FOV is not a constant**, so no single `DISPLAY_FOV_DEG` is right; the residual must
   carry the position-dependent part.
 
 **Now clearly worth doing, in order:**
-1. **Finish latency work** — the dominant term (§5).
-2. **Run `display_calib.py`** — measure real FOV and distortion. It is written, unrun, and feeds
+1. **Finish latency work**, the dominant term (§5).
+2. **Run `display_calib.py`**, measure real FOV and distortion. It is written, unrun, and feeds
    the second-largest unmodelled term.
-3. **Wire the XREAL IMU** — serves latency *and* `WorldTracker`.
-4. **Pupil head on the canthus net** — worth it for **blink/presence detection and geometry ID**,
+3. **Wire the XREAL IMU**, serves latency *and* `WorldTracker`.
+4. **Pupil head on the canthus net**, worth it for **blink/presence detection and geometry ID**,
    explicitly *not* for registration (§3 says why it cannot help there).
 
 **Known-unverified, do not treat as fact:**
@@ -202,20 +202,20 @@ smallest terms.
 
 ## 7. HOW OTHERS FIX THE LIGHTING PROBLEM (researched 2026-08-03)
 
-Dylan's room is lit from one side, so `eyeL` shadows while `eyeR` does not — mean 94 vs 49, and
+Dylan's room is lit from one side, so `eyeL` shadows while `eyeR` does not, mean 94 vs 49, and
 `eyeL` fluctuating 94→39 within minutes. That is an ordinary operating condition, not a fault, and
 the field has three answers. We have implemented the cheapest; the other two are the real ones.
 
-### 7a. WHAT WE DID — normalise the input (free, done, measured)
+### 7a. WHAT WE DID: normalise the input (free, done, measured)
 Median-normalise every frame to the corpus median before inference. **21 px flat across a 3×
 brightness range**, versus 715 px unnormalised at ×0.34. See §4 of `canthus_net.predict`.
 
 **Limit:** it corrects a LEVEL, not a GRADIENT, and cannot invent signal. `eyeL` at median 11/255
 is past saving by any preprocessing.
 
-### 7b. WHAT THE ML LITERATURE DOES — augment the training data
+### 7b. WHAT THE ML LITERATURE DOES: augment the training data
 Every serious CNN eye tracker trains with **photometric augmentation**, because a model trained in
-one lighting band is brittle outside it — exactly our failure. Published recipes
+one lighting band is brittle outside it, exactly our failure. Published recipes
 ([Improving real-time CNN-based pupil detection through domain-specific data augmentation](https://dl.acm.org/doi/10.1145/3314111.3319914),
 ETRA 2019) use:
 
@@ -229,18 +229,18 @@ Related work ([EllSeg](https://arxiv.org/pdf/2007.09600),
 variability data benefit from multiset training, while narrow-band training generalises only within
 its band.
 
-**Directly applicable to us.** Our corpus spans **139–161** — a range of 22 — which is precisely a
+**Directly applicable to us.** Our corpus spans **139–161**, a range of 22, which is precisely a
 narrow band. Retraining with gamma and exposure jitter costs **no new labelling** (augment the
 frames we already have, keep the same 87 clicks) and would harden the model where normalisation
 cannot. **This is the cheapest remaining robustness win and should be done when the model is next
 retrained.**
 
-### 7c. WHAT THE HARDWARE PEOPLE DO — and it is the real answer
+### 7c. WHAT THE HARDWARE PEOPLE DO: and it is the real answer
 **Active NIR illumination plus a matched bandpass filter**, which is universal in commercial
 head-mounted eye tracking. The point is not the pupil: it is that **the eye image stops depending
 on the room at all.**
 
-- **850 nm** is the standard choice — among the brightest IR LED wavelengths, and just outside
+- **850 nm** is the standard choice, among the brightest IR LED wavelengths, and just outside
   visible so it does not distract.
 - A **narrow 850 nm bandpass filter** between lens and sensor blocks visible light, so sunlight,
   lamps and side-lighting simply do not reach the sensor. Transmission ≥85–90%
@@ -251,19 +251,19 @@ on the room at all.**
   ([KUPO Optics guide](https://www.kupooptics.com/en/blogs/optics-playbook/ir-pass-filters-vr-ar-tracking-guide)).
 
 **Why this matters so much for us specifically:** our eye cams are **NoIR** (IR-sensitive, no IR-cut
-filter) — already the right sensor — and macOS gives us **no software exposure control at all**
+filter), already the right sensor, and macOS gives us **no software exposure control at all**
 (AVFoundation rejects every `set()`). So we have neither of the two software levers a normal system
 would use, and the one hardware lever that removes the problem entirely is unfitted. IR LEDs are
 listed in `WIRING.md` and `SAFETY.md` but **none are wired**.
 
 ### 7d. Order of value for this rig
-1. **Photometric augmentation at next retrain** — free, no labelling, hardens the 139–161 band.
-2. **Fill light on the right side** — LED not daylight; getting `eyeL`'s median from 11 to ~40 puts
+1. **Photometric augmentation at next retrain**, free, no labelling, hardens the 139–161 band.
+2. **Fill light on the right side**, LED not daylight; getting `eyeL`'s median from 11 to ~40 puts
    it inside what normalisation already handles.
-3. **850 nm LEDs + bandpass filters** — the actual fix, and the one that makes lighting irrelevant
+3. **850 nm LEDs + bandpass filters**, the actual fix, and the one that makes lighting irrelevant
    forever. Note it also delivers the pupil/glint path the incoming pupil cams need, so the two
    upgrades share the same hardware work.
 
 **Safety note, non-negotiable:** IR is invisible, so the blink reflex does not protect the eye.
-`SAFETY.md` and `WIRING.md` already specify the power-anomaly cutoff and exposure limits — follow
+`SAFETY.md` and `WIRING.md` already specify the power-anomaly cutoff and exposure limits, follow
 them before energising anything near the eye.

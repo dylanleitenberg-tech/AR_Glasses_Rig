@@ -39,7 +39,7 @@ Legend:  🔧 do  ·  ✅ check  ·  ⚠️ safety
    openscad -D 'part="led_bracket"' -o led_bracket.stl  cad/xreal_one_mount.scad   # both brackets, one file
    ```
    (The IMU tower is part of the carrier; the LED brackets print separately and **bolt onto the
-   pupil-holder shelves** — 2 M2 each. `part="bond_pads"` exists for the LATER rigid/bonded phase only.)
+ pupil-holder shelves**, 2 M2 each. `part="bond_pads"` exists for the LATER rigid/bonded phase only.)
    **Print a cheap PLA DRAFT first** (fast settings, supports under the horizontal boom legs),
    dry-fit it on the glasses + your face, and only then print the stiff version.
    ⚠️ **Brow heat (measured on this unit):** the One Pro's brow gets noticeably warm in use , 
@@ -111,7 +111,7 @@ bus-powered cameras + hub, and (b) **a 300 mA PTC polyfuse → the IR branch**.
    strobe pulses off the MCU).
 4. ⚠️ **Rail monitor:** feed the 5 V rail into a XIAO ADC pin through a **2:1 divider** (two
    equal ~10 kΩ → 5 V reads 2.5 V; firmware ×2). **Never wire 5 V straight to the ADC** (3.3 V
-   max — it will fry the pin).
+ max, it will fry the pin).
 5. 🔧 Trunk wire = **24/26 AWG silicone**; component branches = **30 AWG** only.
 6. 🔧 Route the **IR twisted pair separate from the USB data cables**; give the IR branch its
    **own return to the rail's star-ground point** (EM + data-integrity).

@@ -1,4 +1,4 @@
-"""live_features.py — the ONE place the live feature vector is assembled.
+"""live_features.py, the ONE place the live feature vector is assembled.
 
 THE CONTRACT: the vector produced from the real cameras MUST equal
 `Config.feature_names` in order AND normalization, or the validated calibrator /
@@ -7,7 +7,7 @@ frame goes through `assemble_features()`, and the parity self-test below proves 
 reproduces `autosim`'s feature ordering bit-for-bit, for all flag combinations.
 
 Per-camera detections are each a normalized (x, y) in [0, 1] of that camera's
-sensor — exactly what `optics.PinholeCamera.project` returns and what the CV
+sensor, exactly what `optics.PinholeCamera.project` returns and what the CV
 detectors (dot_detector / eye_tracker / pupil_tracker) output (origin top-left,
 y increasing downward).
 
@@ -142,7 +142,7 @@ def selftest(verbose=True):
                   % (use_pupil, use_stereo, cfg.n_features, maxd,
                      "PASS" if passed else "FAIL"))
     if verbose:
-        print("  =>", "CONTRACT OK — live vector matches autosim ordering ✅" if ok
+        print("  =>", "CONTRACT OK, live vector matches autosim ordering ✅" if ok
               else "MISMATCH ⚠️")
     return 0 if ok else 1
 

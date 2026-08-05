@@ -1,4 +1,4 @@
-"""smoothing.py — a velocity-adaptive filter: still when you are still, fast when you move.
+"""smoothing.py, a velocity-adaptive filter: still when you are still, fast when you move.
 
 THE TRADE-OFF THIS EXISTS TO BREAK. A fixed EMA has one knob and two jobs it cannot do at once.
 Both failures were observed on this rig within an hour of each other:
@@ -92,7 +92,7 @@ def selftest():
     def chk(name, cond, detail=""):
         nonlocal ok_all
         ok_all = ok_all and bool(cond)
-        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, ("  — " + detail) if detail else ""))
+        print("  [%s] %s%s" % ("PASS" if cond else "FAIL", name, (", " + detail) if detail else ""))
 
     rng = np.random.default_rng(0)
     fps = 17.9

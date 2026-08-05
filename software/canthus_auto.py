@@ -1,7 +1,7 @@
 """Automated canthus labelling: a PROPOSER guesses, a CORRECTOR corrects, loop until confirmed.
 
 THE PATTERN IS THIS PROJECT'S OWN
-    pixel_sweep.py already does exactly this — a GuessingAI proposes, a UserAI corrects, and a
+    pixel_sweep.py already does exactly this, a GuessingAI proposes, a UserAI corrects, and a
     pixel is only accepted once it comes back right TWICE IN A ROW. main.py's live loop is the
     human version: predict, nudge, approve. This module applies the same idea to labelling, so a
     corpus can be labelled with no hand-clicking.
@@ -16,7 +16,7 @@ WHY A THIRD JUDGE THAT IS NOT LEARNED
     against a corpus median of 0.414). Two models trained on the same corpus can inherit exactly
     that bias and confirm each other into it.
 
-    So every proposal is also checked against the ANATOMICAL PRIOR — where rig.py's optics say an
+    So every proposal is also checked against the ANATOMICAL PRIOR, where rig.py's optics say an
     inner canthus can physically land, given the population face model swept over the whole glasses
     pose grid. That judge is physics, not data; it cannot be argued into a consensus. Measured
     prior (300 faces x 18 poses), converted to REAL SENSOR coordinates:
@@ -28,14 +28,14 @@ WHY A THIRD JUDGE THAT IS NOT LEARNED
     at u~0.15 against a prior floor of 0.778. No confidence threshold caught those. The prior
     rejects them outright.
 
-    MIND THE UNITS — this cost two false alarms. optics.PinholeCamera normalises u AND v by the
+    MIND THE UNITS, this cost two false alarms. optics.PinholeCamera normalises u AND v by the
     same focal, i.e. a SQUARE frame, while a measured label is normalised over the real 800-px
     height. Raw prior v is [0.256, 0.575]; converted it is [0.110, 0.620]. Comparing the raw
     figure against measurements made the rig look like it disagreed with the simulator when
     nothing was wrong with either. build_prior() does the conversion; do not undo it.
 
 CLOSED EYES SKIP, AND THAT ALSO NEEDS CONFIRMING
-    A frame judged closing/closed is skipped rather than labelled — but a single opinion is not
+    A frame judged closing/closed is skipped rather than labelled, but a single opinion is not
     enough to discard data, so the closed verdict must ALSO be confirmed twice before it counts.
     Same standard as an accept: one estimator saying so is a proposal, not a verdict.
 
@@ -43,7 +43,7 @@ BOOTSTRAP
     On the first pass there are no trained models, so proposer and corrector are classical:
     template matching restricted to the prior box, corrected by a pupil-anchored geometric
     estimate (pupil_tracker fits a dark-pupil ellipse and is far more reliable than any corner
-    detector — the iris is big, dark and unambiguous). Once models exist they slot into the same
+    detector, the iris is big, dark and unambiguous). Once models exist they slot into the same
     interfaces and the loop is unchanged.
 
 VERIFIED OUTCOME (2026-08-02): THE BOOTSTRAP CANNOT FIND THE CANTHUS ON ITS OWN.
@@ -88,7 +88,7 @@ CLOSED_AREA_FRAC = 0.35  # pupil area below this fraction of the session's OPEN 
 
 
 # ----------------------------------------------------------------------------------
-#  The anatomical prior — computed from rig.py optics, cached, never learned
+#  The anatomical prior: computed from rig.py optics, cached, never learned
 # ----------------------------------------------------------------------------------
 def build_prior(n_faces=300, seed=31, cache=True, verbose=False):
     """Where can an inner canthus physically land in the eye cam? Swept over the population face
@@ -121,7 +121,7 @@ def build_prior(n_faces=300, seed=31, cache=True, verbose=False):
     # Comparing the two directly is meaningless, and doing so is what produced the phantom
     # "vertical discrepancy" I chased twice: raw prior v [0.256,0.575] vs measured v ~0.61-0.75
     # looked like the rig disagreeing with the simulator, when it was a units error in this
-    # function. u was never affected because the square's width IS the sensor width — which is
+    # function. u was never affected because the square's width IS the sensor width: which is
     # exactly why u agreed (0.809 vs 0.834) while v did not. Same conversion landmark_test.framing
     # already applies.
     lo = 0.5 - 0.5 * (800 / 1280.0)          # 0.1875
@@ -146,7 +146,7 @@ def build_prior(n_faces=300, seed=31, cache=True, verbose=False):
 def in_prior(uv, prior, mirrored, pad=0.06, band=None):
     """Is this position anatomically possible? `mirrored` handles the left camera, whose image is
     the mirror of the geometry the prior was computed in. `pad` allows for the prior being a
-    POPULATION sweep — one real face sits somewhere inside it, not at its centre."""
+    POPULATION sweep, one real face sits somewhere inside it, not at its centre."""
     u = (1.0 - uv[0]) if mirrored else uv[0]
     if not (prior["u_lo"] - pad <= u <= prior["u_hi"] + pad):
         return False
@@ -156,28 +156,28 @@ def in_prior(uv, prior, mirrored, pad=0.06, band=None):
 
 
 # ----------------------------------------------------------------------------------
-#  The MOUNT as a fiducial — a known object, rigidly fixed to the camera
+#  The MOUNT as a fiducial: a known object, rigidly fixed to the camera
 # ----------------------------------------------------------------------------------
 def find_mount(frames, dark_frac=0.45, static_pct=25):
     """Locate the nose-bridge support: the one object in frame whose position we already know.
 
-    Dylan's point, and it is the right one — do not hunt for the landmark by appearance alone when
+    Dylan's point, and it is the right one, do not hunt for the landmark by appearance alone when
     a KNOWN object is in shot. The mount is bolted to the camera, so it projects to the same pixels
     in every frame no matter how the glasses sit on the face. That makes it a built-in fiducial:
     the face moves relative to it, it never moves relative to the sensor.
 
     Found by intersecting DARK with TEMPORALLY STATIC across the corpus. Measured on the real data
-    the separation is unambiguous — temporal std 3.2-3.6 inside the mask against 12.5-13.4
+    the separation is unambiguous, temporal std 3.2-3.6 inside the mask against 12.5-13.4
     everywhere else, i.e. 4x more static than the rest of the image.
 
     WHY THIS MATTERS BEYOND MASKING: the mount occupies the top ~35% of the frame (measured
     v [0.000, 0.335] eyeL, [0.000, 0.365] eyeR), and rig.py's prior places the canthus at
-    v <= 0.620 with median 0.362 — i.e. INSIDE hardware. The simulator does not model the mount
+    v <= 0.620 with median 0.362, i.e. INSIDE hardware. The simulator does not model the mount
     occluding the sensor, so it predicts the landmark into a region that is physically blocked,
     and any search over that box finds the mount instead of the eye. That is the whole reason the
     eyeR labels were landing on the frame.
 
-    Returns dict with the mask, its bbox and `v_floor` — the bottom of the mount, below which the
+    Returns dict with the mask, its bbox and `v_floor`, the bottom of the mount, below which the
     face actually is.
     """
     S = np.asarray(frames, np.float32)
@@ -185,7 +185,7 @@ def find_mount(frames, dark_frac=0.45, static_pct=25):
     sd = S.std(0)
     dark = med < dark_frac * np.median(med)
     # `<=`, not `<`. If a large share of the frame is PERFECTLY static, percentile(sd, 25) is
-    # exactly 0 and a strict `<` matches nothing at all — find_mount returns None precisely when
+    # exactly 0 and a strict `<` matches nothing at all: find_mount returns None precisely when
     # the fiducial is at its most rigid. Real frames have sensor noise everywhere so it never
     # surfaced there; the synthetic selftest hit it immediately.
     static = sd <= np.percentile(sd, static_pct)
@@ -204,7 +204,7 @@ def search_band(mount, margin=0.04):
     """Vertical band the canthus can occupy: BELOW the mount, derived from the rig itself.
 
     Deliberately data-driven rather than taken from rig.py. The simulator's absolute vertical
-    placement does not describe this hardware — it puts the landmark inside the mount — while the
+    placement does not describe this hardware, it puts the landmark inside the mount, while the
     mount's own footprint is measured directly off these frames and cannot be wrong about itself.
     The horizontal prior from rig.py is kept, because u was always consistent with the data
     (0.809/0.886 measured against a prior band of [0.778, 0.891]); it is only v that disagreed."""
@@ -212,7 +212,7 @@ def search_band(mount, margin=0.04):
 
 
 # ----------------------------------------------------------------------------------
-#  Eye state — closing/closed frames are skipped, but the verdict must be confirmed too
+#  Eye state: closing/closed frames are skipped, but the verdict must be confirmed too
 # ----------------------------------------------------------------------------------
 def dark_mass(gray):
     """Fraction of the frame darker than 0.55x its own median. Kept for diagnostics only.
@@ -220,11 +220,11 @@ def dark_mass(gray):
     TWO REJECTED VERSIONS, recorded so neither gets rebuilt:
 
       1. A PERCENTILE threshold (`gray <= percentile(gray, 12)`) selects ~12% of pixels by
-         definition, whatever the image holds — identical for an open eye and a shut one. It
+         definition, whatever the image holds, identical for an open eye and a shut one. It
          measured nothing. The selftest caught it.
       2. Even median-scaled, whole-frame darkness does NOT detect a closed eye here. Measured
          across the real corpus it spans only 0.097-0.16, p95/p5 = 1.3-1.5x, with ZERO frames
-         below any sane threshold — because frame darkness is dominated by the glasses frame and
+         below any sane threshold, because frame darkness is dominated by the glasses frame and
          shadows, not by the iris. Use eye_openness() instead.
     """
     med = float(np.median(gray))
@@ -233,16 +233,16 @@ def dark_mass(gray):
 
 
 def eye_openness(gray, tracker=None):
-    """Pupil ellipse AREA — the signal that actually separates open from closed.
+    """Pupil ellipse AREA, the signal that actually separates open from closed.
 
     The iris/pupil is the one large, unambiguous dark structure in these frames, and it is the
     thing a closing lid removes. Measured across the real corpus it separates cleanly where
     whole-frame darkness does not: median area 0.020 (eyeL) / 0.033 (eyeR) against a 5th
-    percentile of EXACTLY ZERO — i.e. a real population of frames with no detectable pupil at all.
+    percentile of EXACTLY ZERO, i.e. a real population of frames with no detectable pupil at all.
     That is the closed set.
 
     Area, not merely `ok`: a half-closed lid still yields a fit, just a much smaller one, so area
-    catches CLOSING as well as closed — which is what Dylan asked for, since a mid-blink frame is
+    catches CLOSING as well as closed, which is what Dylan asked for, since a mid-blink frame is
     as unusable as a shut one."""
     from pupil_tracker import PupilTracker
     trk = tracker or PupilTracker()
@@ -295,7 +295,7 @@ class TemplateProposer:
 
 def face_fixed_point(window, cv2, band, mount_mask, pupil_uv=None,
                      exclude_r=0.10, max_r=0.30):
-    """ESTIMATOR B — find the canthus by MOTION, sharing nothing with the template.
+    """ESTIMATOR B, find the canthus by MOTION, sharing nothing with the template.
 
     The discriminator is that the inner canthus is FACE-fixed while the pupil is GAZE-driven. Look
     around and your pupil sweeps the frame; your tear duct does not move at all. So within one
@@ -304,12 +304,12 @@ def face_fixed_point(window, cv2, band, mount_mask, pupil_uv=None,
     stationary but featureless.
 
     Measured on the real corpus, among high-texture pixels the temporal sd spans 4.5 at the 25th
-    percentile to 27.5 at the 75th — a 6x separation between face-fixed and gaze-moving structure.
+    percentile to 27.5 at the 75th, a 6x separation between face-fixed and gaze-moving structure.
 
     THIS IS WHY IT COUNTS AS INDEPENDENT of the template estimator. It uses temporal statistics
     over a window; the template uses appearance in a single frame. They share no fitted parameter.
     The previous corrector failed precisely because its offset was fitted from the template's own
-    output, so the two could never disagree and 'confirmation' was vacuous — the labels came out as
+    output, so the two could never disagree and 'confirmation' was vacuous, the labels came out as
     pupil-plus-a-constant, correlating 0.99 with the pupil.
 
     Returns (u, v, score) or None.
@@ -335,13 +335,13 @@ def face_fixed_point(window, cv2, band, mount_mask, pupil_uv=None,
     if pupil_uv is not None:
         # ANNULUS around the eye centre, not merely "not the pupil".
         #
-        # "Textured and stationary" describes many face features — nose-bridge edge, cheek
-        # highlight, brow — so an unbounded argmax picks the STRONGEST of them, not the canthus.
+        # "Textured and stationary" describes many face features: nose-bridge edge, cheek
+        # highlight, brow: so an unbounded argmax picks the STRONGEST of them, not the canthus.
         # Measured: it landed at u=0.825 on a bright nose-bridge edge while the eye sat at u~0.16.
         # The constraint that actually singles out a canthus is that it lies ON THE BOUNDARY OF
         # THE EYE APERTURE: close to the eye but never on the pupil.
         #
-        # The pupil supplies LOCALITY only — where the eye is — never the position itself. That
+        # The pupil supplies LOCALITY only: where the eye is, never the position itself. That
         # distinction is what went wrong before: anchoring the position to the pupil made the
         # label track gaze (correlation 0.99). Here the estimate is still chosen by texture and
         # stationarity within the region; the pupil only says which region.
@@ -358,8 +358,8 @@ def face_fixed_point(window, cv2, band, mount_mask, pupil_uv=None,
 class PupilCorrector:
     """Corrects a proposal using the pupil as an anchor.
 
-    The pupil is the one thing in these frames that is genuinely easy to find — a large dark
-    ellipse — and pupil_tracker already fits it and self-tests to ~1px. The canthus sits at a
+    The pupil is the one thing in these frames that is genuinely easy to find, a large dark
+    ellipse, and pupil_tracker already fits it and self-tests to ~1px. The canthus sits at a
     roughly fixed direction from it for a given camera, so the pupil gives an INDEPENDENT estimate
     that does not depend on corner texture at all. That independence is the point: it fails in
     different ways from template matching, so agreement between them means something.
@@ -376,7 +376,7 @@ class PupilCorrector:
             return None
         if self.offset is None:
             # NO FALLBACK CONSTANT. An earlier version returned the prior's median here, which
-            # made the corrector a CONSTANT FUNCTION — the loop then averaged every proposal onto
+            # made the corrector a CONSTANT FUNCTION: the loop then averaged every proposal onto
             # that constant and "confirmed" 89% of frames with a standard deviation of 0.002.
             # Convergence was guaranteed and carried zero information about the image. A corrector
             # that cannot see the frame must ABSTAIN, not answer.
@@ -393,7 +393,7 @@ def converge(gray, cv2, proposer, corrector, prior, mirrored,
     """propose -> correct -> ... until the corrector confirms `confirm_n` times running.
 
     Returns (uv, rounds, status) where status is 'confirmed' | 'no-consensus' | 'off-prior' |
-    'no-proposal'. A frame that never converges is REJECTED, not accepted with low confidence —
+    'no-proposal'. A frame that never converges is REJECTED, not accepted with low confidence , 
     the whole failure this module exists to prevent was accepting confident garbage.
     """
     uv, peak = proposer(gray, cv2)
@@ -420,7 +420,7 @@ def converge(gray, cv2, proposer, corrector, prior, mirrored,
 def run(corpus=CORPUS, out=AUTO, verbose=True):
     import cv2
     if not os.path.exists(corpus):
-        print("!! no corpus at %s — run canthus_data.py --collect" % corpus)
+        print("!! no corpus at %s, run canthus_data.py --collect" % corpus)
         return 1
     prior = build_prior()
     d = np.load(corpus)
@@ -475,14 +475,14 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
                       % (name, 100 * mo["frac"], mo["v_floor"], mo["static_ratio"],
                          band[rid][0], band[rid][1]))
             else:
-                print("  %s: mount NOT found — falling back to the simulated v prior" % name)
+                print("  %s: mount NOT found, falling back to the simulated v prior" % name)
         print()
 
     # ---- PASS 1: learn the canthus-to-pupil offset, per role ----------------------------
     # The corrector has to be a function OF THE IMAGE. It reads the pupil (reliable: found in
     # 96-100% of real frames) and adds a fixed offset to reach the canthus. That offset is not
     # known a priori, so it is estimated here from the frames where the template proposal is
-    # ANATOMICALLY PLAUSIBLE — the prior does the filtering that confidence could not.
+    # ANATOMICALLY PLAUSIBLE: the prior does the filtering that confidence could not.
     from pupil_tracker import PupilTracker
     trk = PupilTracker()
     offs = {0: [], 1: []}
@@ -509,7 +509,7 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
                 print("  %s: offset (%.3f, %.3f) from %d in-prior frames"
                       % (name, offset[rid][0], offset[rid][1], len(offs[rid])))
             else:
-                print("  %s: NOT ESTABLISHED — only %d in-prior frames (need 20)"
+                print("  %s: NOT ESTABLISHED, only %d in-prior frames (need 20)"
                       % (name, len(offs[rid])))
         print()
 
@@ -534,7 +534,7 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
             win_rows = rows[w0:w0 + WINDOW]
             if len(win_rows) < 8:
                 continue
-            # B: one estimate per window — the canthus is stationary within a seating, so a
+            # B: one estimate per window: the canthus is stationary within a seating, so a
             # per-window answer is the natural granularity for a motion-based estimator.
             # Eye centre = MEDIAN pupil across the window. Averaging over gaze gives the centre
             # of the eye rather than wherever the pupil happened to be in one frame.
@@ -568,7 +568,7 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
                     status.append("disagree")
                     continue
                 uv = ((pA[0] + pB[0]) / 2.0, (pA[1] + pB[1]) / 2.0)
-                # C: the third check — geometry, which neither estimator can talk into agreeing
+                # C: the third check: geometry, which neither estimator can talk into agreeing
                 if not in_prior(uv, prior, mirrored, band=band[rid]):
                     status.append("off-prior")
                     continue
@@ -601,7 +601,7 @@ def run(corpus=CORPUS, out=AUTO, verbose=True):
         if len(idx):
             print("  saved %s" % out)
         else:
-            print("  NOTHING confirmed — do not proceed; the inputs are wrong, not the loop")
+            print("  NOTHING confirmed, do not proceed; the inputs are wrong, not the loop")
     return 0
 
 
@@ -659,7 +659,7 @@ def selftest(verbose=True):
     # Closed detection, on synthetic eyes from pupil_tracker's own generator. Openness is PUPIL
     # AREA, not frame darkness: measured on the real corpus, whole-frame darkness spans only
     # 0.097-0.16 (p95/p5 = 1.3-1.5x) and flags nothing, because frame darkness is dominated by the
-    # glasses frame and shadows. Pupil area separates cleanly — median 0.020-0.033 against a 5th
+    # glasses frame and shadows. Pupil area separates cleanly: median 0.020-0.033 against a 5th
     # percentile of exactly zero.
     from pupil_tracker import synth_eye
     open_eye = synth_eye(W=320, H=200, pupil=(0.5, 0.5), pupil_r=0.11)
@@ -708,7 +708,7 @@ def selftest(verbose=True):
     if verbose:
         for name, x in checks:
             print("  [%s] %s" % ("PASS" if x else "FAIL", name))
-        print("  =>", "CANTHUS AUTO OK — agreement alone never accepts ✅" if ok else "PROBLEM ⚠️")
+        print("  =>", "CANTHUS AUTO OK, agreement alone never accepts ✅" if ok else "PROBLEM ⚠️")
     return 0 if ok else 1
 
 

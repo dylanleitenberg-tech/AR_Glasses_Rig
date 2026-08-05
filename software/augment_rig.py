@@ -1,4 +1,4 @@
-"""augment_rig.py — the "turn people into monkeys" runtime: a world-locked AR overlay on moving
+"""augment_rig.py, the "turn people into monkeys" runtime: a world-locked AR overlay on moving
 people, on top of the calibrated rig.
 
 Per frame it chains everything that was built:
@@ -13,7 +13,7 @@ Per frame it chains everything that was built:
 
 Because each monkey's billboard corners are WORLD points re-projected through the current head
 pose + the calibrated display map, the monkeys stay glued to the people as BOTH the people and the
-wearer's head move — the whole point.
+wearer's head move, the whole point.
 
 PRECONDITION: the glasses must already be CALIBRATED (the human-in-the-loop loop has trained the
 pixel map, and connect.py has mapped the cameras). This runtime consumes that calibration; it does
@@ -69,7 +69,7 @@ class MonkeyAugmenter:
     def apply_quality(self, settings):
         """Adopt a perf.QualityController level. `render_scale` shrinks the compositing buffer
         (cost scales with its square); `detect_stride` is read by the caller, which owns the
-        detector — PeopleTracker already dead-reckons through gaps, so skipping detections
+        detector, PeopleTracker already dead-reckons through gaps, so skipping detections
         degrades latency-to-new-person, not track continuity."""
         self.render_scale = float(settings.get("render_scale", 1.0))
         self.detect_stride = max(1, int(settings.get("detect_stride", 1)))
@@ -121,16 +121,16 @@ def run(fps=100, use_imu=False, verbose=True):
 
     role_index = load_map()
     if not role_index:
-        print("no role map — run:  python3 connect.py --auto"); return 1
+        print("no role map, run:  python3 connect.py --auto"); return 1
     if validate_map(role_index):
-        print("role map invalid — re-run connect.py"); return 1
+        print("role map invalid, re-run connect.py"); return 1
     cfg = Config()
 
     # load the trained calibrator (the glasses must already be calibrated)
     ds = Dataset(cfg.db_path, cfg.feature_names)
     X, Y, Wt = ds.load()
     if len(X) < cfg.min_samples_for_model:
-        print("glasses not calibrated (%d samples) — run the calibration loop first "
+        print("glasses not calibrated (%d samples), run the calibration loop first "
               "(main.py --calibrate-corners, then collect samples)." % len(X))
         return 1
     cal = Calibrator(cfg.n_features, degree=cfg.poly_degree,
@@ -154,12 +154,12 @@ def run(fps=100, use_imu=False, verbose=True):
             from imu_serial import GyroIntegrator
             imu = GyroIntegrator(port="/dev/tty.usbmodem*").start()
         except Exception as e:
-            print("IMU unavailable (%s) — vision-only" % e)
+            print("IMU unavailable (%s), vision-only" % e)
 
     win = "monkey-overlay"                       # black = transparent on the see-through display
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     cv2.setWindowProperty(win, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
-    print("MONKEYS LIVE — q to stop")
+    print("MONKEYS LIVE, q to stop")
     try:
         while True:
             fs = bank.sync_frame()
@@ -262,7 +262,7 @@ def selftest(verbose=True):
         for name, v in checks:
             print("  [%s] %s" % ("PASS" if v else "FAIL", name))
         print("  final:", aug.tele.line())
-        print("  =>", "AUGMENT RIG OK — moving people become world-locked monkeys ✅"
+        print("  =>", "AUGMENT RIG OK, moving people become world-locked monkeys ✅"
               if ok else "PROBLEM ⚠️")
         print("  --run needs: calibrated glasses (trained calibrator) + connect.py map + cameras.")
         print("  swap MonkeyAvatar texture / detector for realism; the lock is calibration-driven.")

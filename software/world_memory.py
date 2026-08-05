@@ -1,4 +1,4 @@
-"""world_memory.py — a few seconds of remembered world geometry, densely meshed.
+"""world_memory.py, a few seconds of remembered world geometry, densely meshed.
 
 `world_mesh.py` reconstructs only what the cameras can see RIGHT NOW: a Delaunay surface over
 the sparse ORB features visible in the current frame. Anything that leaves view stops existing,
@@ -6,24 +6,24 @@ so content anchored to it pops out the instant you glance away or someone walks 
 
 This module keeps a SHORT ROLLING MEMORY of the world instead:
 
-  * DENSE, not sparse — `stereo_depth` runs cv2's StereoSGBM over the world pair for a per-pixel
+ * DENSE, not sparse, `stereo_depth` runs cv2's StereoSGBM over the world pair for a per-pixel
     depth map, and frames are fused into a TSDF volume (Open3D, MIT). Truncated-signed-distance
     fusion is the standard best-in-class surface reconstruction: it averages many noisy depth
     maps into one smooth implicit surface and meshes it with marching cubes. Compared with
     Delaunay-over-features it fills gaps, suppresses per-frame noise, and yields real normals.
 
-  * IT FORGETS — the volume is rebuilt from a ring buffer holding only the last `horizon_s`
+ * IT FORGETS, the volume is rebuilt from a ring buffer holding only the last `horizon_s`
     seconds of depth frames. That is deliberate, and it is the honest horizon for THIS rig:
     tracking here is dead-reckoned stereo VO with no loop closure and no relocalization, so
     accumulated pose drift makes anything older than a few seconds actively wrong. A short
-    memory is also what removes stale geometry — a person who walks away ages out instead of
+    memory is also what removes stale geometry, a person who walks away ages out instead of
     being fused permanently into the wall behind them.
 
 What the memory buys: surfaces persist through brief occlusion, feature dropout and head turns,
 so a `content_anchor.SurfaceAnchor` stays put instead of flickering.
 
 Open3D is an OPTIONAL fast path. Without it the module still runs, falling back to the sparse
-numpy raycast in `content_anchor` — so the release gate stays green on a machine that lacks it.
+numpy raycast in `content_anchor`, so the release gate stays green on a machine that lacks it.
 
     python3 world_memory.py --selftest
 """
@@ -50,7 +50,7 @@ def stereo_depth(frameL, frameR, f=DEFAULT_F, B=DEFAULT_B, num_disp=96, block=7)
     """Rectified world stereo pair -> per-pixel depth in MILLIMETRES (0 = no measurement).
 
     Semi-global block matching: a good default that needs no training and no GPU. Depth is
-    f*B/disparity, the same relation `world_mesh.triangulate_stereo` uses on sparse features —
+    f*B/disparity, the same relation `world_mesh.triangulate_stereo` uses on sparse features , 
     this just does it everywhere instead of at ORB corners.
     """
     import cv2
@@ -178,7 +178,7 @@ class WorldMemory:
             return
         if not HAVE_OPEN3D:
             # FALLBACK (no Open3D, no TSDF): mesh each remembered frame's depth grid in world
-            # space and keep their UNION. Unfused — no averaging or smoothing — so it is noisier
+            # space and keep their UNION. Unfused: no averaging or smoothing, so it is noisier
             # than the TSDF path, but the memory semantics are identical: a region dropped from
             # the newest frame is still carried by an older one, and frames age out.
             V, F = [], []
@@ -259,7 +259,7 @@ class WorldMemory:
 
 
 # ==========================================================================
-#  Self-test — headless, synthetic depth, no cameras
+#  Self-test: headless, synthetic depth, no cameras
 # ==========================================================================
 def _synth_depth(h, w, z_mm, hole=None):
     """A fronto-parallel wall at z_mm, optionally with a rectangular dropout (occluder/no-data)."""
