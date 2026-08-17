@@ -11,8 +11,7 @@ that checks all of it.
 
 I was able to achieve results with 4 cams so 6 may not be necesary if you lack the 
 compute to run a 6 cam model.
-I also achived overlay on a star, meaning rotational and sizing estimates, 
-but my computer fried and I lost the data. :(
+
 ## Build overview and results
 
 The rig is a 6-camera clip-on carrier for the XREAL One Pro AR glasses:
@@ -35,7 +34,7 @@ go.
 
 Results so far, from a physics simulation built to be pessimistic about human error:
 
-- With a naive calibration interface, deployed accuracy is about 9.8 pixels. Most of that
+- With a naive calibration interface, deployed accuracy is about 13 pixels. Most of that
   error is the human in the loop, not the optics.
 - With the interface I built instead (a vernier alignment task plus a per-user offset
   stage), simulated deployed accuracy is about 4.3 pixels as the user perceives it, on a
@@ -50,6 +49,12 @@ Results so far, from a physics simulation built to be pessimistic about human er
   shortcuts (bias-invariant fingerprints, richer per-user correction models, direct
   geometry refinement on user labels) because the simulation showed each one quietly
   overfits. The failures shaped the design as much as the successes.
+
+  I also achieved overlay over a star. This required determining the star's
+  orientation and size. this is the closest the project comes to my end goal
+  of real world object overlay. Sadly, my computer shut down indefinitely and
+  the star overlay was lost. When my computer is repaired, I plan to rebuild
+  and add that to the repo.
 
 ![The rig](media/session-2026-08-04/rig_complete_on_glasses.jpg)
 
