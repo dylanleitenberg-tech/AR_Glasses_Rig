@@ -9,8 +9,10 @@ I designed and built this from scratch: the physics simulation, the calibration 
 3D printed camera mount, the electronics and safety design, and the verification tooling
 that checks all of it. 
 
-I was able to achieve results with 4 cams so 6 may not be necesary if you lack the 
-compute to run a 6 cam model.
+I was able to achieve results with 4 cams so 6 may not be necessary if you lack the 
+compute to run a 6-cam model. I mostly did this because the 6th cam arrived
+weeks later. Also, my power hub struggled on four so unless you have some heavy-duty hardware, 
+4 may be the way to go.
 
 ## Build overview and results
 
