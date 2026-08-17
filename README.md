@@ -40,8 +40,11 @@ Results so far, from a physics simulation built to be pessimistic about human er
   stage), simulated deployed accuracy is about 4.3 pixels as the user perceives it, on a
   1080p display per eye.
 - The same pipeline with ideal inputs reaches 0.89 pixels, so the hardware and math
-  support sub-pixel registration. Closing that gap requires a multi-distance calibration
-  protocol that only works on real hardware. That is the next phase.
+  support sub-pixel registration. Closing that gap requires a multi-distance
+  calibration protocol that only works on real hardware, which is now implemented:
+  the best hardware run to date came in under 10 pixels of measured overlay error,
+  down from the 13 a naive interface predicts. That is one run, not a characterized
+  average and tightening it toward the simulated 4.3 is the current work.
 - Just as important are the negative results. I tested and rejected several appealing
   shortcuts (bias-invariant fingerprints, richer per-user correction models, direct
   geometry refinement on user labels) because the simulation showed each one quietly
@@ -77,7 +80,7 @@ optics of the display, and where the glasses currently sit relative to your eyeb
 the killer. Shift the glasses 2 mm and the same pixel lines up with a different point in
 the world. This is why one-time AR calibration never holds.
 
-The key idea, which came out of an early design discussion with our robotics coach Kim,
+The key idea, which came out of an early design discussion with our robotics coach Chiem,
 is to measure the glasses-on-face pose continuously by watching the corners of your
 eyes. The inner canthus, the tear duct corner, is a stable facial landmark fixed to the
 skull rather than to the eyeball, so its position in a glasses-mounted camera tells you
