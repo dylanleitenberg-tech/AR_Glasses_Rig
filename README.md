@@ -229,7 +229,7 @@ filter, it is a different category of solution, and no amount of tuning would ha
 
 ## Acknowledgments
 
-The eye-corner measurement idea came from our robotics coach, Kim. Much of the early
+The eye-corner measurement idea came from our robotics coach, Chiem. Much of the early
 speculation and problem-solving came out of design discussions with him.
 
 I built this with AI assistance, which is why several commits carry a co-author trailer.
