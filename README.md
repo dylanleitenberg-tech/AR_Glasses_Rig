@@ -50,11 +50,11 @@ Results so far, from a physics simulation built to be pessimistic about human er
   geometry refinement on user labels) because the simulation showed each one quietly
   overfits. The failures shaped the design as much as the successes.
 
-  I also achieved overlay over a star. This required determining the star's
-  orientation and size. this is the closest the project comes to my end goal
-  of real world object overlay. Sadly, my computer shut down indefinitely and
-  the star overlay was lost. When my computer is repaired, I plan to rebuild
-  and add that to the repo.
+ I also got the rig to draw an outline around a star shape on my wall, matching its 
+ orientation and size, and the outline held on the shape as I moved my head. That is the closest
+ the project has come to my end goal of real-world object overlay: not placing a marker at a point, 
+ but tracing the boundary of an actual object and keeping it there under motion. My computer then 
+ failed and that code was lost. I plan to rebuild it once the machine is repaired.
 
 ![The rig](media/session-2026-08-04/rig_complete_on_glasses.jpg)
 
