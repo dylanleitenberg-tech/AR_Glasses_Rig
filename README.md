@@ -11,7 +11,8 @@ that checks all of it.
 
 I was able to achieve results with 4 cams so 6 may not be necesary if you lack the 
 compute to run a 6 cam model.
-
+I also achived overlay on a star, meaning rotational and sizing estimates, 
+but my computer fried and I lost the data. :(
 ## Build overview and results
 
 The rig is a 6-camera clip-on carrier for the XREAL One Pro AR glasses:
