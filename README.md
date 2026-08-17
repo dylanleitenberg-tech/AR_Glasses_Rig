@@ -7,7 +7,10 @@ a pixel meant to land on a real object actually lands on it.
 
 I designed and built this from scratch: the physics simulation, the calibration math, the
 3D printed camera mount, the electronics and safety design, and the verification tooling
-that checks all of it.
+that checks all of it. 
+
+I was able to achieve results with 4 cams so 6 may not be necesary if you lack the 
+compute to run a 6 cam model.
 
 ## Build overview and results
 
@@ -31,7 +34,7 @@ go.
 
 Results so far, from a physics simulation built to be pessimistic about human error:
 
-- With a naive calibration interface, deployed accuracy is about 13 pixels. Most of that
+- With a naive calibration interface, deployed accuracy is about 9.8 pixels. Most of that
   error is the human in the loop, not the optics.
 - With the interface I built instead (a vernier alignment task plus a per-user offset
   stage), simulated deployed accuracy is about 4.3 pixels as the user perceives it, on a
