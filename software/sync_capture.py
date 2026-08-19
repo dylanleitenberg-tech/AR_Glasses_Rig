@@ -37,22 +37,42 @@ import numpy as np
 #  Backend seam: real cv2 cameras OR an injected fake (selftest / sim).
 # --------------------------------------------------------------------------
 def open_cv2_capture(index, width, height, fps, mjpg=True):
-    """Open a real UVC camera with the Mac-friendly backend and low-latency settings."""
+    """Open a real UVC camera with the Mac-friendly backend and low-latency settings.
+
+    THE MODE IS CHOSEN AT OPEN, NOT AFTER (2026-08-18, Apple-Silicon Mac). On current macOS
+    the AVFoundation backend silently IGNORES post-open cap.set() for width/height/fps: the
+    request no-ops and the driver keeps its default mode. Measured on this rig: the AR0234s
+    stayed at 1920x1200 uncompressed at ~1 fps and the rest of the bank starved to zero,
+    while the same cameras opened WITH the mode as VideoCapture open-params negotiate an
+    MJPEG-backed format and deliver 30-60 fps. CAP_PROP_FOURCC is rejected as an open param
+    ("unsupported parameter"), and is not needed: AVFoundation picks MJPEG itself when the
+    requested mode requires it. The cascade below keeps the legacy set() path as a fallback
+    for backends where open-params are unsupported.
+    """
     import cv2
     backend = getattr(cv2, "CAP_AVFOUNDATION", 0)
-    cap = cv2.VideoCapture(index, backend)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(index)
-    if not cap.isOpened():
-        raise RuntimeError("could not open camera index %d" % index)
-    if mjpg:                                    # MJPG fits 6 global-shutter streams in USB bandwidth
-        try:
-            cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        except Exception:
-            pass
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-    cap.set(cv2.CAP_PROP_FPS, fps)
+    cap = cv2.VideoCapture(index, backend,
+                           [cv2.CAP_PROP_FRAME_WIDTH, int(width),
+                            cv2.CAP_PROP_FRAME_HEIGHT, int(height),
+                            cv2.CAP_PROP_FPS, int(fps)])
+    if not cap.isOpened():                      # fps combo unsupported -> let the driver pick
+        cap = cv2.VideoCapture(index, backend,
+                               [cv2.CAP_PROP_FRAME_WIDTH, int(width),
+                                cv2.CAP_PROP_FRAME_HEIGHT, int(height)])
+    if not cap.isOpened():                      # legacy path (non-AVFoundation backends)
+        cap = cv2.VideoCapture(index, backend)
+        if not cap.isOpened():
+            cap = cv2.VideoCapture(index)
+        if not cap.isOpened():
+            raise RuntimeError("could not open camera index %d" % index)
+        if mjpg:                                # MJPG fits 6 global-shutter streams in USB bandwidth
+            try:
+                cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+            except Exception:
+                pass
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+        cap.set(cv2.CAP_PROP_FPS, fps)
     try:
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)     # so grab() advances to the newest frame
     except Exception:

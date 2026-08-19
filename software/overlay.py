@@ -92,7 +92,8 @@ class Overlay:
     def render(self, red_norm: Tuple[float, float],
                green_norm: Optional[Tuple[float, float]] = None,
                hud: Optional[str] = None,
-               banner: Optional[str] = None) -> int:
+               banner: Optional[str] = None,
+               ring_px: Optional[int] = None) -> int:
         canvas = np.zeros((self.h, self.w, 3), dtype=np.uint8)
         if green_norm is not None:                     # sim-only truth target
             gx, gy = int(green_norm[0] * self.w), int(green_norm[1] * self.h)
@@ -105,14 +106,25 @@ class Overlay:
             self.draw_banner(canvas, banner)
         else:
             rx, ry = int(red_norm[0] * self.w), int(red_norm[1] * self.h)
-            cv2.circle(canvas, (rx, ry), self.dot_radius, (0, 0, 255), -1)
+            if ring_px is not None and ring_px > 4:
+                # SIZE-MATCHED RING (2026-08-18): the wall dot is large, the human aligns the
+                # marker to its EDGE rather than guessing its centre -- centring a small dot
+                # inside a big blob is ambiguous by roughly the blob radius, which was
+                # inflating the measured overlay error. Ring + centre point = vernier-ish.
+                cv2.circle(canvas, (rx, ry), int(ring_px), (0, 0, 255), 2, cv2.LINE_AA)
+                cv2.circle(canvas, (rx, ry), 7, (0, 0, 255), -1)
+            else:
+                cv2.circle(canvas, (rx, ry), self.dot_radius, (0, 0, 255), -1)
         if hud:
             for i, line in enumerate(hud.split("\n")):
                 cv2.putText(canvas, line, (16, 28 + 26 * i),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (180, 180, 180), 1,
                             cv2.LINE_AA)
         cv2.imshow(self.window, canvas)
-        return cv2.waitKey(1) & 0xFF
+        # waitKeyEx, NOT waitKey & 0xFF: the mask destroys arrow-key codes (macOS sends
+        # 63232-63235), and the caller wants arrows for extra-fine nudging (2026-08-18).
+        # ASCII keys (WASD/ENTER/ESC/q) come through identically.
+        return cv2.waitKeyEx(1)
 
     def close(self) -> None:
         cv2.destroyWindow(self.window)

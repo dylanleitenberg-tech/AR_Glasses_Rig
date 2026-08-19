@@ -23,17 +23,29 @@ class DotDetector:
     # between "darkest round thing in the room" and "the target".
     min_surround = 90.0      # median grey of the ring around the blob (0-255)
     min_contrast = 0.35      # (surround - dot) / surround
+    # A dot on paper NEVER touches the frame edge -- its page margin encloses it. Furniture,
+    # door frames and frame-corner artefacts routinely do (2026-08-18: a corner blob scored
+    # 64.6 against the real dot's 5 and won the JOINT pick 263/263 frames; 2026-08-04 fault
+    # #4 was the same class at u=0.987). Class-level gate, not a tuned threshold.
+    border_frac = 0.02       # candidates whose bbox comes this close to any edge are rejected
 
     def detect(self, frame) -> Tuple[Optional[Tuple[float, float]], object]:
         h, w = frame.shape[:2]
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (5, 5), 0)
-        # dot is darker than the page -> invert so the dot is bright, then Otsu
-        inv = cv2.bitwise_not(gray)
-        _, mask = cv2.threshold(inv, 0, 255,
-                                cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # dot is darker than the page -> LOCALLY-dark threshold. Global Otsu broke on the
+        # rig's own stereo pair (2026-08-18): the two cameras auto-expose differently, and on
+        # the brighter frame Otsu merged ceiling+laptop+target into one 1.8 Mpx blob. The
+        # target's physics is LOCAL contrast (dark ink on the white page around it), which is
+        # exactly what an adaptive threshold measures, and it is exposure-invariant.
+        mask = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                     cv2.THRESH_BINARY_INV, 75, 8)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN,
                                 np.ones((3, 3), np.uint8))
+        # CLOSE bridges thin white gaps so a segmented target (a glyph with white slits,
+        # 2026-08-18) contours as ONE blob; the circularity/surround gates still apply to
+        # the fused shape, so this does not admit new clutter classes.
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_SIMPLE)
         max_area = self.max_area_frac * w * h
@@ -63,6 +75,9 @@ class DotDetector:
             # itself rather than a tuned threshold, and it rejects the whole class of distractor
             # rather than one instance of it.
             x, y, bw, bh = cv2.boundingRect(c)
+            bx = int(self.border_frac * w); by = int(self.border_frac * h)
+            if x <= bx or y <= by or x + bw >= w - bx or y + bh >= h - by:
+                continue                     # touches the frame border -> not on a page
             pad = int(max(bw, bh) * 1.6) + 4
             x0, y0 = max(0, x - pad), max(0, y - pad)
             x1, y1 = min(w, x + bw + pad), min(h, y + bh + pad)
@@ -70,8 +85,12 @@ class DotDetector:
             if patch.size == 0:
                 continue
             inner = gray[y:y + bh, x:x + bw]
+            inner_mask = mask[y:y + bh, x:x + bw] > 0
             surround = float(np.median(patch))
-            dot_val = float(np.median(inner)) if inner.size else 255.0
+            # the INK's darkness, not the rect's: a glyph with internal white segments is
+            # still a dark target; the rect median called it grey and rejected it
+            dot_val = (float(np.median(inner[inner_mask])) if inner_mask.any()
+                       else (float(np.median(inner)) if inner.size else 255.0))
             if surround < self.min_surround:          # not on a bright page -> not our target
                 continue
             contrast = (surround - dot_val) / max(surround, 1.0)
@@ -102,9 +121,10 @@ class DotDetector:
         """
         h, w = frame.shape[:2]
         gray = cv2.GaussianBlur(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), (5, 5), 0)
-        inv = cv2.bitwise_not(gray)
-        _, mask = cv2.threshold(inv, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        mask = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                     cv2.THRESH_BINARY_INV, 75, 8)   # local, exposure-invariant (see detect)
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         out = []
         max_area = self.max_area_frac * w * h
@@ -119,14 +139,19 @@ class DotDetector:
             if circ < self.min_circularity:
                 continue
             x, y, bw, bh = cv2.boundingRect(c)
+            bx = int(self.border_frac * w); by = int(self.border_frac * h)
+            if x <= bx or y <= by or x + bw >= w - bx or y + bh >= h - by:
+                continue                     # touches the frame border -> not on a page
             pad = int(max(bw, bh) * 1.6) + 4
             patch = gray[max(0, y - pad):min(h, y + bh + pad),
                          max(0, x - pad):min(w, x + bw + pad)]
             inner = gray[y:y + bh, x:x + bw]
             if patch.size == 0:
                 continue
+            inner_mask = mask[y:y + bh, x:x + bw] > 0
             surround = float(np.median(patch))
-            dot_val = float(np.median(inner)) if inner.size else 255.0
+            dot_val = (float(np.median(inner[inner_mask])) if inner_mask.any()
+                       else (float(np.median(inner)) if inner.size else 255.0))
             if surround < self.min_surround:
                 continue
             contrast = (surround - dot_val) / max(surround, 1.0)
@@ -136,7 +161,8 @@ class DotDetector:
             if M["m00"] == 0:
                 continue
             out.append((circ * np.sqrt(area) * contrast,
-                        (M["m10"] / M["m00"]) / w, (M["m01"] / M["m00"]) / h))
+                        (M["m10"] / M["m00"]) / w, (M["m01"] / M["m00"]) / h,
+                        float(np.sqrt(area / np.pi)) / w))
         out.sort(reverse=True)
         return out
 
@@ -168,8 +194,9 @@ class DotDetector:
         """
         candL, candR = self.candidates(frameL), self.candidates(frameR)
         best, best_score = None, -1.0
-        for sL, uL, vL in candL[:12]:
-            for sR, uR, vR in candR[:12]:
+        self.last_radii = None       # (rL, rR) normalized blob radii of the winning pair
+        for sL, uL, vL, rL in candL[:12]:
+            for sR, uR, vR, rR in candR[:12]:
                 row = abs(vL - vR)
                 if row > self.max_row_offset:
                     continue
@@ -180,4 +207,5 @@ class DotDetector:
                 score = (sL + sR) * (1.0 - row / self.max_row_offset)
                 if score > best_score:
                     best_score, best = score, ((uL, vL), (uR, vR))
+                    self.last_radii = (rL, rR)
         return best if best else (None, None)

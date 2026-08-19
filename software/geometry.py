@@ -92,6 +92,21 @@ import rig
 # from 48.20 to 49.00, deep inside the interval, so contamination did not bias it. But do not quote
 # 48.25 as if it were nailed down, and RE-FIT IT AFTER A RUN THAT SPANS THE FIELD.
 DISPLAY_FOV_DEG = 48.25
+# SESSION OVERRIDE (2026-08-18): the One Pro renders the desktop as a VIRTUAL SCREEN whose
+# angular size depends on the glasses' screen-size/distance setting, and in follow mode there
+# is no hardware stabiliser to hide a wrong constant. Measured on 4 field-spanning samples the
+# effective span was ~21.5 deg against the assumed 48.25 -- a 2.3x counter-motion undershoot
+# ("it is under adjusting"). Until the constant is re-fitted on a full run at a KNOWN screen
+# setting, AR_DISPLAY_FOV lets a session run with its measured value without editing this file.
+import os as _os
+if _os.environ.get("AR_DISPLAY_FOV"):
+    DISPLAY_FOV_DEG = float(_os.environ["AR_DISPLAY_FOV"])
+# Where the virtual screen's CENTRE actually sits, in normalised display units relative to the
+# forward-axis prediction. (0, 0) = the historical assumption. See geometric_pixel_raw.
+DISPLAY_CENTER_OFF = np.zeros(2)
+if _os.environ.get("AR_DISPLAY_OFF"):
+    DISPLAY_CENTER_OFF = np.array([float(s) for s in
+                                   _os.environ["AR_DISPLAY_OFF"].split(",")], float)
 
 # Lateral and vertical offset from the EYE to the world camera it is paired with, in mm. The eye
 # sits at rig.T0 (0, 0, -28.5) and the world cams at (+-WC_X, WC_UP, WC_FWD).
@@ -336,7 +351,14 @@ def geometric_pixel_raw(features, depth_mm=None, display_fov_deg=DISPLAY_FOV_DEG
     px = pixel_for_direction(d, display_fov_deg)
     if not np.all(np.isfinite(px)):
         return np.array([0.5, 0.5])
-    return px
+    # The virtual screen is not centred on the forward axis: the One Pro draws the desktop as
+    # a virtual screen whose centre sits where the GLASSES put it, and on 2026-08-18 the
+    # measured centre was ~half a screen LOW in v. Without this term the offscreen gate
+    # declares reachable targets out of range whenever they sit toward the top of the field
+    # ("if I look through the top of the glasses it thinks it is out of range"). Session
+    # override AR_DISPLAY_OFF="du,dv" pairs with AR_DISPLAY_FOV; both re-fitted per screen
+    # setting until the constant is pinned on a full run.
+    return px + DISPLAY_CENTER_OFF
 
 
 def _depth_from_pair(x):

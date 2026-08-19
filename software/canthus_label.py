@@ -35,7 +35,10 @@ DATA = os.path.join(os.path.dirname(HERE), "data")
 CORPUS = os.path.join(DATA, "canthus_corpus.npz")
 SEED = os.path.join(DATA, "canthus_seed.npz")
 
-ZOOM = 3           # display scale: 320x200 -> 960x600, enough to click a canthus precisely
+ZOOM = 1           # corpus frames are stored at FULL 1280x800 since 2026-08-18; x1 already
+                   # fills the laptop screen and clicks land at native-pixel precision.
+                   # (The old x3 was for the 320x200-era corpus and would open a 3840x2400
+                   # window with most of the frame off-screen.)
 
 
 def sample_order(n_total, n_want, seed=20260802):
@@ -511,8 +514,11 @@ def selftest(verbose=True):
                    len(sample_order(50, 300)) == 50))
 
     # Click -> normalised coordinate maths (the mapping the mouse callback performs).
+    # The click position is DERIVED from the zoom (display centre = Z*W/2), not hardcoded:
+    # the old fixture baked in zoom-3-era numbers and failed the moment ZOOM changed, which
+    # is a fixture bug, not a mapping bug.
     W, H, Z = 320, 200, ZOOM
-    u, v = (480 / float(Z * W), 300 / float(Z * H))
+    u, v = ((Z * W / 2) / float(Z * W), (Z * H / 2) / float(Z * H))
     checks.append(("click at display centre maps to u=0.5 v=0.5 (zoom %dx)" % Z,
                    abs(u - 0.5) < 1e-6 and abs(v - 0.5) < 1e-6))
 

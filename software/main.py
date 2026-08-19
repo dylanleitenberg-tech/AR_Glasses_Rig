@@ -245,13 +245,46 @@ def run_loop(cfg: Config, simulate: bool) -> int:
         from cameras import Camera
         from dot_detector import DotDetector
         from eye_tracker import EyeCornerTracker
-        world_L = Camera(cfg.world_cam_left, cfg.cam_width, cfg.cam_height, name="worldL")
-        world_R = Camera(cfg.world_cam_right, cfg.cam_width, cfg.cam_height, name="worldR")
-        eyeL_cam = Camera(cfg.eye_cam_left, cfg.cam_width, cfg.cam_height, name="eyeL")
-        eyeR_cam = Camera(cfg.eye_cam_right, cfg.cam_width, cfg.cam_height, name="eyeR")
-        cams = [world_L, world_R, eyeL_cam, eyeR_cam]
+        _rot = bool(getattr(cfg, "world_rot180", False))
+        world_L = Camera(cfg.world_cam_left, cfg.cam_width, cfg.cam_height, name="worldL",
+                         rot180=_rot)
+        world_R = Camera(cfg.world_cam_right, cfg.cam_width, cfg.cam_height, name="worldR",
+                         rot180=_rot)
+        if _rot:
+            print("WORLD FRAMES ROTATED 180 (--world-rot180): cameras are mounted inverted")
         detector = DotDetector()
-        if getattr(cfg, "use_model", False):
+        if getattr(cfg, "no_eye_cams", False):
+            # WORLDS-ONLY: the eye path is stubbed at the SEAM, not special-cased downstream.
+            # _features_from needs a non-None "frame" and a tracker returning ((u, v), score);
+            # the stubs satisfy exactly that contract with the NOMINAL canthus positions, which
+            # under EYE_SHIFT_GAIN = 0.0 are numerically identical to a perfectly-seated rig.
+            # The HUD and the startup line both say so: a run in this mode must never be read
+            # later as having measured the glasses' seat.
+            from geometry import NOMINAL_CANTH_UV_L, NOMINAL_CANTH_UV_R
+
+            class _NominalEyeCam:
+                def read(self): return "nominal"          # non-None sentinel
+                def snapshot(self): return "nominal"
+                def release(self): pass
+
+            class _NominalCanthus:
+                def __init__(self, uv): self.uv = (float(uv[0]), float(uv[1]))
+                def track(self, frame): return self.uv, 1.0
+
+            eyeL_cam = _NominalEyeCam()
+            eyeR_cam = _NominalEyeCam()
+            trk_L = _NominalCanthus(NOMINAL_CANTH_UV_L)
+            trk_R = _NominalCanthus(NOMINAL_CANTH_UV_R)
+            cams = [world_L, world_R]
+            print("EYE CAMS: NOT OPENED (--no-eye-cams), eye features pinned to nominal; "
+                  "the glasses' seat is NOT being measured this run")
+        else:
+            eyeL_cam = Camera(cfg.eye_cam_left, cfg.cam_width, cfg.cam_height, name="eyeL")
+            eyeR_cam = Camera(cfg.eye_cam_right, cfg.cam_width, cfg.cam_height, name="eyeR")
+            cams = [world_L, world_R, eyeL_cam, eyeR_cam]
+        if getattr(cfg, "no_eye_cams", False):
+            pass                                          # trackers already stubbed above
+        elif getattr(cfg, "use_model", False):
             # LEARNED landmark instead of a hand-drawn template. The template had to be
             # re-captured every session and localised whatever matched rather than a canthus;
             # the model is trained once from human seed points and carries its own plausibility
@@ -284,6 +317,13 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                           cfg.quit_button)
 
     nudge = np.zeros(2)
+    _quit_arm = [0.0]              # double-press quit guard (see the act.quit branch)
+    _quit_hint = [0.0]             # when set, the HUD shows "PRESS Q AGAIN TO QUIT"
+    _dbg_log = None                # per-frame tracking log: AR_DEBUG_LOG=<path> enables it
+    import os as _os
+    if _os.environ.get("AR_DEBUG_LOG"):
+        _dbg_log = open(_os.environ["AR_DEBUG_LOG"], "w")
+        _dbg_log.write("# t wLu wLv wRu wRv pred_u pred_v shown_u shown_v\n")
     last_features = np.full(cfg.n_features, 0.5)
     smooth_feat = None             # EMA of live eye features (real mode)
     _last_key = [None]             # most recent raw cv2 keycode, surfaced on the HUD
@@ -377,10 +417,22 @@ def run_loop(cfg: Config, simulate: bool) -> int:
             # move based on my body's vibration". Measured on intermittent motion, the One Euro
             # filter has LOWER jitter than either (0.0015 vs 0.0023/0.0037) because it smooths hard
             # while you are still and opens up as soon as you actually turn. See smoothing.py.
-            pred_s = pred_filt(predicted, time.time())
+            if getattr(cfg, "raw_pred", False):
+                # RAW MODE (2026-08-18): geometry straight through, no LatencyCompensator.
+                # Without the IMU the compensator's velocity source is image motion, and on a
+                # worn log it AMPLIFIED detector steps 1.77x at p95 -- extrapolation turns a
+                # mis-lock into an overshoot. Until the IMU axis map is re-measured
+                # (xreal_imu.py --map), raw + the disparity gate jitters less than predicted.
+                pred_s = predicted
+            else:
+                pred_s = pred_filt(predicted, time.time())
             shown = np.clip(pred_s + nudge, 0.0, 1.0)
 
             hud = make_hud(ds.count(), cal, simulate, shown, green, conf)
+            if getattr(cfg, "no_eye_cams", False):
+                hud += "\nEYES NOMINAL (--no-eye-cams): seat not measured this run"
+            if time.time() - _quit_hint[0] < 2.5:
+                hud += "\nPRESS Q AGAIN TO QUIT"
             # SHOW THE RAW KEY CODE. "WASD isn't working" has several possible causes -- the
             # window not holding focus, a platform keycode difference, another process eating the
             # event -- and they are indistinguishable from the outside. Displaying what
@@ -411,13 +463,44 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                 # which is how four unstorable samples got stored in the first place.
                 banner = ("TARGET IS %.0f DEG OFF AXIS\nOUTSIDE THE %.0f DEG DISPLAY\n"
                           "turn towards it" % (_offaxis(features), _display_fov()))
-            key = overlay.render(tuple(shown), green, hud, banner)
+            ring_px = None
+            if live and _dot_radii[0]:
+                # size-matched ring: project centre and centre+radius through the SAME
+                # geometry; their display distance is the wall dot's apparent radius.
+                try:
+                    from geometry import geometric_pixel_raw as _gpr
+                    _f2 = features.copy(); _f2[0] += _dot_radii[0][0]; _f2[2] += _dot_radii[0][1]
+                    ring_px = int(abs((_gpr(_f2)[0] - _gpr(features)[0]) * cfg.display_w))
+                except Exception:
+                    ring_px = None
+            key = overlay.render(tuple(shown), green, hud, banner, ring_px=ring_px)
             if key != -1 and key != 255:
                 _last_key[0] = key
+            # EXTRA-FINE nudge on the arrow keys (macOS waitKeyEx codes): a quarter of the
+            # WASD fine step, for the last pixel of an alignment. WASD stays as-is.
+            _arrow = {63234: (-1, 0), 63235: (1, 0), 63232: (0, -1), 63233: (0, 1)}.get(key)
+            if _arrow is not None:
+                nudge += np.array(_arrow, float) * inp.fine_step * 0.25
             act = inp.poll(key)
 
+            if _dbg_log is not None and live:
+                _dbg_log.write("%.4f %.5f %.5f %.5f %.5f %.5f %.5f %.5f %.5f\n"
+                               % (time.time(), features[0], features[1], features[2],
+                                  features[3], predicted[0], predicted[1],
+                                  shown[0], shown[1]))
+                _dbg_log.flush()
             if act.quit:
-                break
+                # QUIT MUST BE DELIBERATE (2026-08-18): a q/ESC keycode has ended three runs
+                # with nobody at the keyboard -- the XREAL registers as a USB HID device and
+                # its mode button emits key events into the focused window. One phantom
+                # keypress must not end a wearing. Two quit presses within a second do.
+                now = time.time()
+                print("quit keycode %s at %.2f" % (_last_key[0], now))
+                if now - _quit_arm[0] < 2.5:
+                    break
+                _quit_arm[0] = now
+                _quit_hint[0] = now
+                continue
             if act.recalibrate and not simulate:
                 print("Re-run --calibrate-corners for fresh templates.")
             if act.reset:                          # RESET fallback: cancel a mis-nudge
@@ -485,7 +568,7 @@ def run_loop(cfg: Config, simulate: bool) -> int:
                 elif snap_conf < cfg.eye_conf_min:
                     print("  eye confidence %.2f < %.2f, hold steady, not stored"
                           % (snap_conf, cfg.eye_conf_min))
-                elif _offscreen(snap_features):
+                elif _offscreen_hard(snap_features):
                     # The world cams see 70 deg; the display covers 48.25. A target outside that
                     # cannot be drawn on, so an "alignment" to it is not an alignment -- the
                     # overlay is sitting on the clipped display edge while the operator lines it
@@ -552,6 +635,7 @@ def run_loop(cfg: Config, simulate: bool) -> int:
 # is a mis-detection by construction, so hold the previous value rather than propagate it.
 DOT_MAX_JUMP = 0.12
 _dot_prev = {"L": None, "R": None}
+_dot_radii = [None]      # normalized blob radii of the last winning stereo pair
 
 
 # Frames of SUSTAINED disagreement after which a "jump" is accepted as real motion.
@@ -623,6 +707,7 @@ def _features_from(wlf, wrf, lf, rf, detector, trk_L, trk_R, last):
         pair = detector.detect_pair(wlf, wrf)
         if pair[0] is not None:
             dL, dR = pair
+            _dot_radii[0] = getattr(detector, "last_radii", None)
     except Exception:
         pass
     if dL is None:
@@ -633,6 +718,13 @@ def _features_from(wlf, wrf, lf, rf, detector, trk_L, trk_R, last):
     nodot = [n for n, d in (("worldL", dL), ("worldR", dR)) if d is None]
     if nodot:
         return last, 0.0, False, "no world dot in: " + ", ".join(nodot)
+    # SIGNED-disparity gate (2026-08-18). detect_pair deliberately checks |disparity| only, so
+    # a mis-pairing can pass with worldL's u LEFT of worldR's -- geometry that no real target
+    # in front of the rig can produce. Measured on a 216 s worn log: 88 of 8135 frames were
+    # negative-disparity mis-locks and they are exactly the frames the overlay JUMPED on.
+    # Physics gate, not a tuned threshold: hold the last good features instead.
+    if (dL[0] - dR[0]) < 0.004:
+        return last, 0.0, False, "disparity implausible (%.4f), dot pair mis-lock" % (dL[0] - dR[0])
     lc, sl = trk_L.track(lf)
     rc, sr = trk_R.track(rf)
     noeye = [n for n, c in (("eyeL", lc), ("eyeR", rc)) if c is None]
@@ -669,11 +761,21 @@ def selftest_input() -> int:
     frame = np.zeros((8, 8), dtype=np.uint8)
 
     class _Det:
-        def __init__(self, hit=True):
+        def __init__(self, hit=True, reversed_pair=False):
             self.hit = hit
+            self.rev = reversed_pair
 
         def detect(self, f):
             return ((0.5, 0.5), 1.0) if self.hit else (None, 0.0)
+
+        def detect_pair(self, fL, fR):
+            # A physical target in front of the rig sits at POSITIVE disparity (worldL's u
+            # right of worldR's); reversed_pair models the mis-lock the signed-disparity
+            # gate exists to catch. Mirrors the real DotDetector.detect_pair API.
+            if not self.hit:
+                return (None, None)
+            return (((0.48, 0.5), (0.52, 0.5)) if self.rev
+                    else ((0.52, 0.5), (0.48, 0.5)))
 
     class _Trk:
         def __init__(self, hit=True):
@@ -709,6 +811,13 @@ def selftest_input() -> int:
     check("all-good frame is live with no reason", ok and why == "" and conf > 0,
           "conf %.2f" % conf)
     check("all-good frame yields 8 features", ok and feats.shape == (8,))
+
+    # -- the signed-disparity gate: a reversed pair is refused, and the reason says so --
+    _dot_prev["L"] = _dot_prev["R"] = None
+    _, _, ok, why = _features_from(frame, frame, frame, frame,
+                                   _Det(reversed_pair=True), _Trk(), _Trk(), last)
+    check("reversed-disparity mis-lock is refused and named",
+          (not ok) and "disparity" in why, why)
 
     # -- 3. THE DOT GATE MUST LET THE TARGET ACTUALLY MOVE --
     # Written as the failing case first: before DOT_MAX_HELD existed, a jump returned `prev`
@@ -817,10 +926,37 @@ def _sim_next_ordered(world, subject, dev, pts, i):
 # THE DISPLAY SEES LESS THAN THE CAMERAS DO. World cams are 70 deg, the display 48.25 -- so the
 # rig can detect a target it has no pixel for. These wrap geometry.py so a missing module degrades
 # to "never off-screen" rather than blocking every approve.
+_offscreen_run = [0]               # consecutive offscreen frames (banner persistence gate)
+
+
 def _offscreen(features) -> bool:
+    """Offscreen with a MARGIN and PERSISTENCE (2026-08-18).
+
+    The raw gate flags any frame whose predicted pixel leaves [0,1] by any amount. With a
+    ~22 deg virtual screen and a residual model error of ~15-30 px, an edge target's
+    prediction crosses the boundary while the target itself is still drawable -- and one such
+    frame threw the TURN TOWARDS IT banner at an operator who was looking straight at a
+    visible dot. Warn only when the prediction is outside by more than `margin` (~2 deg of
+    field, comfortably beyond the model error) AND it has stayed there for several
+    consecutive frames (a transient detector wobble is not a pose problem)."""
     try:
         from geometry import offscreen
-        return offscreen(features)
+        if offscreen(features, margin=0.08):
+            _offscreen_run[0] += 1
+        else:
+            _offscreen_run[0] = 0
+        return _offscreen_run[0] >= 8
+    except Exception:
+        return False
+
+
+def _offscreen_hard(features) -> bool:
+    """One-shot approve guard: same margin as the banner, NO persistence. An approve is a
+    single decision on a single snapshot, so a consecutive-frame counter would let an
+    offscreen approve slip through right after an onscreen frame reset it."""
+    try:
+        from geometry import offscreen
+        return offscreen(features, margin=0.08)
     except Exception:
         return False
 
@@ -900,6 +1036,31 @@ def main(argv=None) -> int:
     p.add_argument("--world-cam-right", type=int)
     p.add_argument("--eye-cam-left", type=int)
     p.add_argument("--eye-cam-right", type=int)
+    p.add_argument("--world-res", type=str, default=None, metavar="WxH",
+                   help="world-camera capture mode, e.g. 1920x1200. The AR0234's NATIVE 16:10 "
+                        "mode is what geometry.py's angular map (WORLD_FOV=70, aspect 10/16) "
+                        "was calibrated against; its 640x480 UVC mode is a crop/squeeze with "
+                        "an unknown FOV and cost 269 px of median geometric error (measured "
+                        "2026-08-18, 11 samples)")
+    p.add_argument("--raw-pred", action="store_true",
+                   help="draw the geometric prediction directly, bypassing the "
+                        "LatencyCompensator. Use while the IMU axis map is missing: with only "
+                        "image motion as the velocity source, extrapolation amplifies detector "
+                        "jitter (measured 1.77x at p95 on a worn log)")
+    p.add_argument("--world-rot180", action="store_true",
+                   help="rotate both world-camera frames 180 deg at capture: the downsized "
+                        "carrier (2026-08-18) mounts them upside-down. Re-derive worldL/R "
+                        "after toggling this -- rotation flips the disparity sign, so the "
+                        "L/R index assignment swaps relative to the raw-frame one")
+    p.add_argument("--no-eye-cams", action="store_true",
+                   help="WORLDS-ONLY interim (2026-08-18): don't open the eye cameras; eye "
+                        "features are pinned to the NOMINAL canthus positions. Valid while "
+                        "EYE_SHIFT_GAIN is 0.0 (nominal features are exactly neutral in "
+                        "geometry). Samples stored this way carry constant eye features, so "
+                        "reseat.py will correctly refuse to fit a gain to them. Exists because "
+                        "one powered hub sustains only 2 of these camera streams (AVFoundation "
+                        "reserves isoch bandwidth per stream); remove once the cameras are "
+                        "split across two host ports")
     p.add_argument("--fullscreen", action="store_true",
                    help="push the overlay onto your AR monitor fullscreen")
     p.add_argument("--overlay-x", type=int, default=None,
@@ -1041,6 +1202,12 @@ def main(argv=None) -> int:
         cfg.db_path = args.db
     cfg.reseat_every = int(getattr(args, "reseat_every", 0) or 0)
     cfg.display_mode = getattr(args, "display_mode", "follow")
+    cfg.no_eye_cams = bool(getattr(args, "no_eye_cams", False))
+    cfg.world_rot180 = bool(getattr(args, "world_rot180", False))
+    cfg.raw_pred = bool(getattr(args, "raw_pred", False))
+    if getattr(args, "world_res", None):
+        w, h = args.world_res.lower().split("x")
+        cfg.cam_width, cfg.cam_height = int(w), int(h)
 
     import os
     meta_path = os.path.join(os.path.dirname(cfg.db_path), "meta.db")

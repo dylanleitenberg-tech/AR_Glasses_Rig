@@ -10,22 +10,47 @@ import cv2
 
 class Camera:
     def __init__(self, index: int, width: int = 640, height: int = 480,
-                 fps: int = 120, name: str = "", mjpg: bool = True):
+                 fps: int = 120, name: str = "", mjpg: bool = True,
+                 rot180: bool = False):
+        # rot180 (2026-08-18): after the downsizing rebuild the world cameras sit on the
+        # carrier UPSIDE-DOWN, verified by a worn capture (ceiling fan at the bottom of the
+        # frame). An inverted image inverts every feature direction, so the overlay counter-
+        # motion becomes co-motion -- "the dot moves with my head", which is exactly how it
+        # presented. Correct at the SOURCE so every consumer (dot detector, features,
+        # geometry, preflight) sees one orientation. NOTE: rotating both world frames flips
+        # the sign of stereo disparity, so the worldL/worldR index assignment must be
+        # re-derived with rotation applied (it swaps relative to the raw-frame assignment).
+        self.rot180 = bool(rot180)
         self.index = index
         self.name = name or "cam%d" % index
-        self.cap = cv2.VideoCapture(index)
+        # THE MODE IS CHOSEN AT OPEN, NOT AFTER (2026-08-18): on current macOS the
+        # AVFoundation backend silently ignores post-open set() for width/height/fps, so the
+        # mode goes in as open-params (which also makes AVFoundation pick an MJPEG-backed
+        # format when the mode needs it -- CAP_PROP_FOURCC is rejected as an open param).
+        # Cascade: full mode -> mode w/o fps -> legacy open + set() (other backends).
+        backend = getattr(cv2, "CAP_AVFOUNDATION", 0)
+        self.cap = cv2.VideoCapture(index, backend,
+                                    [cv2.CAP_PROP_FRAME_WIDTH, int(width),
+                                     cv2.CAP_PROP_FRAME_HEIGHT, int(height),
+                                     cv2.CAP_PROP_FPS, int(fps)])
         if not self.cap.isOpened():
-            raise RuntimeError("Could not open camera %s (index %d)"
-                               % (self.name, index))
-        # MJPG lets the global-shutter UVC cams hit full resolution/fps over USB bandwidth.
-        if mjpg:
-            try:
-                self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-            except Exception:
-                pass
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        self.cap.set(cv2.CAP_PROP_FPS, fps)
+            self.cap = cv2.VideoCapture(index, backend,
+                                        [cv2.CAP_PROP_FRAME_WIDTH, int(width),
+                                         cv2.CAP_PROP_FRAME_HEIGHT, int(height)])
+        if not self.cap.isOpened():
+            self.cap = cv2.VideoCapture(index)
+            if not self.cap.isOpened():
+                raise RuntimeError("Could not open camera %s (index %d)"
+                                   % (self.name, index))
+            # MJPG lets the global-shutter UVC cams hit full resolution/fps over USB bandwidth.
+            if mjpg:
+                try:
+                    self.cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+                except Exception:
+                    pass
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
+            self.cap.set(cv2.CAP_PROP_FPS, fps)
         # Small buffer so snapshot() gets a *current* frame, not a stale one.
         try:
             self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -53,7 +78,7 @@ class Camera:
         ok, frame = self.cap.read()
         if not ok:
             return None
-        return frame
+        return cv2.rotate(frame, cv2.ROTATE_180) if self.rot180 else frame
 
     def snapshot(self):
         """Flush any buffered frames and return the freshest one (low latency)."""
@@ -62,7 +87,7 @@ class Camera:
         ok, frame = self.cap.retrieve()
         if not ok:
             return self.read()
-        return frame
+        return cv2.rotate(frame, cv2.ROTATE_180) if self.rot180 else frame
 
     def release(self):
         self.cap.release()

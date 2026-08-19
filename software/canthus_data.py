@@ -150,13 +150,17 @@ def collect(eye_cams, target=1500, min_margin=MIN_MARGIN, seconds=None, view=Tru
     from cameras import Camera
 
     tmpl = {}
-    for role in ("eyeL", "eyeR"):
-        p = os.path.join(DATA, "templates", "%s.png" % role)
-        t = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
-        if t is None:
-            print("!! no template at %s, run: python3 main.py --calibrate-corners" % p)
-            return 1
-        tmpl[role] = t
+    if not raw:
+        # Templates feed the diagnostic margin gate only. The RAW path never reads them
+        # (labels come from human clicks), so requiring them there blocked corpus capture
+        # for no reason after the templates were lost with the 2026-08-16 machine.
+        for role in ("eyeL", "eyeR"):
+            p = os.path.join(DATA, "templates", "%s.png" % role)
+            t = cv2.imread(p, cv2.IMREAD_GRAYSCALE)
+            if t is None:
+                print("!! no template at %s, run: python3 main.py --calibrate-corners" % p)
+                return 1
+            tmpl[role] = t
 
     cams = {r: Camera(i, 1280, 800, name=r) for r, i in eye_cams.items()}
     frames, labels, roles, metas = [], [], [], []

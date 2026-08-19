@@ -1,6 +1,9 @@
 # Python 3.9+
 numpy>=1.24
-opencv-python>=4.8      # world + eye cameras, dot detection, overlay window
+opencv-python>=4.8,<5   # world + eye cameras, dot detection, overlay window
+                        # <5: cv2 5.0 warpPerspective rounds ROI-sized vs full-canvas warps
+                        # differently (9 px off by 1/255 on 1920x1080, measured 2026-08-18),
+                        # breaking avatar.py's bbox-path pixel-identical invariant
 pygame>=2.5            # joystick / gamepad input (keyboard fallback if absent)
 # The learning core (calibrator.py, dataset.py, synth.py) needs only numpy + stdlib,
 # so `python3 main.py --selftest` runs without opencv/pygame or any hardware.
