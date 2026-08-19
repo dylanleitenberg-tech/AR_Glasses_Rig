@@ -44,9 +44,10 @@ Results so far, from a physics simulation built to be pessimistic about human er
 - The same pipeline with ideal inputs reaches 0.89 pixels, so the hardware and math
   support sub-pixel registration. Closing that gap requires a multi-distance
   calibration protocol that only works on real hardware, which is now implemented:
-  the best hardware run to date came in under 10 pixels of measured overlay error,
-  down from the 13 a naive interface predicts. That is one run, not a characterized
-  average and tightening it toward the simulated 4.3 is the current work.
+  the best measured result so far is 5.3 pixels median overlay error, cross-validated
+  leave-one-out on a 33-sample run, using the physics geometry plus a quadratic
+  learned residual. That is one evening on one seating, not a characterized average,
+  and it sits close to the simulated 4.3.
 - Just as important are the negative results. I tested and rejected several appealing
   shortcuts (bias-invariant fingerprints, richer per-user correction models, direct
   geometry refinement on user labels) because the simulation showed each one quietly
@@ -56,14 +57,23 @@ Results so far, from a physics simulation built to be pessimistic about human er
  orientation and size, and the outline held on the shape as I moved my head. That is the closest
  the project has come to my end goal of real-world object overlay: not placing a marker at a point, 
  but tracing the boundary of an actual object and keeping it there under motion. My computer then 
- failed and that code was lost. I plan to rebuild it once the machine is repaired.
+ failed and that code was lost. I rebuilt it two days later on a replacement machine, and the
+ new version is stronger than the one I lost: it traces the star's detected boundary point by
+ point through the calibrated geometry, so orientation and size match by construction, and it
+ held the outline on the shape for 99.8% of frames while my head moved.
 
 ![The rig](media/session-2026-08-04/rig_complete_on_glasses.jpg)
 
-Current status: the rig is built and running on my face. All four cameras stream, both eye
-trackers lock onto my inner eye corners, the forward pair finds the target and measures its
-distance, and the whole preflight passes. I have real calibration samples stored and a
-measured overlay error rather than a simulated one.
+Current status: the rig is built and running on my face, now on a replacement computer
+after the first one died. The forward pair finds the target and measures its distance at
+30 frames per second with sub-pixel detection jitter, the calibration loop runs at over
+80, and I have real calibration samples stored and a cross-validated overlay error rather
+than a simulated one. The eye landmark model is trained on a fresh corpus of 2,588 frames
+I captured and hand-labelled on the new machine, with a separate head that reports when
+the eye is closed. One practical note from the rebuild: a single powered hub carries only
+three of these camera streams at once, so calibration currently runs on the world pair
+alone and the eye cameras run in their own sessions, until the cameras are split across
+two host ports.
 
 What the hardware phase actually produced, all measured on the rig:
 
@@ -76,8 +86,13 @@ What the hardware phase actually produced, all measured on the rig:
   fit on few samples was throwing the marker across the display, so geometry became the
   backbone and learning became a correction that has to prove it helps before it is used.
 - The display field of view had been assumed at 50 degrees since the project started. I
-  measured it two ways and it is closer to 48, which was worth more error than getting a
-  user's eye spacing wrong by two standard deviations.
+  measured it two ways and got closer to 48, which was worth more error than getting a
+  user's eye spacing wrong by two standard deviations. Measuring again on the new machine
+  went further: in follow mode the glasses render the desktop as a virtual screen of
+  about 22 degrees, sitting below the forward axis, and both numbers depend on the
+  glasses' display mode and screen-size setting. The constants are measured per session
+  now, and every round of measuring this number has bought more accuracy than any model
+  change.
 
 ## Why this problem
 

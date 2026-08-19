@@ -1,0 +1,8 @@
+{
+  "display_fov_deg": 22.0,
+  "center_off": [
+    -0.006,
+    -0.466
+  ],
+  "tuned": "star_overlay live adjustment"
+}
