@@ -10,7 +10,7 @@ This repository is a record of what the rig does and what it measured. The desig
 - **Eye tracking from inside.** Two cameras look at the wearer's eyes and track the inner eye corner with a model trained on 10,000 synthetic eye frames. From that the rig knows how the glasses are seated, every frame, and corrects the overlay for it.
 - **Metric depth.** Two world cameras measure the distance to real objects, which the glasses alone cannot do.
 - **Person-to-character replacement.** A tracked person is replaced by a rendered character at their position, scale and pose, in both eyes, live on the worn rig.
-- **Live document translation.** A printed page is read on-device, translated, and the translation is drawn back onto the page at its measured distance and tilt. 24 languages offline.
+- **Live document translation, in real time on the worn rig.** A printed page is read on-device, translated, and the translation is drawn back onto the page at its measured distance and tilt. The panels track the page at frame rate as it moves; a new page is read and translated in about a second, offline, in 24 languages.
 - **Calibration that refuses.** A preflight names the precondition that failed. Depth reports its uncertainty and declines when it cannot be trusted.
 - **Adaptive performance.** A frame-budget controller with an effectiveness probe that reverts any change that does not buy frame time.
 - **Release gate.** 40 automated checks across the system; 23 self-tests on the translation path.
