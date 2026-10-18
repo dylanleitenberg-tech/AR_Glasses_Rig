@@ -17,7 +17,7 @@ This repository is a record of what the rig does and what it measured. The desig
 
 ## Measured on this hardware
 
-- Eye-corner tracking: 4 px in simulation, 5 px on hardware.
+- Overlay accuracy: about 4 px, measured on the worn hardware within one wearing.
 - Reading: 25 to 28 lines of a printed page at 26 to 35 cm. A tilted page stays registered: depth within 5 mm and the page normal within 3 degrees on the rehearsal clip.
 - Person replacement at about 30 fps, worn.
 - Loop latency 73.6 ms motion to photon before inertial reprojection.
